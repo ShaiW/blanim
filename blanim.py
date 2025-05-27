@@ -1,0 +1,289 @@
+from random import random, choice
+from numpy.random import poisson as poi
+from typing import Self, Dict, List
+from manim import *
+from itertools import chain
+from common import *
+import string
+
+BLOCK_H = 0.4
+BLOCK_W = 0.4
+GENESIS_POSITION = [-5,0,0]
+BLOCK_SPACING_H = 1.3
+BLOCK_SPACING_W = 2
+DAG_WIDTH = 5
+NOISE_H = 0.3
+NOISE_W = 0.5
+
+DEF_RATE_FUNC = smooth
+DEF_RUN_TIME = 0.5
+
+PROMPT_DELAY = 2
+
+def safe_play(scene, anims):
+    if anims:
+        scene.play(anims)
+
+class Parent():
+    def __init__(self, name, **kwargs):
+        self.name = name
+        self.kwargs = kwargs
+
+class Block():
+
+    parents: list[Self]
+    children: list[Self]
+    rect: Rectangle
+    label: Tex
+    
+    def __init__(self, name, DAG, parents, pos, label = None, color  = BLUE, h = BLOCK_H, w = BLOCK_W):
+
+        self.name = name
+        self.w = w
+        self.h = h
+        self.DAG = DAG
+        self.parents = [DAG.blocks[p.name] for p in parents]
+        self.children = []
+        self.rect = Rectangle(
+            color      = color, 
+            fill_opacity    = 1, 
+            height          = h,
+            width           = w,
+        )
+        self.rect.move_to(pos)
+        if label:
+            self.label = Tex(label if label else name).set_z_index(1).scale(0.7)
+            self.label.add_updater(lambda l: l.move_to(self.rect.get_center()), call_updater=True)
+        else:
+            self.label = None
+
+        for p in parents:
+            DAG.blocks[p.name].children.append(self)
+
+class BlockDAG():
+
+    blocks: Dict[str, Block]
+    history: List[str]
+    block_color : ManimColor
+    block_w: float
+    block_h: float
+
+    def __init__(self, history_size = 20, block_color = BLUE, block_w=BLOCK_W, block_h=BLOCK_H):
+        self.blocks = {}
+        self.history = []
+        self.history_size = history_size
+        self.block_color = block_color
+        self.block_h = block_h
+        self.block_w = block_w
+
+    def add(self, name, pos, parents = [], **kwargs):
+        #label = None, color=block_color, w=BLOCK_W, h=BLOCK_H
+        kwargs.setdefault("label",None)
+        kwargs.setdefault("color",self.block_color)
+        kwargs.setdefault("w",self.block_w)
+        kwargs.setdefault("h",self.block_h)
+
+        anims = []
+        pos = pos+[0]
+
+        assert(not name in self.blocks)
+        
+        parents = list(map(lambda p: Parent(p) if type(p) is str else p, parents))
+
+        B = Block(name, self, parents, pos, **kwargs)
+
+        anims = [FadeIn(B.rect)] + \
+                ([FadeIn(B.label)] if B.label else []) + \
+                [self.add_arrow(B,self.blocks[p.name],**p.kwargs) for p in parents]
+        
+        self.blocks[name] = B
+
+        self.history.insert(0,self._get_tips())
+        if len(self.history)  > self.history_size:
+            self.history.pop()
+
+        return anims
+
+    def add_arrow(self, f :Block, t :Block, **kwargs):
+
+        # For some reason ArrowUpdater gets crazy if you add it before initing the arrow
+        # This hack solves it
+        class GrowArrowUpdater(GrowArrow):
+
+            def __init__(self, a, u, **kwargs):
+                super().__init__(a, **kwargs)
+                self.a = a
+                self.u = u
+
+            def __del__(self):
+                self.a.add_updater(self.u)
+
+        kwargs.setdefault("buff",0)
+        kwargs.setdefault("stroke_width",2)
+        kwargs.setdefault("tip_shape",StealthTip)
+        kwargs.setdefault("max_tip_length_to_length_ratio",0.04)
+        kwargs.setdefault("color",WHITE)
+        a = Arrow(**kwargs)
+        # if "z_index" in kwargs:
+        #     a.set_z_index(kwargs["z_index"])
+        
+        def get_start_end():
+            fl = f.rect.get_left()[0]
+            fr = f.rect.get_right()[0]
+            tl = t.rect.get_left()[0]
+            tr = t.rect.get_right()[0]
+            ft = f.rect.get_top()[1]
+            fb = f.rect.get_bottom()[1]
+            tt = t.rect.get_top()[1]
+            tb = t.rect.get_bottom()[1]
+            s = f.rect.get_left()
+            e = t.rect.get_right()
+            if tr - fl > 0:
+                s = f.rect.get_right()
+                e = t.rect.get_left()
+            if max(tr-fl,fr-tl) < max(tb-ft,fb-tt):
+                if tb-ft > fb-tt:
+                    s = f.rect.get_top()
+                    e = t.rect.get_bottom()
+                else:
+                    s = f.rect.get_bottom()
+                    e = t.rect.get_top()
+            return {"start":s, "end":e}
+
+        a.put_start_and_end_on(**get_start_end())
+        return GrowArrowUpdater(a,lambda a: a.put_start_and_end_on(**get_start_end()))
+    
+    def shift(self, name, offset, rate_func=DEF_RATE_FUNC, run_time=DEF_RUN_TIME):
+        rects = self._name_to_rect(name)
+        return Transform(rects, rects.copy().shift(offset + [0]), rate_func=rate_func, run_time=run_time)
+    
+    def _name_to_rect(self, name : str | list[str]):
+        return self.blocks[name].rect if type(name) is str else VGroup(*[self.blocks[b].rect for b in name])
+    
+    def get_tips(self, missed_blocks = 0):
+        return self.history[min(missed_blocks,len(self.history)-1)]
+
+    def _get_tips(self):
+        tips = list(filter(lambda x: not self.blocks[x].children ,self.blocks.keys()))
+        return tips
+    
+    def change_color(self, blocks: str | list[str], color):
+        if type(blocks) is str:
+            blocks = [blocks]
+        return [FadeToColor(rect, color=color) for rect in self._name_to_rect(blocks)]
+
+class LayerDAG(BlockDAG):
+
+    layers : List[List[str]]
+
+    ## Automagically orders DAGs into layers
+    ##
+    def __init__(self, layer_spacing = 1.5, chain_spacing = 1, gen_pos = [-6.5,0], width=4, block_spacing = 1, *args, **kwargs):
+        super().__init__(*args,**kwargs)
+        self.init_animation = super().add("Gen", gen_pos)[0]
+        self.layers = [["Gen"]]
+        self.layer_spacing = layer_spacing
+        self.chain_spacing = chain_spacing
+        self.gen_pos = gen_pos
+        self.block_spacing = block_spacing
+        self.width = width
+
+    def add(self, name, parent_names, selected_parent=None, random_sp = False, *args, **kwargs):
+        layer = 0
+        top_parent_layer = 0
+        if type(parent_names) is str:
+            parent_names = [parent_names]
+        for i in range(len(self.layers)):
+            if any(b in self.layers[i] for b in parent_names):
+                top_parent_layer = i
+        for i in range(top_parent_layer+1,len(self.layers)):
+            if len(self.layers[i]) < self.width - ((i+1)%2):
+                layer = i
+                break
+        if layer <= top_parent_layer: #all layers above top parent are full
+            layer = len(self.layers)
+        layer_top = -self.chain_spacing
+        if layer == len(self.layers):
+            self.layers.append([name])
+        else:
+            layer_top = self.blocks[self.layers[layer][-1]].rect.get_center()[1]
+            self.layers[layer].append(name)
+        pos = [layer*self.layer_spacing+self.gen_pos[0],layer_top+self.chain_spacing]
+        if random_sp:
+            selected_parent = choice(parent_names)
+        parents = [Parent(p,color=BLUE,stroke_width=3,z_index=-1) if p == selected_parent else Parent(p,z_index=-2) for p in parent_names]
+        return super().add(name, pos, parents=parents, *args, **kwargs)
+    
+    def adjust_layer(self,layer):
+        if layer >= len(self.layers): #empty layer
+            return None
+        top = self.blocks[self.layers[layer][-1]].rect.get_center()[1]
+        bot = self.blocks[self.layers[layer][0]].rect.get_center()[1]
+        shift = abs(top-bot)/2 - top
+        if shift == 0:
+            return None #layer already adjusted
+        return [self.shift(b,[0,shift]) for b in self.layers[layer]]
+
+    def adjust_layers(self, chained=True):
+        shifts = list(filter(None,[self.adjust_layer(layer) for layer in range(len(self.layers))]))
+        print(shifts)
+        return list(chain(*shifts)) if chained else shifts
+
+class Miner():
+    def __init__(self, scene, x , y, attempts = 20):
+        self.scene = scene
+        self.x = x
+        self.y = y
+        self.attempts = attempts
+        self.nonce = random.randint(10000,99000)
+        self.parts = {}
+        self.rect = Rectangle(
+            color=RED,
+            fill_opacity=1,
+            height = 2,
+            width = 3
+        )
+        self.rect.move_to([x,y,0])
+        self.lpar = Tex(r"(",font_size = 220)
+        self.lpar.move_to([x-1.8,y,0])
+        self.rpar = Tex(r")",font_size = 220)
+        self.rpar.move_to([x+1.8,y,0])
+        self.eq = Tex(r"=",font_size = 100)
+        self.eq.move_to([x+2.7,y,0])
+        self.H = Tex(r"\textsf{H}", font_size = 100)
+        self.H.move_to([x-2.6,y,0])
+        self.header = Rectangle(
+            color=BLACK,
+            fill_opacity=1,
+            height = 0.5,
+            width = 2.8
+        )
+        self.header.move_to([x,y+0.6,0])
+        self.nonce_label = Text("Nonce: " + str(self.nonce), font_size = 30)
+        self.nonce_label.move_to([x,y+0.6,0])
+        self.hash = self._nexthash()
+        self.hash.move_to([x+7,y,0])
+        scene.add(self.rect, self.H, self.lpar, self.rpar, self.eq, self.header, self.nonce_label, self.hash)
+        scene.wait(0.5)
+
+    def _nexthash(self, win=False, color=RED):
+        nhash = Text(("0"*10 if win else fake_sha(10)) + "..." + fake_sha(), font_size = 50, color=color, font="Monospace")
+        nhash.move_to([self.x+7,self.y,0])
+        return nhash
+
+    def update(self):
+        self.nonce += 1
+        self.attempts -= 1
+        newnonce = Text("Nonce: " + str(self.nonce), font_size = 30)
+        newnonce.move_to([self.x,self.y+0.6,0])
+        self.scene.play(Unwrite(self.hash),run_time = 0.3)
+        self.scene.play(Transform(self.nonce_label, newnonce))
+        self.hash = self._nexthash(win = not bool(self.attempts),color=WHITE)
+        self.scene.play(Write(self.hash),run_time = 0.3)
+        self.scene.play(FadeToColor(self.hash, RED if self.attempts else BLUE))
+
+    def mining(self):
+        return self.attempts > 0
+
+def fake_sha(n=6):
+    return ''.join(random.choice(string.ascii_lowercase[:6]+string.digits[1:]) for _ in range(n))
