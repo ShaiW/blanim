@@ -1,5 +1,4 @@
-from random import random, choice
-from numpy.random import poisson as poi
+from random import random, choice, randint
 from typing import Self, Dict, List
 from manim import *
 from itertools import chain
@@ -58,8 +57,11 @@ class Block():
             self.label = None
 
         for p in parents:
-            DAG.blocks[p.name].children.append(self)
+            DAG.blocks[p.name].children.append(self.name)
 
+
+    def is_tip(self):
+        return bool(self.children)
 class BlockDAG():
 
     blocks: Dict[str, Block]
@@ -75,6 +77,8 @@ class BlockDAG():
         self.block_color = block_color
         self.block_h = block_h
         self.block_w = block_w
+
+    ## construction
 
     def add(self, name, pos, parents = [], **kwargs):
         #label = None, color=block_color, w=BLOCK_W, h=BLOCK_H
@@ -103,6 +107,9 @@ class BlockDAG():
             self.history.pop()
 
         return anims
+
+    def random_block(self):
+        return choice(list(self.blocks.keys()))
 
     def add_arrow(self, f :Block, t :Block, **kwargs):
 
@@ -153,25 +160,55 @@ class BlockDAG():
         a.put_start_and_end_on(**get_start_end())
         return GrowArrowUpdater(a,lambda a: a.put_start_and_end_on(**get_start_end()))
     
-    def shift(self, name, offset, rate_func=DEF_RATE_FUNC, run_time=DEF_RUN_TIME):
-        rects = self._name_to_rect(name)
-        return Transform(rects, rects.copy().shift(offset + [0]), rate_func=rate_func, run_time=run_time)
-    
-    def _name_to_rect(self, name : str | list[str]):
-        return self.blocks[name].rect if type(name) is str else VGroup(*[self.blocks[b].rect for b in name])
-    
+    ## combinatorics
+
+    def get_future(self, B):
+        f = []
+
+        def _calc_future(A):
+            if not (A in f):
+                f.append(A)
+                [_calc_future(C) for C in self.blocks[A].children]
+
+        _calc_future(B)
+
+        return f
+        
+        
+
     def get_tips(self, missed_blocks = 0):
         return self.history[min(missed_blocks,len(self.history)-1)]
 
     def _get_tips(self):
-        tips = list(filter(lambda x: not self.blocks[x].children ,self.blocks.keys()))
+        tips = list(filter(lambda x: not self.blocks[x].is_tip(), self.blocks.keys()))
         return tips
+    
+    ## transformations
+
+    def shift(self, name, offset, rate_func=DEF_RATE_FUNC, run_time=DEF_RUN_TIME):
+        rects = self._name_to_rect(name)
+        return Transform(rects, rects.copy().shift(offset + [0]), rate_func=rate_func, run_time=run_time)
     
     def change_color(self, blocks: str | list[str], color):
         if type(blocks) is str:
             blocks = [blocks]
         return [FadeToColor(rect, color=color) for rect in self._name_to_rect(blocks)]
 
+    ## gestures
+    def blink(self, B):
+        if type(B) is str:    
+            rect = self._name_to_rect(B)
+            rect_color = rect.color
+            return Succession(FadeToColor(rect, color=YELLOW, run_time=0.2),FadeToColor(rect, color=rect_color))
+        return [self.blink(b) for b in B]
+
+    
+    ## utility
+    
+    def _name_to_rect(self, name : str | list[str]):
+        return self.blocks[name].rect if type(name) is str else VGroup(*[self.blocks[b].rect for b in name])
+    
+    
 class LayerDAG(BlockDAG):
 
     layers : List[List[str]]
@@ -226,16 +263,15 @@ class LayerDAG(BlockDAG):
 
     def adjust_layers(self, chained=True):
         shifts = list(filter(None,[self.adjust_layer(layer) for layer in range(len(self.layers))]))
-        print(shifts)
         return list(chain(*shifts)) if chained else shifts
 
 class Miner():
-    def __init__(self, scene, x , y, attempts = 20):
+    def __init__(self, scene, x=0 , y=0, attempts = 20):
         self.scene = scene
         self.x = x
         self.y = y
         self.attempts = attempts
-        self.nonce = random.randint(10000,99000)
+        self.nonce = randint(10000,99000)
         self.parts = {}
         self.rect = Rectangle(
             color=RED,
@@ -286,4 +322,4 @@ class Miner():
         return self.attempts > 0
 
 def fake_sha(n=6):
-    return ''.join(random.choice(string.ascii_lowercase[:6]+string.digits[1:]) for _ in range(n))
+    return ''.join(choice(string.ascii_lowercase[:6]+string.digits[1:]) for _ in range(n))
