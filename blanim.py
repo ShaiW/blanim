@@ -323,3 +323,20 @@ class Miner():
 
 def fake_sha(n=6):
     return ''.join(choice(string.ascii_lowercase[:6]+string.digits[1:]) for _ in range(n))
+
+class Node(Square):
+    def __init__(self, peers:list = []):
+        super().__init__()
+        # Create a Node with a list of peers
+
+        self.side_length = 0.8
+        self.set_fill("#0000FF", opacity=1)
+
+        if peers:
+            self.peers_list = peers
+
+    def set_blue(self):
+        self.set_fill("0000FF", opacity=1, family=False)
+
+    def set_red(self):
+        self.set_fill("#FF0000", opacity=1, family=False)
