@@ -349,6 +349,9 @@ class BlockMob(Square):
             color=color,
             fill_opacity=1,
             side_length=side_length,
+            background_stroke_color=WHITE,
+            background_stroke_width=10,
+            background_stroke_opacity=1.0
         )
         self.set_blue()
 
@@ -367,7 +370,7 @@ class BlockMob(Square):
             self.label.move_to(self.get_center())
             self.add(self.label)
 
-        for m in mergeset:
+        for m in self.mergeset:
             m.children.append(self.name)
 
     # Setters and getters
@@ -382,15 +385,14 @@ class BlockMob(Square):
         self.add(self.label)
 
     def set_blue(self):
-        self.set_fill("#0000FF", opacity=1, family=False)
+        self.set_color("#0000FF", family=False)
 
     def set_red(self):
-        self.set_fill("#FF0000", opacity=1, family=False)
+        self.set_color("#FF0000", family=False)
 
     def set_to_color(self, to_color):
-        self.set_fill(to_color, opacity=1, family=False)
+        self.set_color(to_color, family=False)
 
-    # NOTE when using fade, it turns the mobject the target color, and overrides the stroke
     def fade_blue(self):
         return self.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
 
@@ -400,3 +402,11 @@ class BlockMob(Square):
     # fade_to_color ONLY works with ManimColor, does not work with hex format str
     def fade_to_color(self, to_color:ManimColor = WHITE):
         return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
+
+# TODO
+#  This is rough notes from discussion
+#  priorities labels misbehaving, blockchain class - location updates based on parent, BlockDAG(get_past, get future, get_anticone),
+#  parallel chains like kadena, ect, ghostdag, function that computes k cluster and blueset for each block, output a transcript that has each step eg.
+#  eg. added to blue set, appended children,
+
+# TODO please list priorities here
