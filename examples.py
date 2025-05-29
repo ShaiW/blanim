@@ -95,3 +95,15 @@ class BlockMobAndColors(MovingCameraScene):
         self.play(block.animate(runtime = 1).shift(DOWN * 2))
         self.play(block.fade_to_color(PURE_GREEN))
         self.wait(1)
+
+class ChangingLabel(Scene):
+    def construct(self):
+        block = BlockMob("Gen", label="label test")
+        self.add(block)
+        self.wait(1)
+        self.play(block.animate(runtime = 1).shift(UP * 2))
+        block.set_label("success")
+        self.wait(1)
+        self.play(block.animate(runtime = 1).shift(DOWN * 2))
+        block.set_blue()
+        self.wait(1)

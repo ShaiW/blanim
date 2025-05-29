@@ -370,8 +370,16 @@ class BlockMob(Square):
         for m in mergeset:
             m.children.append(self.name)
 
+    # Setters and getters
+
     def is_tip(self):
         return bool(self.children)
+
+    def set_label(self, to_label:str = ""):
+        self.remove(self.label)
+        self.label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
+        self.label.move_to(self.get_center())
+        self.add(self.label)
 
     def set_blue(self):
         self.set_fill("#0000FF", opacity=1, family=False)
