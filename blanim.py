@@ -174,7 +174,7 @@ class BlockDAG():
 
         return f
         
-        
+
 
     def get_tips(self, missed_blocks = 0):
         return self.history[min(missed_blocks,len(self.history)-1)]
@@ -340,3 +340,53 @@ class Node(Square):
 
     def set_red(self):
         self.set_fill("#FF0000", opacity=1, family=False)
+
+
+class BlockMob(Square):
+    def __init__(self, name:str = "", selected_parent:object = None, mergeset:list = [], starting_position = (0,0,0), label:str = "Didn't work", color = "#0000FF", side_length=BLOCK_H):
+        super().__init__(
+            color=color,
+            fill_opacity=1,
+            side_length=side_length,
+        )
+        self.set_blue()
+
+        # set instance variables
+        self.name = name
+        self.parent = selected_parent
+        self.mergeset = mergeset # parent inclusive mergeset
+        self.children = []
+
+        # set starting position
+        self.move_to(starting_position)
+
+        # changed label to text mobject, will attempt to create a latex mobject at a later date
+        if label:
+            self.label = Text(label, font_size=24, color=WHITE, weight=BOLD)
+            self.label.move_to(self.get_center())
+            self.add(self.label)
+
+        for m in mergeset:
+            m.children.append(self.name)
+
+    def is_tip(self):
+        return bool(self.children)
+
+    def set_blue(self):
+        self.set_fill("#0000FF", opacity=1, family=False)
+
+    def set_red(self):
+        self.set_fill("#FF0000", opacity=1, family=False)
+
+    def set_to_color(self, to_color):
+        self.set_fill(to_color, opacity=1, family=False)
+
+    def fade_blue(self):
+        return self.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
+
+    def fade_red(self):
+        return self.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
+
+    # fade_to_color ONLY works with ManimColor, does not work with hex format str
+    def fade_to_color(self, to_color:ManimColor = WHITE):
+        return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
