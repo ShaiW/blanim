@@ -341,9 +341,10 @@ class Node(Square):
     def set_red(self):
         self.set_fill("#FF0000", opacity=1, family=False)
 
+BM_SIDE_LENGTH:float = 0.8
 
 class BlockMob(Square):
-    def __init__(self, name:str = "", selected_parent:object = None, mergeset:list = [], starting_position = (0,0,0), label:str = "Didn't work", color = "#0000FF", side_length=BLOCK_H):
+    def __init__(self, name:str = "", selected_parent:object = None, mergeset:list = [], starting_position = (0,0,0), label:str = "Didn't work", color = "#0000FF", side_length:float=BM_SIDE_LENGTH):
         super().__init__(
             color=color,
             fill_opacity=1,
@@ -381,6 +382,7 @@ class BlockMob(Square):
     def set_to_color(self, to_color):
         self.set_fill(to_color, opacity=1, family=False)
 
+    # NOTE when using fade, it turns the mobject the target color, and overrides the stroke
     def fade_blue(self):
         return self.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
 
