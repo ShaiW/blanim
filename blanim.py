@@ -396,7 +396,7 @@ class BlockMobChain:
 
         block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
         forked_chain.append(block)
-        original_chain.append(self.chain[-fork_depth - 1])
+        original_chain.append(self.chain[-fork_depth])
         block.shift_fork_to_parent()
 
         i = 1
@@ -408,6 +408,7 @@ class BlockMobChain:
 
             i += 1
 
+        original_chain.append(self.chain[-1])
         new_forks = [original_chain, forked_chain]
         self.forks.append(new_forks)
 
@@ -431,13 +432,22 @@ class BlockMobChain:
     def shift_forks(self):
         shift_forks_anims = []
         list_of_fork_to_shift = self.forks[0]
-        list_of_blocks_to_shift = list_of_fork_to_shift[1]
+        list_of_original_blocks_to_shift = list_of_fork_to_shift[0]
+        list_of_forked_blocks_to_shift = list_of_fork_to_shift[1]
 
-        for each in list_of_blocks_to_shift:
+        for each in list_of_original_blocks_to_shift:
             shift_forks_anims.append(
-                each.animate.shift(DOWN),
+                each.animate.shift(UP * 0.8),
 
             )
+
+        for each in list_of_forked_blocks_to_shift:
+            shift_forks_anims.append(
+                each.animate.shift(UP * 0.8),
+
+            )
+
+
 
         shift_forks_anims.append(Wait(run_time=0))
         return AnimationGroup(*shift_forks_anims)
