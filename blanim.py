@@ -351,12 +351,13 @@ class Node(Square):
 
 # Create a chain of blocks that can follow parent
 # TODO incomplete, will add pointers soon, note animations on chain and fork are for debugging
+
 class BlockMobChain:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
         self.chain = []
         self.pointers = []
-        self.fork = []
+        self.forks = []
 
         block = BlockMob("Gen", None)
         self.chain.append(block)
@@ -390,21 +391,29 @@ class BlockMobChain:
         return Succession(*add_chain_one_by_one_with_fade_in)
 
     def create_fork(self, fork_depth:int = 0):
+        original_chain = []
+        forked_chain = []
+
         block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
-        self.fork.append(block)
+        forked_chain.append(block)
+        original_chain.append(self.chain[-fork_depth - 1])
         block.shift_fork_to_parent()
 
         i = 1
         while i < fork_depth:
-            block = BlockMob(str(int(self.fork[-1].name) + 1), self.fork[-1])
-            self.fork.append(block)
+            block = BlockMob(str(int(forked_chain[-1].name) + 1), forked_chain[-1])
+            forked_chain.append(block)
+            original_chain.append(self.chain[-fork_depth + i])
             block.shift_to_parent()
 
             i += 1
 
+        new_forks = [original_chain, forked_chain]
+        self.forks.append(new_forks)
+
         draw_fork_anims = []
 
-        for each in self.fork:
+        for each in forked_chain:
             draw_fork_anims.append(
                 [FadeIn(each)],
             )
@@ -415,20 +424,23 @@ class BlockMobChain:
         draw_fork_anims.append(Wait(run_time=0))
         return AnimationGroup(*draw_fork_anims)
 
-# Succession returns animations to be played one by one, Animation Group plays all animations together
-#        return Succession(*draw_fork_anims)
+# Succession returns animations to be played one by one
+# AnimationGroup plays all animations together
+
 # TODO track both forks and shift together
     def shift_forks(self):
-        #shift forks
         shift_forks_anims = []
+        list_of_fork_to_shift = self.forks[0]
+        list_of_blocks_to_shift = list_of_fork_to_shift[1]
 
-        for each in self.fork:
+        for each in list_of_blocks_to_shift:
             shift_forks_anims.append(
                 each.animate.shift(DOWN),
+
             )
 
         shift_forks_anims.append(Wait(run_time=0))
-        return AnimationGroup(*shift_forks_anims) #should return the entire set as a single animation step
+        return AnimationGroup(*shift_forks_anims)
 
 class BlockMob(Square):
     def __init__(self,
@@ -501,6 +513,16 @@ class BlockMob(Square):
         to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1] - (self.side_length * 1.75), 0]
         self.move_to(to_position)
 
+# Works but breaks any animations attempted to play before adding updater DO NOT USE, saving for when woking with pointers
+    def lock_child_position_to_parent(self):
+        self.add_updater(self._update_position_and_size)
+
+    def _update_position_and_size(self, mobject):
+        # Get the raw endpoints from the blocks
+        new_end = self.parent.get_right()
+
+        # Use set_points_by_ends which respects buff
+        self.move_to(new_end)
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
