@@ -401,19 +401,21 @@ class BlockMobChain:
 
             i += 1
 
-        # TODO instead of animating here, animate in shift forks
+        # TODO instead of animating here, animate in shift forks, fade in here
         draw_fork_anims = []
         i = 0
         while i < fork_depth:
             draw_fork_anims.append(
-                self.fork[i].animate.shift(DOWN * 0),
+                [FadeIn(self.fork[i])],
             )
             draw_fork_anims.append(Wait(0.5), )
 
             i += 1
 
         draw_fork_anims.append(self.fork[1].animate(run_time=1).shift(DOWN * 0))
-        return Succession(*draw_fork_anims)
+        return AnimationGroup(*draw_fork_anims)
+# Succession returns animations to be played one by one, Animation Group plays all animations together
+#        return Succession(*draw_fork_anims)
 
     def shift_forks(self):
         #shift forks
