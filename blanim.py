@@ -350,7 +350,7 @@ class Node(Square):
 # TODO color past, future, and leave anticone for visulizing add functions within BlockMob
 
 # Create a chain of blocks that can follow parent
-# TODO incomplete, note animations on chain and fork are for debugging
+# TODO incomplete, will add pointers soon, note animations on chain and fork are for debugging
 class BlockMobChain:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
@@ -374,19 +374,20 @@ class BlockMobChain:
 
             i += 1
 
-    def draw_chain(self):
-        draw_chain_anims = []
-        i = 0
-        while i < self.blocks_to_create:
-            draw_chain_anims.append(
-                self.chain[i].animate.shift(UP),
-#                self.chain[i].animate(runtime=1).shift(RIGHT * i),
-            )
-            draw_chain_anims.append(Wait(0.5),)
+    def add_chain(self):
+        add_chain_one_by_one_with_fade_in = []
 
-            i += 1
-        draw_chain_anims.append(self.chain[0].animate(run_time=1).shift(LEFT * 0))
-        return Succession(*draw_chain_anims)
+        for each in chain(self.chain):
+            add_chain_one_by_one_with_fade_in.append(
+                [FadeIn(each)],
+            )
+
+            add_chain_one_by_one_with_fade_in.append(
+                Wait(0.5),
+            )
+
+        add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
+        return Succession(*add_chain_one_by_one_with_fade_in)
 
     def create_fork(self, fork_depth:int = 0):
         block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
@@ -401,22 +402,22 @@ class BlockMobChain:
 
             i += 1
 
-        # TODO instead of animating here, animate in shift forks, fade in here
         draw_fork_anims = []
-        i = 0
-        while i < fork_depth:
+
+        for each in self.fork:
             draw_fork_anims.append(
-                [FadeIn(self.fork[i])],
+                [FadeIn(each)],
             )
-            draw_fork_anims.append(Wait(0.5), )
+            draw_fork_anims.append(
+                Wait(0.5),
+            )
 
-            i += 1
-
-        draw_fork_anims.append(self.fork[1].animate(run_time=1).shift(DOWN * 0))
+        draw_fork_anims.append(Wait(run_time=0))
         return AnimationGroup(*draw_fork_anims)
+
 # Succession returns animations to be played one by one, Animation Group plays all animations together
 #        return Succession(*draw_fork_anims)
-
+# TODO track both forks and shift together
     def shift_forks(self):
         #shift forks
         shift_forks_anims = []

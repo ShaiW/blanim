@@ -111,7 +111,7 @@ class ChangingLabel(Scene):
 class TestBlockMobChain(Scene):
     def construct(self):
         BMC = BlockMobChain(4)
-        self.play(BMC.draw_chain())
+        self.play(BMC.add_chain())
         self.play(BMC.create_fork(2))
         self.play(BMC.shift_forks())
         self.wait(1)
