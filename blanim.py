@@ -350,22 +350,22 @@ class Node(Square):
 # TODO color past, future, and leave anticone for visulizing add functions within BlockMob
 
 # Create a chain of blocks that can follow parent
-# TODO incomplete, merging to update
+# TODO incomplete, note animations on chain and fork are for debugging
 class BlockMobChain:
-    def __init__(self, depth:int = 0):
-        self.depth = depth
+    def __init__(self, blocks:int = 0):
+        self.blocks_to_create = blocks
         self.chain = []
         self.pointers = []
+        self.fork = []
 
         block = BlockMob("Gen", None)
         self.chain.append(block)
 
         i = 1
-        while i < depth:
-            parent = self.chain[i - 1]
+        while i < self.blocks_to_create:
+            parent = self.chain[-1]
 
             block = BlockMob(str(i), parent)
-            # need to set initial position here
             self.chain.append(block)
             block.shift_to_parent()
 
@@ -375,23 +375,43 @@ class BlockMobChain:
             i += 1
 
     def draw_chain(self):
-        anims = []
+        draw_chain_anims = []
         i = 0
-        while i < self.depth:
-            anims.append(
+        while i < self.blocks_to_create:
+            draw_chain_anims.append(
                 self.chain[i].animate.shift(UP),
 #                self.chain[i].animate(runtime=1).shift(RIGHT * i),
             )
-            anims.append(Wait(0.5),)
+            draw_chain_anims.append(Wait(0.5),)
 
             i += 1
-        anims.append(self.chain[0].animate(runtime=1).shift(LEFT * 0))
-        return Succession(*anims)
+        draw_chain_anims.append(self.chain[0].animate(runtime=1).shift(LEFT * 0))
+        return Succession(*draw_chain_anims)
 
+    def create_fork(self, fork_depth:int = 0):
+        block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
+        self.fork.append(block)
+        block.shift_fork_to_parent()
 
-    def create_fork(self, fork_from_depth:int = 0):
-        ...
-        # create a new chain from target block
+        i = 1
+        while i < fork_depth:
+            block = BlockMob(str(int(self.fork[-1].name) + 1), self.fork[-1])
+            self.fork.append(block)
+            block.shift_to_parent()
+
+            i += 1
+
+        draw_fork_anims = []
+        i = 0
+        while i < fork_depth:
+            draw_fork_anims.append(
+                self.fork[i].animate.shift(DOWN),
+            )
+            draw_fork_anims.append(Wait(0.5), )
+
+            i += 1
+        draw_fork_anims.append(self.fork[1].animate(runtime=1).shift(DOWN * 1))
+        return Succession(*draw_fork_anims)
 
     def shift_forks(self):
         ...
@@ -459,8 +479,15 @@ class BlockMob(Square):
     def shift_to_parent(self):
         to_position: array = ([])
         parent_right = self.parent.get_right()
-        to_position = [parent_right[0] + (self.side_length * 1.75), 0, 0]
+        to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1], 0]
         self.move_to(to_position)
+
+    def shift_fork_to_parent(self):
+        to_position: array = ([])
+        parent_right = self.parent.get_right()
+        to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1] - (self.side_length * 1.75), 0]
+        self.move_to(to_position)
+
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):

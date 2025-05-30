@@ -112,4 +112,5 @@ class TestBlockMobChain(Scene):
     def construct(self):
         BMC = BlockMobChain(4)
         self.play(BMC.draw_chain())
+        self.play(BMC.create_fork(2))
         self.wait(1)
