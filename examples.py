@@ -110,6 +110,6 @@ class ChangingLabel(Scene):
 
 class TestBlockMobChain(Scene):
     def construct(self):
-        BMC = BlockMobChain(6)
+        BMC = BlockMobChain(4)
         self.play(BMC.draw_chain())
         self.wait(1)

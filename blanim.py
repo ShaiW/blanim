@@ -2,7 +2,7 @@ from random import random, choice, randint
 from typing import Self, Dict, List
 from manim import *
 from itertools import chain
-
+from numpy import array
 from typing_extensions import runtime
 
 from common import *
@@ -365,7 +365,9 @@ class BlockMobChain:
             parent = self.chain[i - 1]
 
             block = BlockMob(str(i), parent)
+            # need to set initial position here
             self.chain.append(block)
+            block.shift_to_parent()
 
             pointer = Pointer(block, parent)
             self.pointers.append(pointer)
@@ -377,7 +379,7 @@ class BlockMobChain:
         i = 0
         while i < self.depth:
             anims.append(
-                self.chain[i].animate.shift(RIGHT * i),
+                self.chain[i].animate.shift(UP),
 #                self.chain[i].animate(runtime=1).shift(RIGHT * i),
             )
             anims.append(Wait(0.5),)
@@ -454,6 +456,11 @@ class BlockMob(Square):
     def fade_to_color(self, to_color:ManimColor = WHITE):
         return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
 
+    def shift_to_parent(self):
+        to_position: array = ([])
+        parent_right = self.parent.get_right()
+        to_position = [parent_right[0] + (self.side_length * 1.75), 0, 0]
+        self.move_to(to_position)
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
