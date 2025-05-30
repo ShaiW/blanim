@@ -385,7 +385,7 @@ class BlockMobChain:
             draw_chain_anims.append(Wait(0.5),)
 
             i += 1
-        draw_chain_anims.append(self.chain[0].animate(runtime=1).shift(LEFT * 0))
+        draw_chain_anims.append(self.chain[0].animate(run_time=1).shift(LEFT * 0))
         return Succession(*draw_chain_anims)
 
     def create_fork(self, fork_depth:int = 0):
@@ -401,21 +401,31 @@ class BlockMobChain:
 
             i += 1
 
+        # TODO instead of animating here, animate in shift forks
         draw_fork_anims = []
         i = 0
         while i < fork_depth:
             draw_fork_anims.append(
-                self.fork[i].animate.shift(DOWN),
+                self.fork[i].animate.shift(DOWN * 0),
             )
             draw_fork_anims.append(Wait(0.5), )
 
             i += 1
-        draw_fork_anims.append(self.fork[1].animate(runtime=1).shift(DOWN * 1))
+
+        draw_fork_anims.append(self.fork[1].animate(run_time=1).shift(DOWN * 0))
         return Succession(*draw_fork_anims)
 
     def shift_forks(self):
-        ...
-        # Shift forks when a fork is added
+        #shift forks
+        shift_forks_anims = []
+
+        for each in self.fork:
+            shift_forks_anims.append(
+                each.animate.shift(DOWN),
+            )
+
+        shift_forks_anims.append(Wait(run_time=0))
+        return AnimationGroup(*shift_forks_anims) #should return the entire set as a single animation step
 
 class BlockMob(Square):
     def __init__(self,
