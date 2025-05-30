@@ -2,6 +2,9 @@ from random import random, choice, randint
 from typing import Self, Dict, List
 from manim import *
 from itertools import chain
+
+from typing_extensions import runtime
+
 from common import *
 import string
 
@@ -341,12 +344,64 @@ class Node(Square):
     def set_red(self):
         self.set_fill("#FF0000", opacity=1, family=False)
 
-BM_SIDE_LENGTH:float = 0.8
+# TODO Create BlockChain and DAG classes for BlockMob
+
+# TODO add lines from this block to all blocks in mergeset
+# TODO color past, future, and leave anticone for visulizing add functions within BlockMob
+
+# Create a chain of blocks that can follow parent
+# TODO incomplete, merging to update
+class BlockMobChain:
+    def __init__(self, depth:int = 0):
+        self.depth = depth
+        self.chain = []
+        self.pointers = []
+
+        block = BlockMob("Gen", None)
+        self.chain.append(block)
+
+        i = 1
+        while i < depth:
+            parent = self.chain[i - 1]
+
+            block = BlockMob(str(i), parent)
+            self.chain.append(block)
+
+            pointer = Pointer(block, parent)
+            self.pointers.append(pointer)
+
+            i += 1
+
+    def draw_chain(self):
+        anims = []
+        i = 0
+        while i < self.depth:
+            anims.append(
+                self.chain[i].animate.shift(RIGHT * i),
+#                self.chain[i].animate(runtime=1).shift(RIGHT * i),
+            )
+            anims.append(Wait(0.5),)
+
+            i += 1
+        anims.append(self.chain[0].animate(runtime=1).shift(LEFT * 0))
+        return Succession(*anims)
+
+
+    def create_fork(self, fork_from_depth:int = 0):
+        ...
+        # create a new chain from target block
+
+    def shift_forks(self):
+        ...
+        # Shift forks when a fork is added
 
 class BlockMob(Square):
-    def __init__(self, name:str = "", selected_parent:object = None, mergeset:list = [], starting_position = (0,0,0), label:str = "Didn't work", color = "#0000FF", side_length:float=BM_SIDE_LENGTH):
+    def __init__(self,
+                 name:str = "",
+                 selected_parent:'BlockMob' = None,
+                 side_length:float=0.8):
         super().__init__(
-            color=color,
+            color="#0000FF",
             fill_opacity=1,
             side_length=side_length,
             background_stroke_color=WHITE,
@@ -358,20 +413,16 @@ class BlockMob(Square):
         # set instance variables
         self.name = name
         self.parent = selected_parent
-        self.mergeset = mergeset # parent inclusive mergeset
+        self.mergeset = [] # parent inclusive mergeset
         self.children = []
-
-        # set starting position
-        self.move_to(starting_position)
+        self.pointers = []
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
-        if label:
-            self.label = Text(label, font_size=24, color=WHITE, weight=BOLD)
+        if name:
+            self.label = Text(name, font_size=24, color=WHITE, weight=BOLD)
             self.label.move_to(self.get_center())
             self.add(self.label)
 
-        for m in self.mergeset:
-            m.children.append(self.name)
 
     # Setters and getters
 
@@ -402,6 +453,39 @@ class BlockMob(Square):
     # fade_to_color ONLY works with ManimColor, does not work with hex format str
     def fade_to_color(self, to_color:ManimColor = WHITE):
         return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
+
+
+class Pointer(Line):
+    def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
+        # Initialize with proper start/end points
+        super().__init__(
+            start=this_block.get_left(),
+            end=parent_block.get_right(),
+            buff=0.1,
+            color=BLUE,
+            stroke_width=5,  # Set stroke width directly
+            cap_style = CapStyleType.ROUND
+        )
+
+        self.this_block = this_block
+        self.parent_block = parent_block
+
+        # Store fixed stroke width (no tip needed for Line)
+        self._fixed_stroke_width = 5
+
+        # Add updater for continuous tracking
+        self.add_updater(self._update_position_and_size)
+
+    def _update_position_and_size(self, mobject):
+        # Get the raw endpoints from the blocks
+        new_start = self.this_block.get_left()
+        new_end = self.parent_block.get_right()
+
+        # Maintain fixed stroke width
+        self.set_stroke(width=self._fixed_stroke_width)
+
+        # Use set_points_by_ends which respects buff
+        self.set_points_by_ends(new_start, new_end, buff=self.buff)
 
 # TODO
 #  This is rough notes from discussion

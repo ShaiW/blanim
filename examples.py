@@ -107,3 +107,9 @@ class ChangingLabel(Scene):
         self.play(block.animate(runtime = 1).shift(DOWN * 2))
         block.set_blue()
         self.wait(1)
+
+class TestBlockMobChain(Scene):
+    def construct(self):
+        BMC = BlockMobChain(6)
+        self.play(BMC.draw_chain())
+        self.wait(1)
