@@ -488,9 +488,8 @@ class BlockMob(Square):
             self.parent.add_self_as_child(self)
             self.lock_to_parent()
 
-
         # changed label to text mobject, will attempt to create a latex mobject at a later date
-        if name:
+        if self.name:
             self.label = Text(name, font_size=24, color=WHITE, weight=BOLD)
             self.label.move_to(self.get_center())
             self.add(self.label)
@@ -507,7 +506,8 @@ class BlockMob(Square):
         return bool(self.children)
 
     def set_label(self, to_label:str = ""):
-        self.remove(self.label)
+        if self.label:
+            self.remove(self.label)
         self.label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
         self.label.move_to(self.get_center())
         self.add(self.label)

@@ -98,7 +98,7 @@ class BlockMobAndColors(MovingCameraScene):
 
 class ChangingLabel(Scene):
     def construct(self):
-        block = BlockMob("Gen", label="label test")
+        block = BlockMob("Gen")
         self.add(block)
         self.wait(1)
         self.play(block.animate(runtime = 1).shift(UP * 2))
