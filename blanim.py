@@ -389,16 +389,22 @@ class BlockMobChain:
             )
 
         add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
+        print("before adding animations in add chain in blockmobchain")
         return Succession(*add_chain_one_by_one_with_fade_in)
 
     def create_fork(self, fork_depth:int = 0):
+        print("inside create_fork")
         original_chain = []
         forked_chain = []
 
+        print("before creating a new fork block")
         block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
+        print("after creating a new fork block")
         forked_chain.append(block)
         original_chain.append(self.chain[-fork_depth])
+        print("before lock fork to parent")
         block.lock_fork_to_parent()
+        print("after lock fork to parent")
         block.start_blink_colors()
 
         i = 1
@@ -475,19 +481,20 @@ class BlockMob(Square):
         self.name = name
         self.parent = selected_parent
         self.weight = 1
+
         self.current_position_updater = None
         self.current_blink_updater = None
         self.current_color_fade_updater = None
-        if selected_parent:
-            self.weight = selected_parent.weight + 1
-            self.current_position_updater = self.lock_to_parent()  # var for tracking current updater for removal
+
         self.mergeset = [] # parent inclusive mergeset  NOT yet used
         self.children = []
         self.pointers = []
-
         if selected_parent:
+            self.weight = selected_parent.weight + 1
             self.parent.add_self_as_child(self)
-            self.add_updater(self.current_position_updater)
+            self.lock_to_parent()
+
+#            self.add_updater(self.current_position_updater)
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
         if name:
@@ -554,13 +561,21 @@ class BlockMob(Square):
     # Position Updaters
     ####################
     def lock_to_parent(self):
+        if self.current_position_updater:
+            self.remove_updater(self.current_position_updater)
 
-        return lambda mob: mob.next_to(self.parent, RIGHT, buff=1.0)
+        new_updater = lambda mob: mob.next_to(self.parent, RIGHT, buff=1.0)
+
+        self.current_position_updater = new_updater
+        self.add_updater(new_updater)
 
     def lock_fork_to_parent(self):
-        self.remove_updater(self.current_position_updater)
+        if self.current_position_updater:
+            self.remove_updater(self.current_position_updater)
 
         new_updater = lambda mob: mob.next_to(self.parent, RIGHT + UP, buff=1.0)
+
+        self.current_position_updater = new_updater
         self.add_updater(new_updater)
 
     ####################
