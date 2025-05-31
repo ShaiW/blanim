@@ -552,9 +552,13 @@ class BlockMob(Square):
     ####################
     # Position Updaters
     ####################
-    def lock_to_parent(self):
+
+    def safe_remove_current_position_updater(self):
         if self.current_position_updater:
             self.remove_updater(self.current_position_updater)
+
+    def lock_to_parent(self):
+        self.safe_remove_current_position_updater()
 
         new_updater = lambda mob: mob.next_to(self.parent, RIGHT, buff=1.0)
 
@@ -562,8 +566,7 @@ class BlockMob(Square):
         self.add_updater(new_updater)
 
     def lock_fork_to_parent(self):
-        if self.current_position_updater:
-            self.remove_updater(self.current_position_updater)
+        self.safe_remove_current_position_updater()
 
         new_updater = lambda mob: mob.next_to(self.parent, RIGHT + UP, buff=1.0)
 
