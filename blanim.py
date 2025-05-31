@@ -369,7 +369,6 @@ class BlockMobChain:
 
             block = BlockMob(str(i), parent)
             self.chain.append(block)
-#            block.shift_to_parent()
 
             pointer = Pointer(block, parent)
             self.pointers.append(pointer)
@@ -389,22 +388,16 @@ class BlockMobChain:
             )
 
         add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
-        print("before adding animations in add chain in blockmobchain")
         return Succession(*add_chain_one_by_one_with_fade_in)
 
     def create_fork(self, fork_depth:int = 0):
-        print("inside create_fork")
         original_chain = []
         forked_chain = []
 
-        print("before creating a new fork block")
         block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
-        print("after creating a new fork block")
         forked_chain.append(block)
         original_chain.append(self.chain[-fork_depth])
-        print("before lock fork to parent")
         block.lock_fork_to_parent()
-        print("after lock fork to parent")
         block.start_blink_colors()
 
         i = 1
@@ -438,7 +431,7 @@ class BlockMobChain:
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
-# TODO track both forks and shift together
+# TODO track both forks and shift together, try as a function within BlockMob using position updaters
     def shift_forks(self):
         shift_forks_anims = []
         list_of_fork_to_shift = self.forks[0]
@@ -489,12 +482,12 @@ class BlockMob(Square):
         self.mergeset = [] # parent inclusive mergeset  NOT yet used
         self.children = []
         self.pointers = []
+
         if selected_parent:
             self.weight = selected_parent.weight + 1
             self.parent.add_self_as_child(self)
             self.lock_to_parent()
 
-#            self.add_updater(self.current_position_updater)
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
         if name:
@@ -504,7 +497,6 @@ class BlockMob(Square):
 
         # Initialize time tracking
         self.fade_time = 0
-
 
     # Setters and getters
 
