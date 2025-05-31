@@ -7,6 +7,7 @@ from typing_extensions import runtime
 
 from common import *
 import string
+import math
 
 BLOCK_H = 0.4
 BLOCK_W = 0.4
@@ -398,6 +399,7 @@ class BlockMobChain:
         forked_chain.append(block)
         original_chain.append(self.chain[-fork_depth])
         block.lock_fork_to_parent()
+        block.start_blink_colors()
 
         i = 1
         while i < fork_depth:
@@ -405,6 +407,7 @@ class BlockMobChain:
             forked_chain.append(block)
             original_chain.append(self.chain[-fork_depth + i])
             block.lock_to_parent()
+            block.start_blink_colors()
 
             i += 1
 
@@ -472,6 +475,8 @@ class BlockMob(Square):
         self.parent = selected_parent
         self.weight = 1
         self.current_position_updater = None
+        self.current_blink_updater = None
+        self.current_color_fade_updater = None
         if selected_parent:
             self.weight = selected_parent.weight + 1
             self.current_position_updater = self.lock_to_parent()  # var for tracking current updater for removal
@@ -488,6 +493,9 @@ class BlockMob(Square):
             self.label = Text(name, font_size=24, color=WHITE, weight=BOLD)
             self.label.move_to(self.get_center())
             self.add(self.label)
+
+        # Initialize time tracking
+        self.fade_time = 0
 
 
     # Setters and getters
@@ -549,11 +557,33 @@ class BlockMob(Square):
         return lambda mob: mob.next_to(self.parent, RIGHT, buff=1.0)
 
     def lock_fork_to_parent(self):
-        print("lock_fork_to_parent")
         self.remove_updater(self.current_position_updater)
 
         new_updater = lambda mob: mob.next_to(self.parent, RIGHT + UP, buff=1.0)
         self.add_updater(new_updater)
+
+    ####################
+    # Blink Updaters
+    ####################
+    def start_blink_colors(self):
+        if self.current_color_fade_updater is not None:
+            self.remove_updater(self.current_color_fade_updater)
+
+        # Create the color-fading updater
+        def color_fade_updater(mob, dt):
+            self.fade_time += dt
+            # Use sine wave to oscillate between 0 and 1
+            alpha = (math.sin(self.fade_time * 2) + 1) / 3  # Normalize to 0-1 range
+            # Interpolate between BLUE and RED
+            current_color = interpolate_color(PURE_BLUE, PURE_RED, alpha)
+            self.set_color(current_color, family=False)
+
+        self.add_updater(color_fade_updater)
+
+    def stop_blink_colors(self):
+        if self.current_blink_updater is not None:
+            self.remove_updater(self.current_color_fade_updater)
+
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
