@@ -351,7 +351,7 @@ class Node(Square):
 # TODO color past, future, and leave anticone for visulizing add functions within BlockMob
 
 # Create a chain of blocks that can follow parent
-# TODO incomplete, will add pointers soon, note animations on chain and fork are for debugging
+# TODO incomplete, will add pointers soon, begin creating animations within BlockChainMob
 
 class BlockMobChain:
     def __init__(self, blocks:int = 0):
@@ -426,6 +426,7 @@ class BlockMobChain:
             )
 
         draw_fork_anims.append(Wait(run_time=0))
+
         return AnimationGroup(*draw_fork_anims)
 
 # Succession returns animations to be played one by one
@@ -573,17 +574,33 @@ class BlockMob(Square):
         def color_fade_updater(mob, dt):
             self.fade_time += dt
             # Use sine wave to oscillate between 0 and 1
-            alpha = (math.sin(self.fade_time * 2) + 1) / 3  # Normalize to 0-1 range
+            alpha = (math.sin(self.fade_time * 2) + 1) / 2  # Normalize to 0-1 range
             # Interpolate between BLUE and RED
             current_color = interpolate_color(PURE_BLUE, PURE_RED, alpha)
             self.set_color(current_color, family=False)
 
         self.add_updater(color_fade_updater)
-
+# TODO untested
     def stop_blink_colors(self):
         if self.current_blink_updater is not None:
             self.remove_updater(self.current_color_fade_updater)
+# TODO untested
+    def test_stop_blink_colors(self):
+        # Remove the blinking updater
+        if self.current_color_fade_updater is not None:
+            self.remove_updater(self.current_color_fade_updater)
+            self.current_color_fade_updater = None
 
+# TODO Untested
+    def stop_blink_and_fade_to(self, target_color):
+        # Remove the blinking updater
+        if self.current_color_fade_updater is not None:
+            self.remove_updater(self.current_color_fade_updater)
+            self.current_color_fade_updater = None
+
+        fade_back = turn_animation_into_updater(FadeToColor(self, PURE_BLUE, family=False), cycle=False)
+
+        self.add_updater(fade_back)
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
