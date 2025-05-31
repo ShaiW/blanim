@@ -368,7 +368,7 @@ class BlockMobChain:
 
             block = BlockMob(str(i), parent)
             self.chain.append(block)
-            block.shift_to_parent()
+#            block.shift_to_parent()
 
             pointer = Pointer(block, parent)
             self.pointers.append(pointer)
@@ -470,9 +470,13 @@ class BlockMob(Square):
         # set instance variables
         self.name = name
         self.parent = selected_parent
-        self.mergeset = [] # parent inclusive mergeset
+        self.mergeset = [] # parent inclusive mergeset  NOT yet used
         self.children = []
         self.pointers = []
+
+        if selected_parent:
+            self.parent.add_self_as_child(self)
+            self.add_updater(self.lock_to_parent())
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
         if name:
@@ -482,6 +486,9 @@ class BlockMob(Square):
 
 
     # Setters and getters
+
+    def add_self_as_child(self, mobject):
+        self.children.append(mobject)
 
     def is_tip(self):
         return bool(self.children)
@@ -523,16 +530,8 @@ class BlockMob(Square):
         to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1] - (self.side_length * 1.75), 0]
         self.move_to(to_position)
 
-# Works but breaks any animations attempted to play before adding updater DO NOT USE, saving for when woking with pointers
-    def lock_child_position_to_parent(self):
-        self.add_updater(self._update_position_and_size)
-
-    def _update_position_and_size(self, mobject):
-        # Get the raw endpoints from the blocks
-        new_end = self.parent.get_right()
-
-        # Use set_points_by_ends which respects buff
-        self.move_to(new_end)
+    def lock_to_parent(self):
+        return lambda mob: mob.next_to(self.parent, RIGHT)
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
