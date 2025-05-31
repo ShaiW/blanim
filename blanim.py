@@ -397,14 +397,14 @@ class BlockMobChain:
         block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
         forked_chain.append(block)
         original_chain.append(self.chain[-fork_depth])
-        block.shift_fork_to_parent()
+        block.lock_fork_to_parent()
 
         i = 1
         while i < fork_depth:
             block = BlockMob(str(int(forked_chain[-1].name) + 1), forked_chain[-1])
             forked_chain.append(block)
             original_chain.append(self.chain[-fork_depth + i])
-            block.shift_to_parent()
+            block.lock_to_parent()
 
             i += 1
 
@@ -470,13 +470,18 @@ class BlockMob(Square):
         # set instance variables
         self.name = name
         self.parent = selected_parent
+        self.weight = 1
+        self.current_position_updater = None
+        if selected_parent:
+            self.weight = selected_parent.weight + 1
+            self.current_position_updater = self.lock_to_parent()  # var for tracking current updater for removal
         self.mergeset = [] # parent inclusive mergeset  NOT yet used
         self.children = []
         self.pointers = []
 
         if selected_parent:
             self.parent.add_self_as_child(self)
-            self.add_updater(self.lock_to_parent())
+            self.add_updater(self.current_position_updater)
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
         if name:
@@ -499,6 +504,9 @@ class BlockMob(Square):
         self.label.move_to(self.get_center())
         self.add(self.label)
 
+    ####################
+    # Color Setters
+    ####################
     def set_blue(self):
         self.set_color("#0000FF", family=False)
 
@@ -518,6 +526,9 @@ class BlockMob(Square):
     def fade_to_color(self, to_color:ManimColor = WHITE):
         return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
 
+    ####################
+    # Unused, transitioning to using updaters instead of calling from scene
+    ####################
     def shift_to_parent(self):
         to_position: array = ([])
         parent_right = self.parent.get_right()
@@ -530,8 +541,19 @@ class BlockMob(Square):
         to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1] - (self.side_length * 1.75), 0]
         self.move_to(to_position)
 
+    ####################
+    # Position Updaters
+    ####################
     def lock_to_parent(self):
-        return lambda mob: mob.next_to(self.parent, RIGHT)
+
+        return lambda mob: mob.next_to(self.parent, RIGHT, buff=1.0)
+
+    def lock_fork_to_parent(self):
+        print("lock_fork_to_parent")
+        self.remove_updater(self.current_position_updater)
+
+        new_updater = lambda mob: mob.next_to(self.parent, RIGHT + UP, buff=1.0)
+        self.add_updater(new_updater)
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
