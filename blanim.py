@@ -398,7 +398,6 @@ class BlockMobChain:
         forked_chain.append(block)
         original_chain.append(self.chain[-fork_depth])
         block.lock_fork_to_parent()
-        block.start_blink_colors()
 
         i = 1
         while i < fork_depth:
@@ -406,7 +405,6 @@ class BlockMobChain:
             forked_chain.append(block)
             original_chain.append(self.chain[-fork_depth + i])
             block.lock_to_parent()
-            block.start_blink_colors()
 
             i += 1
 
@@ -428,6 +426,18 @@ class BlockMobChain:
 
         return AnimationGroup(*draw_fork_anims)
 
+    def blink(self):
+        #blinks only additional forked blocks
+        forks_list = self.forks[0]
+        blink_anims = [Wait(run_time=4),]
+
+        blink_these_blocks = forks_list[1]
+
+        for each in blink_these_blocks:
+            blink_anims.append(each.blink(),)
+
+        blink_anims.append(Wait(run_time=0))
+        return AnimationGroup(*blink_anims)
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
@@ -536,6 +546,7 @@ class BlockMob(Square):
 
     ####################
     # Unused, transitioning to using updaters instead of calling from scene
+    # might reuse code for shifting position within chain/dag and adding updater to maintain set position
     ####################
     def shift_to_parent(self):
         to_position: array = ([])
@@ -574,43 +585,13 @@ class BlockMob(Square):
         self.add_updater(new_updater)
 
     ####################
-    # Blink Updaters
+    # Blink Animations
     ####################
-    def start_blink_colors(self):
-        if self.current_color_fade_updater is not None:
-            self.remove_updater(self.current_color_fade_updater)
-
-        # Create the color-fading updater
-        def color_fade_updater(mob, dt):
-            self.fade_time += dt
-            # Use sine wave to oscillate between 0 and 1
-            alpha = (math.sin(self.fade_time * 2) + 1) / 2  # Normalize to 0-1 range
-            # Interpolate between BLUE and RED
-            current_color = interpolate_color(PURE_BLUE, PURE_RED, alpha)
-            self.set_color(current_color, family=False)
-
-        self.add_updater(color_fade_updater)
-# TODO untested
-    def stop_blink_colors(self):
-        if self.current_blink_updater is not None:
-            self.remove_updater(self.current_color_fade_updater)
-# TODO untested
-    def test_stop_blink_colors(self):
-        # Remove the blinking updater
-        if self.current_color_fade_updater is not None:
-            self.remove_updater(self.current_color_fade_updater)
-            self.current_color_fade_updater = None
-
-# TODO Untested
-    def stop_blink_and_fade_to(self, target_color):
-        # Remove the blinking updater
-        if self.current_color_fade_updater is not None:
-            self.remove_updater(self.current_color_fade_updater)
-            self.current_color_fade_updater = None
-
-        fade_back = turn_animation_into_updater(FadeToColor(self, PURE_BLUE, family=False), cycle=False)
-
-        self.add_updater(fade_back)
+    def blink(self):
+        return Succession(
+            ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
+            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
+        )
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
