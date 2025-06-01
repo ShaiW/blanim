@@ -365,6 +365,7 @@ class BlockMobBitcoin:
 
         # Create chain of BlockMob
         i = 1
+
         while i < self.blocks_to_create:
             parent = self.chain[-1]
 
@@ -377,13 +378,10 @@ class BlockMobBitcoin:
 
             i += 1
 
-    # TODO add pointers to scene
     def add_chain(self, scene):
         add_chain_one_by_one_with_fade_in = []
 
         for each in self.chain:
-
-            print(each.get_center())
 
             add_chain_one_by_one_with_fade_in.append(
                 AnimationGroup(
@@ -408,8 +406,21 @@ class BlockMobBitcoin:
                 scene.camera.auto_zoom(self.chain, margin=1)
             )
         )
+
         add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
         return Succession(*add_chain_one_by_one_with_fade_in)
+
+    def blink_past(self, block:int):
+        blink_past_animations = []
+        current = self.chain[block].parent
+
+        while current is not None:
+            blink_past_animations.append(
+                current.blink()
+                )
+            current = current.parent
+
+        return AnimationGroup(*blink_past_animations)
 
     ####################
     # Testing animation
@@ -436,7 +447,7 @@ class BlockMobBitcoin:
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
-
+# Not for use, saving in case snippets are useful later
 class BlockMobChain:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
