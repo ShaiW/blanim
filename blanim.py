@@ -353,12 +353,89 @@ class Node(Square):
 # Create a chain of blocks that can follow parent
 # TODO incomplete, will add pointers soon, begin creating animations within BlockChainMob
 
+class BlockMobBitcoin:
+    def __init__(self, blocks:int = 0):
+        self.blocks_to_create = blocks
+        self.chain = [] #all blocks added to the chain
+        self.pointers = []
+
+        # Create Genesis
+        block = BlockMob("Gen", None)
+        self.chain.append(block)
+
+        # Create chain of BlockMob
+        i = 1
+        while i < self.blocks_to_create:
+            parent = self.chain[-1]
+
+            block = BlockMob(str(i), parent)
+            self.chain.append(block)
+
+            pointer = Pointer(block, parent)
+            self.pointers.append(pointer)
+
+            i += 1
+
+    # TODO move camera along chain, then zoom to whole chain
+    def add_chain(self, scene):
+        add_chain_one_by_one_with_fade_in = []
+
+        for each in self.chain:
+
+            print(each.get_center())
+
+            add_chain_one_by_one_with_fade_in.append(
+                AnimationGroup(
+                    scene.camera.frame.animate.move_to(each.get_center()),
+                    FadeIn(each)
+                )
+            )
+
+            add_chain_one_by_one_with_fade_in.extend(
+                [Wait(0.5)],
+            )
+
+        add_chain_one_by_one_with_fade_in.append(
+            AnimationGroup(
+                scene.camera.auto_zoom(self.chain, margin=1)
+            )
+        )
+        add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
+        return Succession(*add_chain_one_by_one_with_fade_in)
+
+    ####################
+    # Testing animation
+    ####################
+
+    # Snaps position up when called in scene, updaters do not complete
+    def shift_genesis(self):
+        self.chain[0].shift(UP*2)
+        return Wait(run_time=1)
+    # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
+    def smooth_genesis(self):
+        animations = []
+
+        animations.append(
+            self.chain[0].animate.shift(UP*1)
+        )
+
+        return AnimationGroup(animations)
+
+    ####################
+    # Functions
+    ####################
+
+# Succession returns animations to be played one by one
+# AnimationGroup plays all animations together
+
+
 class BlockMobChain:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
-        self.chain = []
+        self.chain = [] #all blocks added to the chain
         self.pointers = []
-        self.forks = []
+        self.forks = [] # list of lists [[original chain],[forked chain]]
+        self.blocks_with_forks = [] #list of blocks with multiple childen
 
         block = BlockMob("Gen", None)
         self.chain.append(block)
@@ -384,13 +461,82 @@ class BlockMobChain:
             )
 
             add_chain_one_by_one_with_fade_in.append(
-                Wait(0.5),
+                Wait(0.5)
             )
 
         add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
         return Succession(*add_chain_one_by_one_with_fade_in)
 
-    def create_fork(self, fork_depth:int = 0):
+    ####################
+    # Testing animation
+    ####################
+
+    # Snaps position up when called in scene, updaters do not complete
+    def shift_genesis(self):
+        self.chain[0].shift(UP*2)
+        return Wait(run_time=1)
+    # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
+    def smooth_genesis(self):
+        animations = []
+
+        animations.append(
+            self.chain[0].animate.shift(UP*1)
+        )
+
+        return AnimationGroup(animations)
+
+    ####################
+    # Functions
+    ####################
+    def create_fork(self, fork_block:int = 0):
+        original_chain = []
+        forked_chain = []
+
+        block = BlockMob(str(self.chain[fork_block - 1].name), self.chain[fork_block - 1])
+
+        forked_chain.append(block)
+        original_chain.append(self.chain[fork_block - 1])
+
+        original_chain[0].safe_remove_current_position_updater()
+        forked_chain[0].safe_remove_current_position_updater()
+        print(original_chain[0].get_center())
+        print(forked_chain[0].get_center())
+        forked_chain[0].shift(DOWN)
+
+        i = 1
+        while i < len(self.chain) - fork_block:
+            block = BlockMob(str(int(forked_chain[-1].name) + 1), forked_chain[-1])
+            forked_chain.append(block)
+            original_chain.append(self.chain[fork_block + i])
+#            block.lock_to_parent()
+
+            i += 1
+
+        new_forks = [original_chain, forked_chain]
+        self.forks.append(new_forks)
+
+        fork_positioning_animations = []
+        fork_positioning_animations.append(
+            forked_chain[0].animate.shift(DOWN)
+        )
+#        forked_chain[0].shift(DOWN)
+
+        draw_fork_anims = []
+
+        for each in forked_chain:
+            draw_fork_anims.append(
+                [FadeIn(each)],
+            )
+            draw_fork_anims.append(
+                Wait(0.5),
+            )
+
+        draw_fork_anims.append(Wait(run_time=0))
+
+#        return AnimationGroup(*draw_fork_anims)
+        return Succession(*fork_positioning_animations), AnimationGroup(*draw_fork_anims)
+
+    def create_fork_old(self, fork_depth:int = 0):
         original_chain = []
         forked_chain = []
 
@@ -438,11 +584,36 @@ class BlockMobChain:
 
         blink_anims.append(Wait(run_time=0))
         return AnimationGroup(*blink_anims)
+
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
 # TODO track both forks and shift together, try as a function within BlockMob using position updaters
     def shift_forks(self):
+        shift_forks_anims = []
+        list_of_fork_to_shift = self.blocks_with_forks[0]
+        list_of_original_blocks_to_shift = list_of_fork_to_shift[0]
+        list_of_forked_blocks_to_shift = list_of_fork_to_shift[1]
+
+        for each in list_of_original_blocks_to_shift:
+            shift_forks_anims.append(
+                each.animate.shift(UP * 0.8),
+
+            )
+
+        for each in list_of_forked_blocks_to_shift:
+            shift_forks_anims.append(
+                each.animate.shift(UP * 0.8),
+
+            )
+
+
+
+        shift_forks_anims.append(Wait(run_time=5))
+        return AnimationGroup(*shift_forks_anims)
+
+
+    def shift_forks_not_used(self):
         shift_forks_anims = []
         list_of_fork_to_shift = self.forks[0]
         list_of_original_blocks_to_shift = list_of_fork_to_shift[0]
@@ -485,10 +656,6 @@ class BlockMob(Square):
         self.parent = selected_parent
         self.weight = 1
 
-        self.current_position_updater = None
-        self.current_blink_updater = None
-        self.current_color_fade_updater = None
-
         self.mergeset = [] # parent inclusive mergeset  NOT yet used
         self.children = []
         self.pointers = []
@@ -496,7 +663,7 @@ class BlockMob(Square):
         if selected_parent:
             self.weight = selected_parent.weight + 1
             self.parent.add_self_as_child(self)
-            self.lock_to_parent()
+            self.shift_position_to_parent()
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
         if self.name:
@@ -525,6 +692,7 @@ class BlockMob(Square):
     ####################
     # Color Setters
     ####################
+    # TODO test if adding run_time to setters will make them change color slowly
     def set_blue(self):
         self.set_color("#0000FF", family=False)
 
@@ -561,28 +729,11 @@ class BlockMob(Square):
         self.move_to(to_position)
 
     ####################
-    # Position Updaters
+    # Position Handling (Updaters leave position at [0,0,0])
     ####################
 
-    def safe_remove_current_position_updater(self):
-        if self.current_position_updater:
-            self.remove_updater(self.current_position_updater)
-
-    def lock_to_parent(self):
-        self.safe_remove_current_position_updater()
-
-        new_updater = lambda mob: mob.next_to(self.parent, RIGHT, buff=1.0)
-
-        self.current_position_updater = new_updater
-        self.add_updater(new_updater)
-
-    def lock_fork_to_parent(self):
-        self.safe_remove_current_position_updater()
-
-        new_updater = lambda mob: mob.next_to(self.parent, RIGHT + UP, buff=1.0)
-
-        self.current_position_updater = new_updater
-        self.add_updater(new_updater)
+    def shift_position_to_parent(self):
+        self.next_to(self.parent, RIGHT * 4)
 
     ####################
     # Blink Animations
@@ -592,6 +743,7 @@ class BlockMob(Square):
             ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
             ApplyMethod(self.set_color, self.color, False, run_time=0.8),
         )
+        # Using ApplyMethod directly bypasses limitations of Manim FadeToColor
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
