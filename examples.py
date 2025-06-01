@@ -115,12 +115,14 @@ class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
         self.wait(5)
         self.wait(1)
 
-class BlockMobBitcoinWithBlinkPast(MovingCameraFixedLayerScene):
+class BlockMobBitcoinWithBlink(MovingCameraFixedLayerScene):
     def construct(self):
         BMB = BlockMobBitcoin(6)
         self.play(BMB.add_chain(self))
         self.wait(1)
         self.play(BMB.blink_past(4))
+        self.wait(3)
+        self.play(BMB.blink_future(4))
         self.wait(3)
 
 class TestBlockMobChain(Scene):

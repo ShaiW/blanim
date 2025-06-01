@@ -422,6 +422,18 @@ class BlockMobBitcoin:
 
         return AnimationGroup(*blink_past_animations)
 
+    def blink_future(self, block:int):
+        blink_future_animations = []
+        current = self.chain[block].child
+
+        while current is not None:
+            blink_future_animations.append(
+                current.blink()
+                )
+            current = current.child
+
+        return AnimationGroup(*blink_future_animations)
+
     ####################
     # Testing animation
     ####################
@@ -673,6 +685,7 @@ class BlockMob(Square):
         # set instance variables
         self.name = name
         self.parent = selected_parent
+        self.child = None # Used for BlockMobChain
         self.weight = 1
 
         self.mergeset = [] # parent inclusive mergeset  NOT yet used
@@ -696,6 +709,9 @@ class BlockMob(Square):
     # Setters and getters
 
     def add_self_as_child(self, mobject):
+        self.child = mobject
+
+    def add_to_children(self, mobject):
         self.children.append(mobject)
 
     def is_tip(self):
