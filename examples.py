@@ -108,6 +108,13 @@ class ChangingLabel(Scene):
         block.set_blue()
         self.wait(1)
 
+class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
+    def construct(self):
+        BMB = BlockMobBitcoin(8)
+        self.play(BMB.add_chain(self))
+        self.wait(5)
+        self.wait(1)
+
 class TestBlockMobChain(Scene):
     def construct(self):
         BMC = BlockMobChain(4)

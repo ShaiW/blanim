@@ -375,6 +375,7 @@ class BlockMobBitcoin:
             self.pointers.append(pointer)
 
             i += 1
+        print("end of init")
 
     # TODO move camera along chain, then zoom to whole chain
     def add_chain(self, scene):
