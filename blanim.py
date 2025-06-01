@@ -373,11 +373,11 @@ class BlockMobBitcoin:
 
             pointer = Pointer(block, parent)
             self.pointers.append(pointer)
+            block.attach_pointer(pointer)
 
             i += 1
-        print("end of init")
 
-    # TODO move camera along chain, then zoom to whole chain
+    # TODO add pointers to scene
     def add_chain(self, scene):
         add_chain_one_by_one_with_fade_in = []
 
@@ -390,6 +390,13 @@ class BlockMobBitcoin:
                     scene.camera.frame.animate.move_to(each.get_center()),
                     FadeIn(each)
                 )
+            )
+
+            for pointer in each.pointers:
+                add_chain_one_by_one_with_fade_in.append(
+                    AnimationGroup(
+                        FadeIn(pointer)
+                    )
             )
 
             add_chain_one_by_one_with_fade_in.extend(
@@ -728,6 +735,13 @@ class BlockMob(Square):
         parent_right = self.parent.get_right()
         to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1] - (self.side_length * 1.75), 0]
         self.move_to(to_position)
+
+    ####################
+    # Pointers Handling
+    ####################
+
+    def attach_pointer(self, pointer):
+        self.pointers.append(pointer)
 
     ####################
     # Position Handling (Updaters leave position at [0,0,0])
