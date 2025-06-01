@@ -74,7 +74,7 @@ class Blink(Scene):
 
 class BlockMobAndColors(MovingCameraScene):
     def construct(self):
-        block = BlockMob("Gen", label="label test")
+        block = BlockMob("Gen")
         self.add(block)
         self.wait(1)
         self.play(block.animate(runtime = 1).shift(UP * 2))
@@ -115,9 +115,11 @@ class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
         self.wait(5)
         self.wait(1)
 
-class BlockMobBitcoinWithBlink(MovingCameraFixedLayerScene):
+class BlockMobBitcoinWithBlink(MovingCameraWithHUDScene):
     def construct(self):
         BMB = BlockMobBitcoin(6)
+        self.play(BMB.add_narration_to_scene(self))
+        self.wait(1)
         self.play(BMB.add_chain(self))
         self.wait(1)
         self.play(BMB.blink_past(4))

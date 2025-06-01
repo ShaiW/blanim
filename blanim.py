@@ -347,17 +347,17 @@ class Node(Square):
 
 # TODO Create BlockChain and DAG classes for BlockMob
 
-# TODO add lines from this block to all blocks in mergeset
 # TODO color past, future, and leave anticone for visulizing add functions within BlockMob
 
 # Create a chain of blocks that can follow parent
-# TODO incomplete, will add pointers soon, begin creating animations within BlockChainMob
+# TODO incomplete, begin adding text explanation of each step
 
 class BlockMobBitcoin:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
         self.chain = [] #all blocks added to the chain
         self.pointers = []
+        self.narration_text_mobject = Narration()
 
         # Create Genesis
         block = BlockMob("Gen", None)
@@ -378,6 +378,11 @@ class BlockMobBitcoin:
 
             i += 1
 
+    def add_narration_to_scene(self, scene):
+        scene.add_foreground_mobjects(self.narration_text_mobject) # to keep in foreground
+        scene.add_fixed_in_frame_mobjects(self.narration_text_mobject) # to remain unaffected by camera movement
+        return AnimationGroup(FadeIn(self.narration_text_mobject))
+
     def add_chain(self, scene):
         add_chain_one_by_one_with_fade_in = []
 
@@ -385,7 +390,7 @@ class BlockMobBitcoin:
 
             add_chain_one_by_one_with_fade_in.append(
                 AnimationGroup(
-                    scene.camera.frame.animate.move_to(each.get_center()),
+                    scene.camera._frame_center.animate.move_to(each.get_center()),
                     FadeIn(each)
                 )
             )
@@ -401,9 +406,39 @@ class BlockMobBitcoin:
                 [Wait(0.5)],
             )
 
+    # TODO fix zoom so it is normalized over chains of all sizes and forks
+        # Calculate bounding box for all mobjects in the chain
+        if self.chain:
+            # Calculate bounding box (your existing code)
+            leftmost = min(mob.get_left()[0] for mob in self.chain)
+            rightmost = max(mob.get_right()[0] for mob in self.chain)
+            topmost = max(mob.get_top()[1] for mob in self.chain)
+            bottommost = min(mob.get_bottom()[1] for mob in self.chain)
+
+            total_width = rightmost - leftmost
+            total_height = topmost - bottommost
+            center_x = (leftmost + rightmost) / 2
+            center_y = (topmost + bottommost) / 2
+            center_point = np.array([center_x, center_y, 0])
+
+            # Improved zoom calculation
+            margin = 1.0
+            max_dimension = max(total_width, total_height)
+
+            # Use the current camera's frame dimensions as reference
+            current_zoom = scene.camera.get_zoom()
+            frame_height = scene.camera.frame_height if hasattr(scene.camera, 'frame_height') else 8.0
+
+            # Calculate zoom to fit with margin
+            target_zoom = (frame_height * 0.8) / (max_dimension + margin)
+
+            # Clamp zoom to reasonable bounds
+            zoom_factor = max(0.1, min(target_zoom, 10.0))
+
         add_chain_one_by_one_with_fade_in.append(
             AnimationGroup(
-                scene.camera.auto_zoom(self.chain, margin=1)
+                scene.camera._frame_center.animate.move_to(center_point),
+                scene.camera.zoom_tracker.animate.set_value(zoom_factor)
             )
         )
 
@@ -685,7 +720,7 @@ class BlockMob(Square):
         # set instance variables
         self.name = name
         self.parent = selected_parent
-        self.child = None # Used for BlockMobChain
+        self.child = None # Used for BlockMobBitcoin where only a single child exists
         self.weight = 1
 
         self.mergeset = [] # parent inclusive mergeset  NOT yet used
@@ -818,6 +853,16 @@ class Pointer(Line):
 
         # Use set_points_by_ends which respects buff
         self.set_points_by_ends(new_start, new_end, buff=self.buff)
+
+class Narration(Text):
+    def __init__(self):
+        super().__init__(
+            text = "empty narration Text",
+            color = WHITE
+        )
+
+        self.fixedLayer = True
+
 
 # TODO
 #  This is rough notes from discussion

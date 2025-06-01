@@ -2,6 +2,18 @@ from manim import *
 
 ##all sort of stuff that manim should have but doesn't
 
+class MovingCameraWithHUDScene(ThreeDScene):
+    def __init__(self, **kwargs):
+        super().__init__(
+            camera_class=ThreeDCamera,
+            default_angled_camera_orientation_kwargs={
+                "phi": 60 * DEGREES,
+                "theta": -45 * DEGREES,
+            },
+            **kwargs
+        )
+
+
 class MovingCameraFixedLayerScene(MovingCameraScene):
     """ An extension of MovingCameraScene that prevents camera
     shifts from moving mobjects with the fixedLayer attribute"""
