@@ -118,12 +118,14 @@ class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
 class BlockMobBitcoinWithBlink(MovingCameraWithHUDScene):
     def construct(self):
         BMB = BlockMobBitcoin(6)
-        self.play(BMB.add_narration_to_scene(self))
-        self.wait(1)
+        self.wait(2)
+        self.update_narration_text(r"\text{Add Chain supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.add_chain(self))
         self.wait(1)
+        self.update_narration_text(r"\text{blink past of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.blink_past(4))
-        self.wait(3)
+        self.wait(2)
+        self.update_narration_text(r"\text{blink future of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.blink_future(4))
         self.wait(3)
 

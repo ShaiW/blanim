@@ -1,3 +1,4 @@
+from codecs import namereplace_errors
 from random import random, choice, randint
 from typing import Self, Dict, List
 from manim import *
@@ -378,12 +379,14 @@ class BlockMobBitcoin:
 
             i += 1
 
+    # returns animations to fade in top aligned text narration to scene
     def add_narration_to_scene(self, scene):
         self.narration_text_mobject.to_edge(UP)  # Position at top edge
         scene.add_foreground_mobjects(self.narration_text_mobject) # to keep in foreground
         scene.add_fixed_in_frame_mobjects(self.narration_text_mobject) # to remain unaffected by camera movement
         return AnimationGroup(FadeIn(self.narration_text_mobject))
 
+    # returns animations for adding all blocks and pointers
     def add_chain(self, scene):
         add_chain_one_by_one_with_fade_in = []
 
@@ -407,7 +410,7 @@ class BlockMobBitcoin:
                 [Wait(0.5)],
             )
 
-    # TODO fix zoom so it is normalized over chains of all sizes and forks
+    # TODO replace using this with new autozoom in MovingCameraWithHUDScene in common
         # Calculate bounding box for all mobjects in the chain
         if self.chain:
             # Calculate bounding box (your existing code)
@@ -446,9 +449,14 @@ class BlockMobBitcoin:
         add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
         return Succession(*add_chain_one_by_one_with_fade_in)
 
+    # returns group of blink animations on past of block at selected round
     def blink_past(self, block:int):
         blink_past_animations = []
         current = self.chain[block].parent
+
+#        blink_past_animations.append(
+#            self.narration_text_mobject.fade_to_next_narration("testing fade to next narration")
+#        )
 
         while current is not None:
             blink_past_animations.append(
@@ -458,6 +466,7 @@ class BlockMobBitcoin:
 
         return AnimationGroup(*blink_past_animations)
 
+    # returns group of blink animations on future of block at selected round
     def blink_future(self, block:int):
         blink_future_animations = []
         current = self.chain[block].child
@@ -473,7 +482,7 @@ class BlockMobBitcoin:
     ####################
     # Testing animation
     ####################
-
+    # TODO retest and rewrite since updaters are no longer used, will need to return animations
     # Snaps position up when called in scene, updaters do not complete
     def shift_genesis(self):
         self.chain[0].shift(UP*2)
@@ -824,6 +833,7 @@ class BlockMob(Square):
     # Pointers Handling
     ####################
 
+    # Adds pointers to a list self.pointers, adding pointers as a submobject of BlockMob breaks positioning
     def attach_pointer(self, pointer):
         self.pointers.append(pointer)
 
@@ -831,12 +841,15 @@ class BlockMob(Square):
     # Position Handling (Updaters leave position at [0,0,0])
     ####################
 
+    # immediately changes position relative to self.parent, no animation, for setting initial position
     def shift_position_to_parent(self):
         self.next_to(self.parent, RIGHT * 4)
 
     ####################
     # Blink Animations
     ####################
+
+    # Returns an animation that will fade the color of the block to yellow, then back to its assigned color
     def blink(self):
         return Succession(
             ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
@@ -885,21 +898,21 @@ class Narration(Text):
         )
 
     def fade_to_next_narration(self, to_text: str = ""):
-        animations = []
+        # Store current properties
+        current_pos = self.get_center()
+        current_color = self.color
 
-        # Fade out existing narration (self, since this IS the text object)
-        animations.append(FadeOut(self))
+        # Create new text object
+        new_text_obj = Text(to_text, color=current_color)
+        new_text_obj.move_to(current_pos)
 
-        # Create new narration text with same properties
-        new_narration = Narration()
-        new_narration.text = to_text
-        new_narration.move_to(self.get_center())
+        # Update this object to become the new text
+        self.become(new_text_obj)
 
-        # Fade in new narration
-        animations.append(FadeIn(new_narration))
-
-        # Return animation sequence
-        return Succession(*animations)
+        return Succession(
+            self.animate.set_opacity(0),
+            self.animate.set_opacity(1)
+        )
 
 
 # TODO
