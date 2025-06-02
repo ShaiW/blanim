@@ -379,6 +379,7 @@ class BlockMobBitcoin:
             i += 1
 
     def add_narration_to_scene(self, scene):
+        self.narration_text_mobject.to_edge(UP)  # Position at top edge
         scene.add_foreground_mobjects(self.narration_text_mobject) # to keep in foreground
         scene.add_fixed_in_frame_mobjects(self.narration_text_mobject) # to remain unaffected by camera movement
         return AnimationGroup(FadeIn(self.narration_text_mobject))
@@ -759,6 +760,27 @@ class BlockMob(Square):
         self.label.move_to(self.get_center())
         self.add(self.label)
 
+    # TODO test this
+    def fade_to_next_label(self, to_label: str = ""):
+        animations = []
+
+        # Fade out existing label if it exists
+        if self.label:
+            animations.append(FadeOut(self.label))
+
+            # Create new label
+        new_label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
+        new_label.move_to(self.get_center())
+
+        # Fade in new label
+        animations.append(FadeIn(new_label))
+
+        # Update the label reference
+        self.label = new_label
+
+        # Return animation sequence
+        return Succession(*animations) if len(animations) > 1 else animations[0]
+
     ####################
     # Color Setters
     ####################
@@ -854,14 +876,30 @@ class Pointer(Line):
         # Use set_points_by_ends which respects buff
         self.set_points_by_ends(new_start, new_end, buff=self.buff)
 
+# TODO test this
 class Narration(Text):
     def __init__(self):
         super().__init__(
-            text = "empty narration Text",
-            color = WHITE
+            text="empty narration Text",
+            color=WHITE
         )
 
-        self.fixedLayer = True
+    def fade_to_next_narration(self, to_text: str = ""):
+        animations = []
+
+        # Fade out existing narration (self, since this IS the text object)
+        animations.append(FadeOut(self))
+
+        # Create new narration text with same properties
+        new_narration = Narration()
+        new_narration.text = to_text
+        new_narration.move_to(self.get_center())
+
+        # Fade in new narration
+        animations.append(FadeIn(new_narration))
+
+        # Return animation sequence
+        return Succession(*animations)
 
 
 # TODO
