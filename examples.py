@@ -115,17 +115,17 @@ class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
         self.wait(5)
         self.wait(1)
 
-class BlockMobBitcoinWithBlink(MovingCameraWithHUDScene):
+class BlockMobBitcoinWithBlink(MovingCameraFixedLayerScene):
     def construct(self):
         BMB = BlockMobBitcoin(6)
         self.wait(2)
-        self.update_narration_text(r"\text{Add Chain supporting mathtex: } \int_0^\infty e^{-x^2} dx")
+#        self.update_narration_text(r"\text{Add Chain supporting mathtex: } \int_0^\infty e^{-x^2} dx") # not yet implemented
         self.play(BMB.add_chain(self))
         self.wait(1)
-        self.update_narration_text(r"\text{blink past of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
+#        self.update_narration_text(r"\text{blink past of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.blink_past(4))
         self.wait(2)
-        self.update_narration_text(r"\text{blink future of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
+#        self.update_narration_text(r"\text{blink future of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.blink_future(4))
         self.wait(3)
 
@@ -136,31 +136,4 @@ class TestBlockMobChain(Scene):
 #        self.play(BMC.create_fork(2))
         self.wait(5)
 #        self.play(BMC.blink())
-        self.wait(1)
-
-class TestBlockMobBitcoin(MovingCameraFixedLayerScene):
-    def construct(self):
-        BMB = BlockMobBitcoin(6)
-        self.play(BMB.add_chain(self))
-#        self.play(BMC.create_fork(2))
-        self.wait(1)
-        self.play(BMB.blink_past(4))
-        self.wait(3)
-
-class TestBlockMobChainForkHandling(MovingCameraFixedLayerScene):
-    def construct(self):
-        BMC = BlockMobChain(4)
-        block = BlockMob("test")
-        self.play(BMC.add_chain())
-        block.shift(DOWN)
-        self.play(FadeIn(block))
-        self.play(block.animate(runtime = 1).shift(UP * 2))
-#        self.play(BMC.create_fork(4))
-#        self.wait(2)
-#        self.play(BMC.blink())
-        self.play(BMC.shift_genesis())
-        self.wait(1)
-#        self.play(BMC.blink())
-        self.play(BMC.smooth_genesis())
-        self.play(self.camera.auto_zoom(BMC.chain, margin=2))
         self.wait(1)

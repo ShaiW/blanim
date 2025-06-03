@@ -1,6 +1,7 @@
 from manim import *
 
 ##all sort of stuff that manim should have but doesn't
+#TODO DO NOT USE - migrate narration to MovingCameraFixedLayerScene
 
 class MovingCameraWithHUDScene(ThreeDScene):
     def __init__(self, **kwargs):
@@ -50,84 +51,6 @@ class MovingCameraWithHUDScene(ThreeDScene):
 
         # Fade in the new text
         self.play(FadeIn(self.narration_text_mobject))
-
-    # TODO untested
-    def auto_zoom(
-            self,
-            mobjects: list[Mobject],
-            margin: float = 0,
-            only_mobjects_in_frame: bool = False,
-            animate: bool = True,
-            **kwargs
-    ):
-        """Auto-zoom functionality for ThreeDScene when phi=0 and theta=0 (2D view)"""
-        scene_critical_x_left = None
-        scene_critical_x_right = None
-        scene_critical_y_up = None
-        scene_critical_y_down = None
-
-        # Find bounding box - same logic as MovingCamera
-        for m in mobjects:
-            if only_mobjects_in_frame and not self._is_in_frame(m):
-                continue
-
-                # Initialize or update critical points
-            if scene_critical_x_left is None:
-                scene_critical_x_left = m.get_critical_point(LEFT)[0]
-                scene_critical_x_right = m.get_critical_point(RIGHT)[0]
-                scene_critical_y_up = m.get_critical_point(UP)[1]
-                scene_critical_y_down = m.get_critical_point(DOWN)[1]
-            else:
-                if m.get_critical_point(LEFT)[0] < scene_critical_x_left:
-                    scene_critical_x_left = m.get_critical_point(LEFT)[0]
-                if m.get_critical_point(RIGHT)[0] > scene_critical_x_right:
-                    scene_critical_x_right = m.get_critical_point(RIGHT)[0]
-                if m.get_critical_point(UP)[1] > scene_critical_y_up:
-                    scene_critical_y_up = m.get_critical_point(UP)[1]
-                if m.get_critical_point(DOWN)[1] < scene_critical_y_down:
-                    scene_critical_y_down = m.get_critical_point(DOWN)[1]
-
-                    # Calculate center and dimensions
-        center_x = (scene_critical_x_left + scene_critical_x_right) / 2
-        center_y = (scene_critical_y_up + scene_critical_y_down) / 2
-        new_width = abs(scene_critical_x_left - scene_critical_x_right)
-        new_height = abs(scene_critical_y_up - scene_critical_y_down)
-
-        # Calculate zoom factor based on current frame dimensions
-        current_width = self.camera.frame_width
-        current_height = self.camera.frame_height
-
-        # Choose zoom based on which dimension needs more scaling
-        if new_width / current_width > new_height / current_height:
-            zoom_factor = current_width / (new_width + margin)
-        else:
-            zoom_factor = current_height / (new_height + margin)
-
-            # Apply the transformation
-        if animate:
-            return self.move_camera(
-                frame_center=[center_x, center_y, 0],
-                zoom=zoom_factor,
-                **kwargs
-            )
-        else:
-            self.set_camera_orientation(
-                frame_center=[center_x, center_y, 0],
-                zoom=zoom_factor
-            )
-            return None
-
-    def _is_in_frame(self, mobject):
-        """Helper method to check if mobject is in frame"""
-        # Simple implementation - you might want to make this more sophisticated
-        center = mobject.get_center()
-        frame_center = self.camera._frame_center.get_center()
-        frame_width = self.camera.frame_width
-        frame_height = self.camera.frame_height
-
-        return (abs(center[0] - frame_center[0]) <= frame_width / 2 and
-                abs(center[1] - frame_center[1]) <= frame_height / 2)
-
 
 
 class MovingCameraFixedLayerScene(MovingCameraScene):

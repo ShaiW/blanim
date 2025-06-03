@@ -348,7 +348,7 @@ class Node(Square):
 
 # TODO Create BlockChain and DAG classes for BlockMob
 
-# TODO color past, future, and leave anticone for visulizing add functions within BlockMob
+# TODO color past, future, and leave anticone for visulizing add functions within BlockMob // or add color/blink anticone
 
 # Create a chain of blocks that can follow parent
 # TODO incomplete, begin adding text explanation of each step
@@ -379,12 +379,6 @@ class BlockMobBitcoin:
 
             i += 1
 
-    # returns animations to fade in top aligned text narration to scene
-    def add_narration_to_scene(self, scene):
-        self.narration_text_mobject.to_edge(UP)  # Position at top edge
-        scene.add_foreground_mobjects(self.narration_text_mobject) # to keep in foreground
-        scene.add_fixed_in_frame_mobjects(self.narration_text_mobject) # to remain unaffected by camera movement
-        return AnimationGroup(FadeIn(self.narration_text_mobject))
 
     # returns animations for adding all blocks and pointers
     def add_chain(self, scene):
@@ -394,7 +388,7 @@ class BlockMobBitcoin:
 
             add_chain_one_by_one_with_fade_in.append(
                 AnimationGroup(
-                    scene.camera._frame_center.animate.move_to(each.get_center()),
+                    scene.camera.frame.animate.move_to(each.get_center()),
                     FadeIn(each)
                 )
             )
@@ -410,39 +404,9 @@ class BlockMobBitcoin:
                 [Wait(0.5)],
             )
 
-    # TODO replace using this with new autozoom in MovingCameraWithHUDScene in common
-        # Calculate bounding box for all mobjects in the chain
-        if self.chain:
-            # Calculate bounding box (your existing code)
-            leftmost = min(mob.get_left()[0] for mob in self.chain)
-            rightmost = max(mob.get_right()[0] for mob in self.chain)
-            topmost = max(mob.get_top()[1] for mob in self.chain)
-            bottommost = min(mob.get_bottom()[1] for mob in self.chain)
-
-            total_width = rightmost - leftmost
-            total_height = topmost - bottommost
-            center_x = (leftmost + rightmost) / 2
-            center_y = (topmost + bottommost) / 2
-            center_point = np.array([center_x, center_y, 0])
-
-            # Improved zoom calculation
-            margin = 1.0
-            max_dimension = max(total_width, total_height)
-
-            # Use the current camera's frame dimensions as reference
-            current_zoom = scene.camera.get_zoom()
-            frame_height = scene.camera.frame_height if hasattr(scene.camera, 'frame_height') else 8.0
-
-            # Calculate zoom to fit with margin
-            target_zoom = (frame_height * 0.8) / (max_dimension + margin)
-
-            # Clamp zoom to reasonable bounds
-            zoom_factor = max(0.1, min(target_zoom, 10.0))
-
         add_chain_one_by_one_with_fade_in.append(
             AnimationGroup(
-                scene.camera._frame_center.animate.move_to(center_point),
-                scene.camera.zoom_tracker.animate.set_value(zoom_factor)
+                scene.camera.auto_zoom(self.chain, margin= 1.0),
             )
         )
 
@@ -453,10 +417,6 @@ class BlockMobBitcoin:
     def blink_past(self, block:int):
         blink_past_animations = []
         current = self.chain[block].parent
-
-#        blink_past_animations.append(
-#            self.narration_text_mobject.fade_to_next_narration("testing fade to next narration")
-#        )
 
         while current is not None:
             blink_past_animations.append(
@@ -857,7 +817,8 @@ class BlockMob(Square):
         )
         # Using ApplyMethod directly bypasses limitations of Manim FadeToColor
 
-class Pointer(Line):
+# TODO changed from using Line to Arrow, check if updater breaks arrow when moving blocks around
+class Pointer(Arrow):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
         # Initialize with proper start/end points
         super().__init__(
@@ -889,7 +850,7 @@ class Pointer(Line):
         # Use set_points_by_ends which respects buff
         self.set_points_by_ends(new_start, new_end, buff=self.buff)
 
-# TODO test this
+# TODO check if useful using MovingCameraFixedLayerScene, if not destroy this
 class Narration(Text):
     def __init__(self):
         super().__init__(
