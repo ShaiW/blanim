@@ -354,6 +354,7 @@ class Node(Square):
 # TODO incomplete, begin adding text explanation of each step
 # Added this comment for testing branch only
 # Added this comment for testing branch after merge to main
+# Added after updating local branch to main
 class BlockMobBitcoin:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
