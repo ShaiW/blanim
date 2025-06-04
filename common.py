@@ -1,57 +1,6 @@
 from manim import *
 
 ##all sort of stuff that manim should have but doesn't
-#TODO DO NOT USE - migrate narration to MovingCameraFixedLayerScene
-
-class MovingCameraWithHUDScene(ThreeDScene):
-    def __init__(self, **kwargs):
-        super().__init__(
-            camera_class=ThreeDCamera,
-            default_angled_camera_orientation_kwargs={
-                "phi": 0 * DEGREES,
-                "theta": 0 * DEGREES,
-            },
-            **kwargs
-        )
-
-        self.narration_text_mobject = MathTex(
-            r"\text{created on init text and math: } \int_0^\infty e^{-x^2} dx",
-            color=WHITE
-        )
-
-        # currently adding to scene upon creation
-        self.narration_text_mobject.to_edge(UP)
-        self.add_fixed_in_frame_mobjects(self.narration_text_mobject)
-        print(len(self.foreground_mobjects))
-        self.add_foreground_mobjects(self.narration_text_mobject)
-        print(len(self.foreground_mobjects))
-
-    def update_narration_text(self, new_text):
-        # Fade out the old text
-        print(len(self.foreground_mobjects))
-        self.play(FadeOut(self.narration_text_mobject))
-        print(len(self.foreground_mobjects))
-
-        # Remove from fixed frame and foreground
-        self.remove_fixed_in_frame_mobjects(self.narration_text_mobject)
-        if self.narration_text_mobject in self.foreground_mobjects:
-            self.foreground_mobjects.remove(self.narration_text_mobject)
-
-            # Create new MathTex
-        new_narration = MathTex(
-            new_text,
-            color=WHITE
-        )
-        new_narration.to_edge(UP)
-
-        # Update reference and add to fixed objects
-        self.narration_text_mobject = new_narration
-        self.add_fixed_in_frame_mobjects(self.narration_text_mobject)
-        self.add_foreground_mobjects(self.narration_text_mobject)
-
-        # Fade in the new text
-        self.play(FadeIn(self.narration_text_mobject))
-
 
 class MovingCameraFixedLayerScene(MovingCameraScene):
     """ An extension of MovingCameraScene that prevents camera

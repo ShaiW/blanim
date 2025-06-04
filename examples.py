@@ -74,7 +74,7 @@ class Blink(Scene):
 
 class BlockMobAndColors(MovingCameraScene):
     def construct(self):
-        block = BlockMob("Gen")
+        block = BlockMob(None, "Gen")
         self.add(block)
         self.wait(1)
         self.play(block.animate(runtime = 1).shift(UP * 2))
@@ -98,7 +98,7 @@ class BlockMobAndColors(MovingCameraScene):
 
 class ChangingLabel(Scene):
     def construct(self):
-        block = BlockMob("Gen")
+        block = BlockMob(None, "Gen")
         self.add(block)
         self.wait(1)
         self.play(block.animate(runtime = 1).shift(UP * 2))
@@ -110,29 +110,31 @@ class ChangingLabel(Scene):
 
 class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
     def construct(self):
-        BMB = BlockMobBitcoin(8)
+        BMB = BlockMobBitcoin(5)
         self.play(BMB.add_chain(self))
-        self.wait(5)
         self.wait(1)
+        self.play(BMB.smooth_genesis())# testing animating moving blocks
+        self.wait(1)
+        self.play(BMB.add_blocks(self, 3))
+        self.wait(3)
 
 class BlockMobBitcoinWithBlink(MovingCameraFixedLayerScene):
     def construct(self):
         BMB = BlockMobBitcoin(6)
         self.wait(2)
-#        self.update_narration_text(r"\text{Add Chain supporting mathtex: } \int_0^\infty e^{-x^2} dx") # not yet implemented
         self.play(BMB.add_chain(self))
         self.wait(1)
-#        self.update_narration_text(r"\text{blink past of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.blink_past(4))
         self.wait(2)
-#        self.update_narration_text(r"\text{blink future of 4 supporting mathtex: } \int_0^\infty e^{-x^2} dx")
         self.play(BMB.blink_future(4))
         self.wait(3)
 
-class TestBlockMobChain(Scene):
+class Test(MovingCameraFixedLayerScene):
     def construct(self):
-        BMC = BlockMobChain(4)
-        self.play(BMC.add_chain())
+        BMC = BlockMobBitcoin(4)
+        nar = NarrationMathTex()
+        self.add(nar)
+        self.play(BMC.add_chain(self))
 #        self.play(BMC.create_fork(2))
         self.wait(5)
 #        self.play(BMC.blink())

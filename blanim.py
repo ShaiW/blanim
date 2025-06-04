@@ -357,28 +357,29 @@ class BlockMobBitcoin:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
         self.chain = [] #all blocks added to the chain
-        self.pointers = []
-        self.narration_text_mobject = Narration()
+        self.narration_text_mobject = NarrationMathTex()
 
         # Create Genesis
-        block = BlockMob("Gen", None)
+        block = BlockMob(None, "Gen")
         self.chain.append(block)
 
-        # Create chain of BlockMob
-        i = 1
+        self.create_blocks_and_pointers(self.blocks_to_create - 1)
 
-        while i < self.blocks_to_create:
+
+    def create_blocks_and_pointers(self, number_of_blocks_to_create:int = 0):
+        # Create chain of BlockMob
+        i = 0
+
+        while i < number_of_blocks_to_create:
             parent = self.chain[-1]
 
-            block = BlockMob(str(i), parent)
+            block = BlockMob(parent)
             self.chain.append(block)
 
             pointer = Pointer(block, parent)
-            self.pointers.append(pointer)
-            block.attach_pointer(pointer)
+            block.pointers.append(pointer)
 
             i += 1
-
 
     # returns animations for adding all blocks and pointers
     def add_chain(self, scene):
@@ -389,7 +390,7 @@ class BlockMobBitcoin:
             add_chain_one_by_one_with_fade_in.append(
                 AnimationGroup(
                     scene.camera.frame.animate.move_to(each.get_center()),
-                    FadeIn(each)
+                    FadeIn(each),
                 )
             )
 
@@ -412,6 +413,41 @@ class BlockMobBitcoin:
 
         add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
         return Succession(*add_chain_one_by_one_with_fade_in)
+
+    def add_blocks(self, scene, how_many_blocks_to_add:int = 1):
+        add_blocks_one_by_one_with_fade_in = []
+
+        # Create blocks to add
+        self.create_blocks_and_pointers(how_many_blocks_to_add)
+
+        for each in self.chain[-how_many_blocks_to_add:]:
+
+            add_blocks_one_by_one_with_fade_in.append(
+                AnimationGroup(
+                    scene.camera.frame.animate.move_to(each.get_center()),
+                    FadeIn(each),
+                )
+            )
+
+            for pointer in each.pointers:
+                add_blocks_one_by_one_with_fade_in.append(
+                    AnimationGroup(
+                        FadeIn(pointer)
+                    )
+            )
+
+            add_blocks_one_by_one_with_fade_in.extend(
+                [Wait(0.5)],
+            )
+
+        add_blocks_one_by_one_with_fade_in.append(
+            AnimationGroup(
+                scene.camera.auto_zoom(self.chain, margin= 1.0),
+            )
+        )
+
+        add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
+        return Succession(*add_blocks_one_by_one_with_fade_in)
 
     # returns group of blink animations on past of block at selected round
     def blink_past(self, block:int):
@@ -674,8 +710,8 @@ class BlockMobChain:
 
 class BlockMob(Square):
     def __init__(self,
-                 name:str = "",
                  selected_parent:'BlockMob' = None,
+                 name:str = "",
                  side_length:float=0.8):
         super().__init__(
             color="#0000FF",
@@ -690,33 +726,41 @@ class BlockMob(Square):
         # set instance variables
         self.name = name
         self.parent = selected_parent
-        self.child = None # Used for BlockMobBitcoin where only a single child exists
         self.weight = 1
 
-        self.mergeset = [] # parent inclusive mergeset  NOT yet used
+        self.mergeset = []
         self.children = []
         self.pointers = []
 
-        if selected_parent:
+        if self.parent:
+            print(self.parent.name)
             self.weight = selected_parent.weight + 1
-            self.parent.add_self_as_child(self)
+            self.parent.add_self_to_children(self)
             self.shift_position_to_parent()
+
+        if self.mergeset:
+            for each in self.mergeset:
+                each.add_self_to_children(self)
+
+        # name instead displays weight of the block
+        if self.name != "Gen":
+            self.name = self.weight
 
         # changed label to text mobject, will attempt to create a latex mobject at a later date
         if self.name:
-            self.label = Text(name, font_size=24, color=WHITE, weight=BOLD)
+            self.label = Text(str(self.name), font_size=24, color=WHITE, weight=BOLD)
             self.label.move_to(self.get_center())
             self.add(self.label)
 
-        # Initialize time tracking
-        self.fade_time = 0
 
     # Setters and getters
 
-    def add_self_as_child(self, mobject):
-        self.child = mobject
+    def fade_in(self):
+        return AnimationGroup(
+            self.animate(runtime=0.5).set_opacity(1)
+        )
 
-    def add_to_children(self, mobject):
+    def add_self_to_children(self, mobject):
         self.children.append(mobject)
 
     def is_tip(self):
@@ -774,26 +818,10 @@ class BlockMob(Square):
         return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
 
     ####################
-    # Unused, transitioning to using updaters instead of calling from scene
-    # might reuse code for shifting position within chain/dag and adding updater to maintain set position
-    ####################
-    def shift_to_parent(self):
-        to_position: array = ([])
-        parent_right = self.parent.get_right()
-        to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1], 0]
-        self.move_to(to_position)
-
-    def shift_fork_to_parent(self):
-        to_position: array = ([])
-        parent_right = self.parent.get_right()
-        to_position = [parent_right[0] + (self.side_length * 1.75), parent_right[1] - (self.side_length * 1.75), 0]
-        self.move_to(to_position)
-
-    ####################
     # Pointers Handling
     ####################
 
-    # Adds pointers to a list self.pointers, adding pointers as a submobject of BlockMob breaks positioning
+    # Adds pointers to a list self.pointers
     def attach_pointer(self, pointer):
         self.pointers.append(pointer)
 
@@ -817,8 +845,8 @@ class BlockMob(Square):
         )
         # Using ApplyMethod directly bypasses limitations of Manim FadeToColor
 
-# TODO changed from using Line to Arrow, check if updater breaks arrow when moving blocks around
-class Pointer(Arrow):
+
+class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
         # Initialize with proper start/end points
         super().__init__(
@@ -875,7 +903,54 @@ class Narration(Text):
             self.animate.set_opacity(1)
         )
 
+class NarrationText(Text):
+    def __init__(self):
+        super().__init__(
+            "created on init text",
+            color=WHITE
+        )
 
+        self.fixedLayer= True
+        self.to_edge(UP)
+
+
+class NarrationTex(Tex):
+    def __init__(self):
+        super().__init__(
+            r"\text{created on init text and math: } \int_0^\infty e^{-x^2} dx",
+            color=WHITE
+        )
+
+        self.fixedLayer= True
+        self.to_edge(UP)
+
+
+class NarrationMathTex(MathTex):
+    def __init__(self):
+        super().__init__(
+            r"\text{created on init text and math: } \int_0^\infty e^{-x^2} dx",
+            color=WHITE
+        )
+
+        self.fixedLayer= True
+        self.to_edge(UP)
+
+    def fade_to_next_narration(self, to_text: str = ""):
+        # Store current properties
+        current_pos = self.get_center()
+        current_color = self.color
+
+        # Create new text object
+        new_text_obj = Text(to_text, color=current_color)
+        new_text_obj.move_to(current_pos)
+
+        # Update this object to become the new text
+        self.become(new_text_obj)
+
+        return Succession(
+            self.animate(runtime = 1).set_opacity(0),
+            self.animate(runtime = 1).set_opacity(1)
+        )
 # TODO
 #  This is rough notes from discussion
 #  priorities labels misbehaving, blockchain class - location updates based on parent, BlockDAG(get_past, get future, get_anticone),
