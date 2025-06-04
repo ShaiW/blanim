@@ -352,7 +352,7 @@ class Node(Square):
 
 # Create a chain of blocks that can follow parent
 # TODO incomplete, begin adding text explanation of each step
-
+# Added this comment for testing branch only
 class BlockMobBitcoin:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
