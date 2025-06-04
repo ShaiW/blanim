@@ -116,26 +116,11 @@ class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
         self.play(BMB.smooth_genesis())# testing animating moving blocks
         self.wait(1)
         self.play(BMB.add_blocks(self, 3))
+        self.wait(1)
+        self.play(BMB.create_fork(self, 3, 3))
+        self.wait(1)
+        self.play(BMB.blink_past_of_random_block())
+        self.wait(1)
+        self.play(BMB.blink_future_of_random_block())
         self.wait(3)
 
-class BlockMobBitcoinWithBlink(MovingCameraFixedLayerScene):
-    def construct(self):
-        BMB = BlockMobBitcoin(6)
-        self.wait(2)
-        self.play(BMB.add_chain(self))
-        self.wait(1)
-        self.play(BMB.blink_past(4))
-        self.wait(2)
-        self.play(BMB.blink_future(4))
-        self.wait(3)
-
-class Test(MovingCameraFixedLayerScene):
-    def construct(self):
-        BMC = BlockMobBitcoin(4)
-        nar = NarrationMathTex()
-        self.add(nar)
-        self.play(BMC.add_chain(self))
-#        self.play(BMC.create_fork(2))
-        self.wait(5)
-#        self.play(BMC.blink())
-        self.wait(1)
