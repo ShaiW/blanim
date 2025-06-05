@@ -476,7 +476,7 @@ class BlockMobBitcoin:
 
         self.all_blocks = list(set(self.all_blocks + fork))
 
-        fork[1].shift_fork()
+        fork[1].shift_fork() # TODO Replace with position handling based on rounds_from_genesis
 
         for each in fork[1:]:
 
@@ -571,9 +571,62 @@ class BlockMobBitcoin:
 
         return AnimationGroup(animations)
 
+    # TODO test this
     ####################
-    # Functions
+    # Positioning BlockMobs in DAG
     ####################
+
+    # return an animation that adjusts the consensus rounds based on how many rounds_from_genesis for list(blocks passed)
+
+    def adjust_consensus_round(self, blocks_added:list):
+        adjust_rounds_affected_animations = []
+
+        for each in blocks_added:
+            consensus_round = each.rounds_from_genesis
+
+            all_blocks_at_this_round = list(set(self.get_all_blocks_at_this_round(consensus_round)))
+
+            # Create animations and add to animations to adjust these blocks at this depth
+
+            adjust_rounds_affected_animations.append(self.adjust_consensus_round_animations(all_blocks_at_this_round))
+
+        return AnimationGroup(adjust_rounds_affected_animations)
+
+    def adjust_consensus_round_animations(self, all_blocks_at_this_round:list):
+        animations = []
+
+        # find all y position
+        list_of_y_positions:list = []
+
+        for each in all_blocks_at_this_round:
+            position_of_each_block = each.get_center()
+            list_of_y_positions.append(position_of_each_block[1])
+
+        # Adjust their position to space them from each other and move to position from center (y = 0)
+        y_min = min(list_of_y_positions)
+        y_max = max(list_of_y_positions)
+        adjust_by = (abs(y_min) + abs(y_max)) / all_blocks_at_this_round
+
+        if abs(y_min) > abs(y_max):
+            adjust_up = True
+        else:
+            adjust_up = False
+
+        # Create the animations that move blocks in this round by + or - adjust_by
+        # TODO finish creating animations that adjust rounds for DAG
+
+
+        return AnimationGroup(animations)
+
+    def get_all_blocks_at_this_round(self, consensus_round:int):
+        all_blocks_at_this_round = []
+
+        for each in self.all_blocks:
+            if each.rounds_from_genesis == consensus_round:
+                all_blocks_at_this_round.append(each)
+
+        all_blocks_at_this_round = list(set(all_blocks_at_this_round))
+        return all_blocks_at_this_round
 
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
@@ -597,6 +650,7 @@ class BlockMob(Square):
         self.name = name
         self.parent = selected_parent
         self.weight = 1
+        self.rounds_from_genesis = 0
 
         self.mergeset = []
         self.children = []
@@ -605,8 +659,8 @@ class BlockMob(Square):
         if self.parent:
             self.mergeset.append(self.parent)
             self.weight = selected_parent.weight + 1
-#            self.parent.add_self_to_children(self)
-            self.shift_position_to_parent()
+            self.rounds_from_genesis = selected_parent.rounds_from_genesis + 1
+            self.shift_position_to_parent() # TODO change to position handling by the chain/DAG based on rounds from genesis (this will work for both BTC and Kaspa)
 
         if self.mergeset:
             for each in self.mergeset:
@@ -815,6 +869,7 @@ class Narration(Text):
             self.animate.set_opacity(1)
         )
 
+# TODO test each of these
 class NarrationText(Text):
     def __init__(self):
         super().__init__(
@@ -899,7 +954,7 @@ class NarrationMathTex(MathTex):
 #  This is rough notes from discussion
 #  priorities
 #               labels misbehaving,
-#               blockchain class - location updates based on parent,
+#  CURRENT      blockchain class - location updates based on parent,
 #  COMPLETE     for BlockMobBitcoin(BlockDAG(blink(get_past, get future, get_anticone)) #method works for Kaspa),
 #               parallel chains like kadena, ect,
 #               ghostdag, function that computes k cluster and blueset for each block,
