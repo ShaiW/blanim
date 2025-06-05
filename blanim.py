@@ -358,8 +358,6 @@ class Node(Square):
 
 # TODO Create BlockChain and DAG classes for BlockMob
 
-# TODO add color/blink anticone by comparing lists
-
 # Create a chain of blocks that can follow parent
 # TODO incomplete, begin adding text explanation of each step
 
@@ -367,7 +365,6 @@ class BlockMobBitcoin:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
         self.all_blocks = [] #all blocks added to the chain
-        self.forks = [] #all forks added to the chain, including original chain
         self.narration_text_mobject = NarrationMathTex()
 
         # Create Genesis
@@ -375,7 +372,6 @@ class BlockMobBitcoin:
         self.all_blocks.append(block)
 
         self.create_blocks_and_pointers(self.blocks_to_create - 1)
-
 
     def create_blocks_and_pointers(self, number_of_blocks_to_create:int = 0):
         # Create chain of BlockMob
@@ -391,8 +387,6 @@ class BlockMobBitcoin:
             block.pointers.append(pointer)
 
             i += 1
-
-        self.forks.append(self.all_blocks)
 
     # returns animations for adding all blocks and pointers
     def add_chain(self, scene):
@@ -480,7 +474,7 @@ class BlockMobBitcoin:
 
             i += 1
 
-        self.forks.append(fork)
+        self.all_blocks = list(set(self.all_blocks + fork))
 
         fork[1].shift_fork()
 
@@ -513,10 +507,13 @@ class BlockMobBitcoin:
         add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
         return Succession(*add_blocks_one_by_one_with_fade_in)
 
+    ####################
+    # Get past/future/anticone and blink
+    ####################
 
     # returns group of blink animations on past of block at selected round
     def blink_past_of_random_block(self):
-        random_block: 'Mobject' = choice(choice(self.forks))
+        random_block: 'Mobject' = choice(self.all_blocks)
         blink_past_animations = []
         current_list_to_blink = random_block.get_past()
         blink_past_animations.append(random_block.highlight_self())
@@ -529,7 +526,7 @@ class BlockMobBitcoin:
 
     # returns group of blink animations on future of block at selected round
     def blink_future_of_random_block(self):
-        random_block: 'Mobject' = choice(choice(self.forks))
+        random_block: 'Mobject' = choice(self.all_blocks)
         blink_future_animations = []
         current_list_to_blink = random_block.get_future()
         blink_future_animations.append(random_block.highlight_self())
@@ -542,13 +539,15 @@ class BlockMobBitcoin:
 
     # returns group of blink animations on anticone of block at selected round
     def blink_anticone_of_random_block(self):
-        random_block: 'Mobject' = choice(choice(self.forks))
+        random_block: 'Mobject' = choice(self.all_blocks)
         blink_anticone_animations = []
 
         # need to get past and get future, need to get all blocks from all_blocks, and compare
-        list_of_blocks_not_in_past = list(set(self.all_blocks) - set(random_block.get_past()))
-        list_of_blocks_not_in_past_or_future = list(set(list_of_blocks_not_in_past) - set(random_block.get_future()))
-        anticone = list(set(list_of_blocks_not_in_past_or_future) - set(random_block))
+#        list_of_blocks_not_in_past = list(set(self.all_blocks) - set(random_block.get_past()))
+#        list_of_blocks_not_in_past_or_future = list(set(list_of_blocks_not_in_past) - set(random_block.get_future()))
+#        anticone = list(set(list_of_blocks_not_in_past_or_future) - set(random_block))
+        list_of_blocks_reachable = list(set(self.all_blocks) - set(random_block.get_reachable()))
+        anticone = list(set(list_of_blocks_reachable) - set(random_block))
 
         blink_anticone_animations.append(random_block.highlight_self())
 
@@ -579,214 +578,6 @@ class BlockMobBitcoin:
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
-# Not for use, saving in case snippets are useful later
-class BlockMobChain:
-    def __init__(self, blocks:int = 0):
-        self.blocks_to_create = blocks
-        self.chain = [] #all blocks added to the chain
-        self.pointers = []
-        self.forks = [] # list of lists [[original chain],[forked chain]]
-        self.blocks_with_forks = [] #list of blocks with multiple childen
-
-        block = BlockMob("Gen", None)
-        self.chain.append(block)
-
-        i = 1
-        while i < self.blocks_to_create:
-            parent = self.chain[-1]
-
-            block = BlockMob(str(i), parent)
-            self.chain.append(block)
-
-            pointer = Pointer(block, parent)
-            self.pointers.append(pointer)
-
-            i += 1
-
-    def add_chain(self):
-        add_chain_one_by_one_with_fade_in = []
-
-        for each in chain(self.chain):
-            add_chain_one_by_one_with_fade_in.append(
-                [FadeIn(each)],
-            )
-
-            add_chain_one_by_one_with_fade_in.append(
-                Wait(0.5)
-            )
-
-        add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
-        return Succession(*add_chain_one_by_one_with_fade_in)
-
-    ####################
-    # Testing animation
-    ####################
-
-    # Snaps position up when called in scene, updaters do not complete
-    def shift_genesis(self):
-        self.chain[0].shift(UP*2)
-        return Wait(run_time=1)
-    # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
-    def smooth_genesis(self):
-        animations = []
-
-        animations.append(
-            self.chain[0].animate.shift(UP*1)
-        )
-
-        return AnimationGroup(animations)
-
-    ####################
-    # Functions
-    ####################
-    def create_fork(self, fork_block:int = 0):
-        original_chain = []
-        forked_chain = []
-
-        block = BlockMob(str(self.chain[fork_block - 1].name), self.chain[fork_block - 1])
-
-        forked_chain.append(block)
-        original_chain.append(self.chain[fork_block - 1])
-
-        original_chain[0].safe_remove_current_position_updater()
-        forked_chain[0].safe_remove_current_position_updater()
-        print(original_chain[0].get_center())
-        print(forked_chain[0].get_center())
-        forked_chain[0].shift(DOWN)
-
-        i = 1
-        while i < len(self.chain) - fork_block:
-            block = BlockMob(str(int(forked_chain[-1].name) + 1), forked_chain[-1])
-            forked_chain.append(block)
-            original_chain.append(self.chain[fork_block + i])
-#            block.lock_to_parent()
-
-            i += 1
-
-        new_forks = [original_chain, forked_chain]
-        self.forks.append(new_forks)
-
-        fork_positioning_animations = []
-        fork_positioning_animations.append(
-            forked_chain[0].animate.shift(DOWN)
-        )
-#        forked_chain[0].shift(DOWN)
-
-        draw_fork_anims = []
-
-        for each in forked_chain:
-            draw_fork_anims.append(
-                [FadeIn(each)],
-            )
-            draw_fork_anims.append(
-                Wait(0.5),
-            )
-
-        draw_fork_anims.append(Wait(run_time=0))
-
-#        return AnimationGroup(*draw_fork_anims)
-        return Succession(*fork_positioning_animations), AnimationGroup(*draw_fork_anims)
-
-    def create_fork_old(self, fork_depth:int = 0):
-        original_chain = []
-        forked_chain = []
-
-        block = BlockMob(str(self.chain[-fork_depth].name), self.chain[-fork_depth - 1])
-        forked_chain.append(block)
-        original_chain.append(self.chain[-fork_depth])
-        block.lock_fork_to_parent()
-
-        i = 1
-        while i < fork_depth:
-            block = BlockMob(str(int(forked_chain[-1].name) + 1), forked_chain[-1])
-            forked_chain.append(block)
-            original_chain.append(self.chain[-fork_depth + i])
-            block.lock_to_parent()
-
-            i += 1
-
-        original_chain.append(self.chain[-1])
-        new_forks = [original_chain, forked_chain]
-        self.forks.append(new_forks)
-
-        draw_fork_anims = []
-
-        for each in forked_chain:
-            draw_fork_anims.append(
-                [FadeIn(each)],
-            )
-            draw_fork_anims.append(
-                Wait(0.5),
-            )
-
-        draw_fork_anims.append(Wait(run_time=0))
-
-        return AnimationGroup(*draw_fork_anims)
-
-    def blink(self):
-        #blinks only additional forked blocks
-        forks_list = self.forks[0]
-        blink_anims = [Wait(run_time=4),]
-
-        blink_these_blocks = forks_list[1]
-
-        for each in blink_these_blocks:
-            blink_anims.append(each.blink(),)
-
-        blink_anims.append(Wait(run_time=0))
-        return AnimationGroup(*blink_anims)
-
-# Succession returns animations to be played one by one
-# AnimationGroup plays all animations together
-
-# TODO track both forks and shift together, try as a function within BlockMob using position updaters
-    def shift_forks(self):
-        shift_forks_anims = []
-        list_of_fork_to_shift = self.blocks_with_forks[0]
-        list_of_original_blocks_to_shift = list_of_fork_to_shift[0]
-        list_of_forked_blocks_to_shift = list_of_fork_to_shift[1]
-
-        for each in list_of_original_blocks_to_shift:
-            shift_forks_anims.append(
-                each.animate.shift(UP * 0.8),
-
-            )
-
-        for each in list_of_forked_blocks_to_shift:
-            shift_forks_anims.append(
-                each.animate.shift(UP * 0.8),
-
-            )
-
-
-
-        shift_forks_anims.append(Wait(run_time=5))
-        return AnimationGroup(*shift_forks_anims)
-
-
-    def shift_forks_not_used(self):
-        shift_forks_anims = []
-        list_of_fork_to_shift = self.forks[0]
-        list_of_original_blocks_to_shift = list_of_fork_to_shift[0]
-        list_of_forked_blocks_to_shift = list_of_fork_to_shift[1]
-
-        for each in list_of_original_blocks_to_shift:
-            shift_forks_anims.append(
-                each.animate.shift(UP * 0.8),
-
-            )
-
-        for each in list_of_forked_blocks_to_shift:
-            shift_forks_anims.append(
-                each.animate.shift(UP * 0.8),
-
-            )
-
-
-
-        shift_forks_anims.append(Wait(run_time=0))
-        return AnimationGroup(*shift_forks_anims)
-
 class BlockMob(Square):
     def __init__(self,
                  selected_parent:'BlockMob' = None,
@@ -814,7 +605,7 @@ class BlockMob(Square):
         if self.parent:
             self.mergeset.append(self.parent)
             self.weight = selected_parent.weight + 1
-            self.parent.add_self_to_children(self)
+#            self.parent.add_self_to_children(self)
             self.shift_position_to_parent()
 
         if self.mergeset:
@@ -900,7 +691,6 @@ class BlockMob(Square):
     # Pointers Handling
     ####################
 
-    # Adds pointers to a list self.pointers
     def attach_pointer(self, pointer):
         self.pointers.append(pointer)
 
@@ -919,12 +709,10 @@ class BlockMob(Square):
         if self.children:
             self.children[0].shift_position_to_parent()
 
-
     ####################
     # Blink Animations
     ####################
 
-    # Returns an animation that will fade the color of the block to yellow, then back to its assigned color
     def blink(self):
         return Succession(
             ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
@@ -937,6 +725,10 @@ class BlockMob(Square):
             ApplyMethod(self.set_color, GREEN, False, run_time=0.8),
             ApplyMethod(self.set_color, self.color, False, run_time=0.8),
         )
+
+    ####################
+    # Determine past/future/anticone
+    ####################
 
     def get_future(self):
         future_of_this_block = []
@@ -958,6 +750,13 @@ class BlockMob(Square):
         duplicates_removed = list(set(past_of_this_block))
         return duplicates_removed
 
+    def get_reachable(self):
+        reachable = []
+
+        reachable.extend(self.get_past())
+        reachable.extend(self.get_future())
+
+        return reachable
 
 class Pointer(Line):
     def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
@@ -1026,6 +825,22 @@ class NarrationText(Text):
         self.fixedLayer= True
         self.to_edge(UP)
 
+    def fade_to_next_narration(self, to_text: str = ""):
+        # Store current properties
+        current_pos = self.get_center()
+        current_color = self.color
+
+        # Create new text object
+        new_text_obj = Text(to_text, color=current_color)
+        new_text_obj.move_to(current_pos)
+
+        # Update this object to become the new text
+        self.become(new_text_obj)
+
+        return Succession(
+            self.animate(runtime = 1).set_opacity(0),
+            self.animate(runtime = 1).set_opacity(1)
+        )
 
 class NarrationTex(Tex):
     def __init__(self):
@@ -1037,6 +852,22 @@ class NarrationTex(Tex):
         self.fixedLayer= True
         self.to_edge(UP)
 
+    def fade_to_next_narration(self, to_text: str = ""):
+        # Store current properties
+        current_pos = self.get_center()
+        current_color = self.color
+
+        # Create new text object
+        new_text_obj = Tex(to_text, color=current_color)
+        new_text_obj.move_to(current_pos)
+
+        # Update this object to become the new text
+        self.become(new_text_obj)
+
+        return Succession(
+            self.animate(runtime = 1).set_opacity(0),
+            self.animate(runtime = 1).set_opacity(1)
+        )
 
 class NarrationMathTex(MathTex):
     def __init__(self):
@@ -1054,7 +885,7 @@ class NarrationMathTex(MathTex):
         current_color = self.color
 
         # Create new text object
-        new_text_obj = Text(to_text, color=current_color)
+        new_text_obj = MathTex(to_text, color=current_color)
         new_text_obj.move_to(current_pos)
 
         # Update this object to become the new text
@@ -1066,8 +897,12 @@ class NarrationMathTex(MathTex):
         )
 # TODO
 #  This is rough notes from discussion
-#  priorities labels misbehaving, blockchain class - location updates based on parent, BlockDAG(get_past, get future, get_anticone),
-#  parallel chains like kadena, ect, ghostdag, function that computes k cluster and blueset for each block, output a transcript that has each step eg.
-#  eg. added to blue set, appended children,
+#  priorities
+#               labels misbehaving,
+#               blockchain class - location updates based on parent,
+#  COMPLETE     for BlockMobBitcoin(BlockDAG(blink(get_past, get future, get_anticone)) #method works for Kaspa),
+#               parallel chains like kadena, ect,
+#               ghostdag, function that computes k cluster and blueset for each block,
+#               output a transcript that has each step eg. added to blue set, appended children,
 
 # TODO please list priorities here
