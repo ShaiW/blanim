@@ -43,16 +43,25 @@ class Block():
     def __init__(self, name, DAG, parents, pos, label = None, color  = BLUE, h = BLOCK_H, w = BLOCK_W):
 
         self.name = name
-        self.w = w
-        self.h = h
+        self.width = w
+        self.height = h
         self.DAG = DAG
         self.parents = [DAG.blocks[p.name] for p in parents]
         self.children = []
-        self.rect = Rectangle(
-            color      = color, 
-            fill_opacity    = 1, 
-            height          = h,
-            width           = w,
+#        self.rect = Rectangle(
+#            color      = color,
+#            fill_opacity    = 1,
+#            height          = h,
+#            width           = w,
+#        )
+        # currently breaks Block has no attribute "weight"
+#        self.selected_parent = None
+#        if len(self.parents) != 0:
+#            self.selected_parent = self.parents[0]
+
+        # currently works, but does not take advantage of anything built into BlockMob
+        self.rect = BlockMob(
+            None
         )
         self.rect.move_to(pos)
         if label:
@@ -67,6 +76,7 @@ class Block():
 
     def is_tip(self):
         return bool(self.children)
+
 class BlockDAG():
 
     blocks: Dict[str, Block]
@@ -348,7 +358,7 @@ class Node(Square):
 
 # TODO Create BlockChain and DAG classes for BlockMob
 
-# TODO color past, future, and leave anticone for visulizing add functions within BlockMob // or add color/blink anticone
+# TODO add color/blink anticone by comparing lists
 
 # Create a chain of blocks that can follow parent
 # TODO incomplete, begin adding text explanation of each step
@@ -356,13 +366,13 @@ class Node(Square):
 class BlockMobBitcoin:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
-        self.chain = [] #all blocks added to the chain
+        self.all_blocks = [] #all blocks added to the chain
         self.forks = [] #all forks added to the chain, including original chain
         self.narration_text_mobject = NarrationMathTex()
 
         # Create Genesis
         block = BlockMob(None, "Gen")
-        self.chain.append(block)
+        self.all_blocks.append(block)
 
         self.create_blocks_and_pointers(self.blocks_to_create - 1)
 
@@ -372,23 +382,23 @@ class BlockMobBitcoin:
         i = 0
 
         while i < number_of_blocks_to_create:
-            parent = self.chain[-1]
+            parent = self.all_blocks[-1]
 
             block = BlockMob(parent)
-            self.chain.append(block)
+            self.all_blocks.append(block)
 
             pointer = Pointer(block, parent)
             block.pointers.append(pointer)
 
             i += 1
 
-        self.forks.append(self.chain)
+        self.forks.append(self.all_blocks)
 
     # returns animations for adding all blocks and pointers
     def add_chain(self, scene):
         add_chain_one_by_one_with_fade_in = []
 
-        for each in self.chain:
+        for each in self.all_blocks:
 
             add_chain_one_by_one_with_fade_in.append(
                 AnimationGroup(
@@ -410,7 +420,7 @@ class BlockMobBitcoin:
 
         add_chain_one_by_one_with_fade_in.append(
             AnimationGroup(
-                scene.camera.auto_zoom(self.chain, margin= 1.0),
+                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
             )
         )
 
@@ -423,7 +433,7 @@ class BlockMobBitcoin:
         # Create blocks to add
         self.create_blocks_and_pointers(how_many_blocks_to_add)
 
-        for each in self.chain[-how_many_blocks_to_add:]:
+        for each in self.all_blocks[-how_many_blocks_to_add:]:
 
             add_blocks_one_by_one_with_fade_in.append(
                 AnimationGroup(
@@ -445,7 +455,7 @@ class BlockMobBitcoin:
 
         add_blocks_one_by_one_with_fade_in.append(
             AnimationGroup(
-                scene.camera.auto_zoom(self.chain, margin= 1.0),
+                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
             )
         )
 
@@ -456,7 +466,7 @@ class BlockMobBitcoin:
         add_blocks_one_by_one_with_fade_in = []
 
         # Create forked blocks to add
-        fork = [self.chain[-from_depth -1]]
+        fork = [self.all_blocks[-from_depth -1]]
 
         i = 0
         while i < how_many_blocks_to_add:
@@ -496,18 +506,13 @@ class BlockMobBitcoin:
 
         add_blocks_one_by_one_with_fade_in.append(
             AnimationGroup(
-                scene.camera.auto_zoom(self.chain, margin= 1.0),
+                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
             )
         )
 
         add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
         return Succession(*add_blocks_one_by_one_with_fade_in)
 
-    def get_past_of_block(self, block):
-        return block.get_past()
-
-    def get_future_of_block(self, block):
-        return block.get_future()
 
     # returns group of blink animations on past of block at selected round
     def blink_past_of_random_block(self):
@@ -535,33 +540,23 @@ class BlockMobBitcoin:
         blink_future_animations.append(Wait(run_time=0.1)) # added to prevent random block not having future and breaking animation with no runtime
         return AnimationGroup(*blink_future_animations)
 
-# TODO destroy
-    # returns group of blink animations on past of block at selected round
-    def blink_past(self, block:int):
-        blink_past_animations = []
-        current = self.chain[block].parent
+    # returns group of blink animations on anticone of block at selected round
+    def blink_anticone_of_random_block(self):
+        random_block: 'Mobject' = choice(choice(self.forks))
+        blink_anticone_animations = []
 
-        while current is not None:
-            blink_past_animations.append(
-                current.blink()
-                )
-            current = current.parent
+        # need to get past and get future, need to get all blocks from all_blocks, and compare
+        list_of_blocks_not_in_past = list(set(self.all_blocks) - set(random_block.get_past()))
+        list_of_blocks_not_in_past_or_future = list(set(list_of_blocks_not_in_past) - set(random_block.get_future()))
+        anticone = list(set(list_of_blocks_not_in_past_or_future) - set(random_block))
 
-        return AnimationGroup(*blink_past_animations)
+        blink_anticone_animations.append(random_block.highlight_self())
 
-#TODO destroy
-    # returns group of blink animations on future of block at selected round
-    def blink_future(self, block:int):
-        blink_future_animations = []
-        current = self.chain[block].child
+        for each in anticone:
+            blink_anticone_animations.append(each.blink())
 
-        while current is not None:
-            blink_future_animations.append(
-                current.blink()
-                )
-            current = current.child
-
-        return AnimationGroup(*blink_future_animations)
+        blink_anticone_animations.append(Wait(run_time=0.1)) # added to prevent random block not having future and breaking animation with no runtime
+        return AnimationGroup(*blink_anticone_animations)
 
     ####################
     # Testing animation
@@ -572,7 +567,7 @@ class BlockMobBitcoin:
         animations = []
 
         animations.append(
-            self.chain[0].animate.shift(UP*1)
+            self.all_blocks[0].animate.shift(UP*1)
         )
 
         return AnimationGroup(animations)
