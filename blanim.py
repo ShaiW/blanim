@@ -356,12 +356,9 @@ class Node(Square):
     def set_red(self):
         self.set_fill("#FF0000", opacity=1, family=False)
 
-# TODO Create BlockChain and DAG classes for BlockMob
+# TODO incomplete, not yet started
 
-# Create a chain of blocks that can follow parent
-# TODO incomplete, begin adding text explanation of each step
-
-class BlockMobBitcoin:
+class PHANTOM:
     def __init__(self, blocks:int = 0):
         self.blocks_to_create = blocks
         self.all_blocks = [] #all blocks added to the chain
@@ -628,6 +625,318 @@ class BlockMobBitcoin:
         all_blocks_at_this_round = list(set(all_blocks_at_this_round))
         return all_blocks_at_this_round
 
+# TODO incomplete, building
+
+class Bitcoin:
+    def __init__(self, blocks:int = 0):
+        self.blocks_to_create = blocks
+        self.all_blocks = [] #all blocks added to the chain
+        self.narration_text_mobject = NarrationMathTex()
+
+        # Create Genesis
+        block = BTCBlock(None, "Gen")
+        self.all_blocks.append(block)
+
+        self.create_blocks_and_pointers(self.blocks_to_create - 1)
+
+    def create_blocks_and_pointers(self, number_of_blocks_to_create:int = 0):
+        # Create chain of BTCBlock
+        i = 0
+
+        while i < number_of_blocks_to_create:
+            parent = self.all_blocks[-1]
+
+            block = BTCBlock(parent)
+            self.all_blocks.append(block)
+
+            pointer = Pointer(block, parent)
+            block.pointers.append(pointer)
+
+            i += 1
+
+    # returns animations for adding all blocks and pointers
+    def add_chain(self, scene):
+        add_chain_one_by_one_with_fade_in = []
+
+        for each in self.all_blocks:
+
+            add_chain_one_by_one_with_fade_in.append(
+                AnimationGroup(
+                    scene.camera.frame.animate.move_to(each.get_center()),
+                    FadeIn(each),
+                )
+            )
+
+            for pointer in each.pointers:
+                add_chain_one_by_one_with_fade_in.append(
+                    AnimationGroup(
+                        FadeIn(pointer)
+                    )
+            )
+
+            add_chain_one_by_one_with_fade_in.extend(
+                [Wait(0.5)],
+            )
+
+        add_chain_one_by_one_with_fade_in.append(
+            AnimationGroup(
+                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
+            )
+        )
+
+        add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
+        return Succession(*add_chain_one_by_one_with_fade_in)
+
+    def add_blocks(self, scene, how_many_blocks_to_add:int = 1):
+        add_blocks_one_by_one_with_fade_in = []
+
+        # Create blocks to add
+        self.create_blocks_and_pointers(how_many_blocks_to_add)
+
+        for each in self.all_blocks[-how_many_blocks_to_add:]:
+
+            add_blocks_one_by_one_with_fade_in.append(
+                AnimationGroup(
+                    scene.camera.frame.animate.move_to(each.get_center()),
+                    FadeIn(each),
+                )
+            )
+
+            for pointer in each.pointers:
+                add_blocks_one_by_one_with_fade_in.append(
+                    AnimationGroup(
+                        FadeIn(pointer)
+                    )
+            )
+
+            add_blocks_one_by_one_with_fade_in.extend(
+                [Wait(0.5)],
+            )
+
+        add_blocks_one_by_one_with_fade_in.append(
+            AnimationGroup(
+                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
+            )
+        )
+
+        add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
+        return Succession(*add_blocks_one_by_one_with_fade_in)
+
+    def create_fork(self, scene, how_many_blocks_to_add:int = 1, from_depth:int = 1):
+        add_blocks_one_by_one_with_fade_in = []
+
+        # Create forked blocks to add
+        fork = [self.all_blocks[-from_depth -1]]
+
+        i = 0
+        while i < how_many_blocks_to_add:
+            parent = fork[-1]
+
+            block = BlockMob(parent)
+            fork.append(block)
+
+            pointer = Pointer(block, parent)
+            block.pointers.append(pointer)
+
+            i += 1
+
+        self.all_blocks = list(set(self.all_blocks + fork))
+
+        fork[1].shift_fork() # TODO Replace with position handling based on rounds_from_genesis
+
+        for each in fork[1:]:
+
+            add_blocks_one_by_one_with_fade_in.append(
+                AnimationGroup(
+                    scene.camera.frame.animate.move_to(each.get_center()),
+                    FadeIn(each),
+                )
+            )
+
+            for pointer in each.pointers:
+                add_blocks_one_by_one_with_fade_in.append(
+                    AnimationGroup(
+                        FadeIn(pointer)
+                    )
+            )
+
+            add_blocks_one_by_one_with_fade_in.extend(
+                [Wait(0.5)],
+            )
+
+        add_blocks_one_by_one_with_fade_in.append(
+            AnimationGroup(
+                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
+            )
+        )
+
+        add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
+        return Succession(*add_blocks_one_by_one_with_fade_in)
+
+    ####################
+    # Get past/future/anticone and blink
+    ####################
+
+    # returns group of blink animations on past of block at selected round
+    def blink_past_of_random_block(self):
+        random_block = choice(self.all_blocks)
+        blink_past_animations = []
+        current_list_to_blink = random_block.get_past()
+        blink_past_animations.append(random_block.highlight_self())
+
+        for each in current_list_to_blink:
+            blink_past_animations.append(each.blink())
+
+        blink_past_animations.append(Wait(run_time=0.1))
+        return AnimationGroup(*blink_past_animations)
+
+    # returns group of blink animations on future of block at selected round
+    def blink_future_of_random_block(self):
+        random_block = choice(self.all_blocks)
+        blink_future_animations = []
+        current_list_to_blink = random_block.get_future()
+        blink_future_animations.append(random_block.highlight_self())
+
+        for each in current_list_to_blink:
+            blink_future_animations.append(each.blink())
+
+        blink_future_animations.append(Wait(run_time=0.1))
+        return AnimationGroup(*blink_future_animations)
+
+    # returns group of blink animations on anticone of block at selected round
+    def blink_anticone_of_random_block(self):
+        random_block = choice(self.all_blocks)
+        blink_anticone_animations = []
+
+        list_of_blocks_reachable = list(set(self.all_blocks) - set(random_block.get_reachable()))
+        anticone = list(set(list_of_blocks_reachable) - set(random_block))
+
+        blink_anticone_animations.append(random_block.highlight_self())
+
+        for each in anticone:
+            blink_anticone_animations.append(each.blink())
+
+        blink_anticone_animations.append(Wait(run_time=0.1))
+        return AnimationGroup(*blink_anticone_animations)
+
+    ####################
+    # Testing animation
+    ####################
+
+    # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
+    def smooth_genesis(self):
+        animations = []
+
+        animations.append(
+            self.all_blocks[0].animate.shift(UP*1)
+        )
+
+        return AnimationGroup(animations)
+
+    # TODO test this
+    ####################
+    # Positioning BlockMobs in DAG
+    ####################
+
+    # TODO test this and find a way to leave tips alone
+    def adjust_chain_position(self):
+        adjust_chain_animations = []
+
+        for each_list in self.find_forks():
+            heaviest_block = self.find_heaviest_block_looking_forward(each_list)
+            position_of_heaviest_block = heaviest_block.get_position()
+            delta_y_of_heaviest_block = abs(position_of_heaviest_block)
+
+            if position_of_heaviest_block[1] == 0:
+                ...  # do nothing
+            elif position_of_heaviest_block[1] < 0:
+                move_up_by = delta_y_of_heaviest_block
+                for each in each_list:
+                    adjust_chain_animations.append(
+                        each.animate.shift(UP*move_up_by)
+                    )
+            else:
+                move_down_by = delta_y_of_heaviest_block
+                for each in each_list:
+                    adjust_chain_animations.append(
+                        each.animate.shift(UP*move_down_by)
+                    )
+
+        return AnimationGroup(adjust_chain_animations)
+
+    def find_heaviest_block_looking_forward(self, blocks:list):
+
+        heaviest_block = blocks[0]
+
+        for each_block in blocks:
+            if len(each_block.get_future()) > len(heaviest_block.get_future()):
+                heaviest_block = each_block
+
+        return heaviest_block
+
+    def find_forks(self):
+
+        forks = [] # list[[block, block], [block, block], [block, block, block], ...]
+
+        for each in self.all_blocks:
+            if len(each.childen) > 1:
+                forks.append(each.children)
+
+        return forks
+
+    # return an animation that adjusts the consensus rounds based on how many rounds_from_genesis for list(blocks passed)
+
+    def adjust_consensus_round(self, blocks_added:list):
+        adjust_rounds_affected_animations = []
+
+        for each in blocks_added:
+            consensus_round = each.rounds_from_genesis
+
+            all_blocks_at_this_round = list(set(self.get_all_blocks_at_this_round(consensus_round)))
+
+            # Create animations and add to animations to adjust these blocks at this depth
+
+            adjust_rounds_affected_animations.append(self.adjust_consensus_round_animations(all_blocks_at_this_round))
+
+        return AnimationGroup(adjust_rounds_affected_animations)
+
+    def adjust_consensus_round_animations(self, all_blocks_at_this_round:list):
+        animations = []
+
+        # find all y position
+        list_of_y_positions:list = []
+
+        for each in all_blocks_at_this_round:
+            position_of_each_block = each.get_center()
+            list_of_y_positions.append(position_of_each_block[1])
+
+        # Adjust their position to space them from each other and move to position from center (y = 0)
+        y_min = min(list_of_y_positions)
+        y_max = max(list_of_y_positions)
+        adjust_by = (abs(y_min) + abs(y_max)) / all_blocks_at_this_round
+
+        if abs(y_min) > abs(y_max):
+            adjust_up = True
+        else:
+            adjust_up = False
+
+        # Create the animations that move blocks in this round by + or - adjust_by
+        # TODO finish creating animations that adjust rounds for DAG
+
+
+        return AnimationGroup(animations)
+
+    def get_all_blocks_at_this_round(self, consensus_round:int):
+        all_blocks_at_this_round = []
+
+        for each in self.all_blocks:
+            if each.rounds_from_genesis == consensus_round:
+                all_blocks_at_this_round.append(each)
+
+        all_blocks_at_this_round = list(set(all_blocks_at_this_round))
+        return all_blocks_at_this_round
+
+
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
@@ -658,7 +967,7 @@ class BlockMob(Square):
 
         if self.parent:
             self.mergeset.append(self.parent)
-            self.weight = selected_parent.weight + 1
+            self.weight = self.get_number_of_blue_blocks_in_past() + 1 # Change to mergeset weight +1 # Does not account for k yet
             self.rounds_from_genesis = selected_parent.rounds_from_genesis + 1
             self.shift_position_to_parent() # TODO change to position handling by the chain/DAG based on rounds from genesis (this will work for both BTC and Kaspa)
 
@@ -678,6 +987,9 @@ class BlockMob(Square):
 
 
     # Setters and getters
+
+    def get_number_of_blue_blocks_in_past(self):
+        return len(self.get_past())
 
     def fade_in(self):
         return AnimationGroup(
@@ -812,8 +1124,185 @@ class BlockMob(Square):
 
         return reachable
 
+class BTCBlock(Square):
+    def __init__(self,
+                 selected_parent:'BTCBlock' = None,
+                 name:str = ""
+                 ):
+        super().__init__(
+            color="#0000FF",
+            fill_opacity=1,
+            side_length=0.8,
+            background_stroke_color=WHITE,
+            background_stroke_width=10,
+            background_stroke_opacity=1.0
+        )
+        self.set_blue()
+
+        # set instance variables
+        self.name = name
+        self.parent = selected_parent
+        self.weight = 1
+        self.rounds_from_genesis = 0
+
+        self.children = []
+        self.pointers = []
+
+        if self.parent:
+            self.weight = self.get_number_of_blocks_in_past() + 1
+            self.rounds_from_genesis = selected_parent.rounds_from_genesis + 1
+            self.shift_position_to_parent()
+            self.parent.add_self_to_children(self)
+
+        # name instead displays weight of the block
+        if self.name != "Gen":
+            self.name = self.weight
+
+        # changed label to text mobject, will attempt to create a latex mobject at a later date
+        if self.name:
+            self.label = Text(str(self.name), font_size=24, color=WHITE, weight=BOLD)
+            self.label.move_to(self.get_center())
+            self.add(self.label)
+
+
+    # Setters and getters
+
+    def fade_in(self):
+        return AnimationGroup(
+            self.animate(runtime=0.5).set_opacity(1)
+        )
+
+    def add_self_to_children(self, mobject):
+        self.children.append(mobject)
+
+    def is_tip(self):
+        return bool(self.children)
+
+    def set_label(self, to_label:str = ""):
+        if self.label:
+            self.remove(self.label)
+        self.label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
+        self.label.move_to(self.get_center())
+        self.add(self.label)
+
+    # TODO test this
+    def fade_to_next_label(self, to_label: str = ""):
+        animations = []
+
+        # Fade out existing label if it exists
+        if self.label:
+            animations.append(FadeOut(self.label))
+
+            # Create new label
+        new_label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
+        new_label.move_to(self.get_center())
+
+        # Fade in new label
+        animations.append(FadeIn(new_label))
+
+        # Update the label reference
+        self.label = new_label
+
+        # Return animation sequence
+        return Succession(*animations) if len(animations) > 1 else animations[0]
+
+    ####################
+    # Color Setters
+    ####################
+    # TODO test if adding run_time to setters will make them change color slowly
+    def set_blue(self):
+        self.set_color("#0000FF", family=False)
+
+    def set_red(self):
+        self.set_color("#FF0000", family=False)
+
+    def set_to_color(self, to_color):
+        self.set_color(to_color, family=False)
+
+    def fade_blue(self):
+        return self.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
+
+    def fade_red(self):
+        return self.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
+
+    # fade_to_color ONLY works with ManimColor, does not work with hex format str
+    def fade_to_color(self, to_color:ManimColor = WHITE):
+        return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
+
+    ####################
+    # Pointers Handling
+    ####################
+
+    def attach_pointer(self, pointer):
+        self.pointers.append(pointer)
+
+    ####################
+    # Position Handling (Updaters leave position at [0,0,0])
+    ####################
+    # TODO change to handling positioning in Chain
+
+    # immediately changes position relative to self.parent, no animation, for setting initial position
+    def shift_position_to_parent(self):
+        self.next_to(self.parent, RIGHT * 4)
+        if self.children:
+            self.children[0].shift_position_to_parent()
+
+    def shift_fork(self):
+        self.next_to(self.parent, RIGHT * 4 + DOWN * 4)
+        if self.children:
+            self.children[0].shift_position_to_parent()
+
+    ####################
+    # Blink Animations
+    ####################
+
+    def blink(self):
+        return Succession(
+            ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
+            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
+        )
+        # Using ApplyMethod directly bypasses limitations of Manim FadeToColor
+
+    def highlight_self(self):
+        return Succession(
+            ApplyMethod(self.set_color, GREEN, False, run_time=0.8),
+            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
+        )
+
+    ####################
+    # Determine past/future/anticone
+    ####################
+
+    def get_future(self):
+        future_of_this_block = []
+        future_of_this_block.extend(self.children)
+
+        for each in self.children:
+            future_of_this_block.extend(each.get_future())
+
+        duplicates_removed = list(set(future_of_this_block))
+        return duplicates_removed
+
+    def get_past(self):
+        past_of_this_block = []
+        past_of_this_block.extend(self.parent)
+
+        past_of_this_block.extend(self.parent.get_past())
+
+        duplicates_removed = list(set(past_of_this_block))
+        return duplicates_removed
+
+    def get_reachable(self):
+        reachable = []
+
+        reachable.extend(self.get_past())
+        reachable.extend(self.get_future())
+
+        return reachable
+
+
 class Pointer(Line):
-    def __init__(self, this_block:'BlockMob', parent_block: 'BlockMob'):
+    def __init__(self, this_block, parent_block):
         # Initialize with proper start/end points
         super().__init__(
             start=this_block.get_left(),
