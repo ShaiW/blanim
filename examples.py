@@ -108,20 +108,20 @@ class ChangingLabel(Scene):
         block.set_blue()
         self.wait(1)
 
-class BlockMobBitcoinExample(MovingCameraFixedLayerScene):
+class BitcoinExample(MovingCameraFixedLayerScene):
     def construct(self):
-        BMB = BlockMobBitcoin(3)
-        self.play(BMB.add_chain(self))
+        BTC = Bitcoin(self)
+        self.play(BTC.genesis())
         self.wait(1)
-        self.play(BMB.add_blocks(self, 2))
+        self.play(BTC.add_blocks(2))
+        self.play(BTC.add_blocks(2))
+        self.play(BTC.add_blocks(2))
+        self.play(BTC.add_first_fork_block(1))
+        self.play(BTC.move_to(4))
+        self.play(BTC.blink_these_blocks(BTC.get_longest_chain_tips()))
+        self.play(BTC.blink_past_of_random_block())
         self.wait(1)
-        self.play(BMB.create_fork(self, 3, 3))
+        self.play(BTC.blink_future_of_random_block())
         self.wait(1)
-        self.play(BMB.blink_past_of_random_block())
-        self.wait(1)
-        self.play(BMB.blink_future_of_random_block())
-        self.wait(1)
-        self.play(BMB.blink_anticone_of_random_block())
+        self.play(BTC.blink_anticone_of_random_block())
         self.wait(3)
-
-
