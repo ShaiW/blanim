@@ -636,18 +636,19 @@ class Bitcoin:
         :param scene: self
 
         Scene is used for handling camera animations.
+        Bitcoin currently supports a chain and competing fork
         """
 
         self.scene = scene
 
         self.all_blocks = [] # all blocks added to the chain
-        self.longest_chain = []
+#        self.longest_chain = []
 #        self.narration_text_mobject = NarrationMathTex() # currently unused
 
         # Create Genesis
         genesis = BTCBlock(None, "Gen")
         self.all_blocks.append(genesis)
-        self.longest_chain.append(genesis)
+#        self.longest_chain.append(genesis)
 
     def genesis(self):
         """
@@ -671,7 +672,7 @@ class Bitcoin:
         pointer = Pointer(block, block.parent)
 
         return [AnimationGroup(
-                [self.scene.camera.frame.animate.move_to(block),
+                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
                 FadeIn(block),
                 FadeIn(pointer)],
                 Wait(0.5)
@@ -702,35 +703,62 @@ class Bitcoin:
 
         block = BTCBlock(self.all_blocks[-fork_depth - 1])
         self.all_blocks.append(block)
+        block.is_fork = True
         pointer = Pointer(block, block.parent)
 
         block.set_y(-2)
 
         return [AnimationGroup(
-                [self.scene.camera.frame.animate.move_to(block),
+                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
                 FadeIn(block),
                 FadeIn(pointer)],
                 Wait(0.5)
             )]
 
-    def add_fork(self, depth_of_fork):
-        """
-        :param depth_of_fork: How far back to create a new fork from.
+    def add_block_to_chain(self):
+        """"""
+        tips = self.get_longest_chain_tips()
+        original_chain_tip = tips[0] # pick one
 
-        """
+        block = BTCBlock(original_chain_tip)
+        self.all_blocks.append(block)
+        pointer = Pointer(block, block.parent)
 
-        add_fork_animations = [self.add_first_fork_block(depth_of_fork)]
+        return [AnimationGroup(
+                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
+                FadeIn(block),
+                FadeIn(pointer)],
+                Wait(0.5)
+            )]
 
-        i = 0
-        while i < depth_of_fork - 1:
-            add_fork_animations.extend(
-                self.add_block()
-            )
-            i += 1
+    def add_block_to_fork(self):
+        """"""
+        # determine the most recent fork chain
+        fork_chain_tip = self.find_most_recent_forked_block()
 
-        return Succession(add_fork_animations)
+        block = BTCBlock(fork_chain_tip)
+        self.all_blocks.append(block)
+        pointer = Pointer(block, block.parent)
 
-    def move_to(self, name_of_block:int):
+        return [AnimationGroup(
+                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
+                FadeIn(block),
+                FadeIn(pointer)],
+                Wait(0.5)
+            )]
+
+    def find_most_recent_forked_block(self):
+        tips = self.get_tips()
+
+        for each in reversed(tips):
+            if each.is_from_fork():
+                return each
+            else:
+                ...
+
+        return None
+
+    def move_camera_to(self, name_of_block:int):
         """
         :param name_of_block: int of block rounds from genesis
 
@@ -744,22 +772,32 @@ class Bitcoin:
         for each in self.all_blocks:
             if each.name == name_of_block:
                 block = each
-                print(f"found block with name {name_of_block}")
                 break
 
         return AnimationGroup(
-            self.scene.camera.frame.animate.move_to(block)
+#            self.scene.camera.frame.animate.move_to(block)
+            self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0])
+
         )
 
-    def get_longest_chain_tips(self):
+    def get_tips(self):
         """
-        Returns a list of blocks with the most blocks in its past
+        Get all tips.
         """
         tips = []
 
         for each in self.all_blocks:
             if each.is_tip():
                 tips.append(each)
+
+        return tips
+
+    def get_longest_chain_tips(self):
+        """
+        Returns a list of blocks with the most blocks in its past
+        """
+        tips = self.get_tips()
+
         number_of_blocks_in_past_of_each_tip = [each.get_number_of_blocks_in_past() for each in tips]
         most_blocks_in_past = max(number_of_blocks_in_past_of_each_tip)
 
@@ -777,7 +815,6 @@ class Bitcoin:
         for each in current_list_to_blink:
             blink_these_animations.append(each.blink())
 
-        blink_these_animations.append(Wait(run_time=0.1))
         return AnimationGroup(*blink_these_animations)
 
     # returns group of blink animations on past of block at selected round
@@ -790,7 +827,6 @@ class Bitcoin:
         for each in current_list_to_blink:
             blink_past_animations.append(each.blink())
 
-        blink_past_animations.append(Wait(run_time=0.1))
         return AnimationGroup(*blink_past_animations)
 
     # returns group of blink animations on future of block at selected round
@@ -803,7 +839,6 @@ class Bitcoin:
         for each in current_list_to_blink:
             blink_future_animations.append(each.blink())
 
-        blink_future_animations.append(Wait(run_time=0.1))
         return AnimationGroup(*blink_future_animations)
 
     # returns group of blink animations on anticone of block at selected round
@@ -819,7 +854,6 @@ class Bitcoin:
         for each in anticone:
             blink_anticone_animations.append(each.blink())
 
-        blink_anticone_animations.append(Wait(run_time=0.1))
         return AnimationGroup(*blink_anticone_animations)
 
     ####################
@@ -1151,6 +1185,7 @@ class BTCBlock(Square):
         self.mergeset = [] # Mergeset will only have one(parent) or none in BTC
         self.weight = 1
         self.rounds_from_genesis = 0
+        self.is_fork = False
 
         self.children = []
         self.pointers = []
@@ -1320,6 +1355,23 @@ class BTCBlock(Square):
     def get_number_of_blocks_in_reachable(self):
         return len(self.get_reachable())
 
+# TODO doublecheck this logic
+    def is_from_fork(self):
+        if self.is_fork:
+            return True
+
+        list_of_past_blocks = self.get_past()
+
+        for each in list_of_past_blocks:
+            print(each.is_fork)
+            if each.is_fork:
+                print("from fork")
+                return True
+            else:
+                print("not from fork")
+                ...
+
+        return False
 
 class Pointer(Line):
     def __init__(self, this_block, parent_block):
