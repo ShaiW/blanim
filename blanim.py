@@ -638,23 +638,20 @@ class Bitcoin:
         Scene is used for handling camera animations.
         Bitcoin currently supports a chain and competing fork
         """
-
         self.scene = scene
 
         self.all_blocks = [] # all blocks added to the chain
-#        self.longest_chain = []
 #        self.narration_text_mobject = NarrationMathTex() # currently unused
 
         # Create Genesis
         genesis = BTCBlock(None, "Gen")
         self.all_blocks.append(genesis)
-#        self.longest_chain.append(genesis)
 
     def genesis(self):
         """
-        Must create Genesis first
+        Must create Genesis first.
+        If not, there will be no blocks the point to.
         """
-
         genesis = self.all_blocks[0]
         return [Succession(
                 Wait(1.0),
@@ -662,11 +659,11 @@ class Bitcoin:
                 Wait(0.5)
             )]
 
+# TODO change to add to longest chain
     def add_block(self):
         """
         Creates a new block, a pointer, and returns an animation that adds a single block to the chain.
         """
-
         block = BTCBlock(self.all_blocks[-1])
         self.all_blocks.append(block)
         pointer = Pointer(block, block.parent)
@@ -678,13 +675,13 @@ class Bitcoin:
                 Wait(0.5)
             )]
 
+# TODO only one needed, add_block_to_chain or add_block
     def add_blocks(self, number_of_blocks_to_add:int = 1):
         """
         :param number_of_blocks_to_add: desired number of blocks to add to the chain.
 
         Returns an animation that plays one by one adding the desired number of blocks to the chain.
         """
-
         add_blocks_animations = []
 
         i = 0
@@ -698,9 +695,10 @@ class Bitcoin:
 
     def add_first_fork_block(self, fork_depth):
         """
+        :param fork_depth: desired depth to begin fork from tip.
+
         Creates a new block, a pointer, and returns an animation that adds a single fork block to the chain.
         """
-
         block = BTCBlock(self.all_blocks[-fork_depth - 1])
         self.all_blocks.append(block)
         block.is_fork = True
@@ -716,9 +714,11 @@ class Bitcoin:
             )]
 
     def add_block_to_chain(self):
-        """"""
+        """
+        Creates a new block, a pointer, and returns an animation that adds a single block to the longest chain.
+        """
         tips = self.get_longest_chain_tips()
-        original_chain_tip = tips[0] # pick one
+        original_chain_tip = tips[0] # pick one, if multiple tips have same weight,
 
         block = BTCBlock(original_chain_tip)
         self.all_blocks.append(block)
@@ -762,7 +762,7 @@ class Bitcoin:
         """
         :param name_of_block: int of block rounds from genesis
 
-        BTC blocks are named by rounds from genesis,
+        BTC blocks are named by weight,
         except Genesis, named 'Gen',
         move_to will adjust cameras center position to the desired round from genesis.
 
@@ -782,7 +782,7 @@ class Bitcoin:
 
     def get_tips(self):
         """
-        Get all tips.
+        Returns a list of all tips.
         """
         tips = []
 
@@ -792,23 +792,129 @@ class Bitcoin:
 
         return tips
 
+    def get_heaviest_two_tips(self):
+        """
+        Return a sorted list of the heaviest two tips.
+        Heaviest tip [0]
+        Lighter tip [1]
+        Unless tip weight is the same
+        """
+        tips = self.get_tips()
+        tip_1 = tips[0]
+        tip_2 = tips[1]
+
+        if tip_1.get_weight() > tip_2.get_weight():
+            sorted_tips = [tip_1, tip_2]
+        else:
+            sorted_tips = [tip_2, tip_1]
+
+        return sorted_tips
+
     def get_longest_chain_tips(self):
         """
-        Returns a list of blocks with the most blocks in its past
+        Returns a list of blocks with the most blocks in its past.
+        If a single tip is the heaviest, list will only have one block,
+        If multiple tips exist with the same weight, list will have multiple blocks.
         """
         tips = self.get_tips()
 
-        number_of_blocks_in_past_of_each_tip = [each.get_number_of_blocks_in_past() for each in tips]
-        most_blocks_in_past = max(number_of_blocks_in_past_of_each_tip)
+        weight_of_each_tip = [each.weight for each in tips]
+        most_blocks_in_past = max(weight_of_each_tip)
 
-        return [each for each in tips if each.get_number_of_blocks_in_past() == most_blocks_in_past]
+        return [each for each in tips if each.weight == most_blocks_in_past]
+
+    def get_past_of_tips(self):
+        """
+        Returns a list of blocks in the past of the tips provided,
+        back to and excluding the most recent common ancestor.
+        """
+        tips_to_find_blocks = self.get_heaviest_two_tips()
+
+        if len(tips_to_find_blocks) == 1:
+            print("incorrect usage of get_past_of_tips")
+            return
+
+        lists_of_past_blocks = []
+
+        for each in tips_to_find_blocks:
+            lists_of_past_blocks.append(each.get_self_inclusive_past())
+
+        set_of_tip_0 = set(lists_of_past_blocks[0])
+        set_of_tip_1 = set(lists_of_past_blocks[1])
+
+        set_of_blocks_unique_to_0 = set_of_tip_0 - set_of_tip_1
+        set_of_blocks_unique_to_1 = set_of_tip_1 - set_of_tip_0
+
+        list_of_blocks_unique_to_0 = list(set_of_blocks_unique_to_0)
+        list_of_blocks_unique_to_1 = list(set_of_blocks_unique_to_1)
+
+        lists_of_past_blocks = [list_of_blocks_unique_to_0, list_of_blocks_unique_to_1]
+
+        return lists_of_past_blocks
+
+    def are_heaviest_two_tips_equal_weight(self):
+        tips = self.get_heaviest_two_tips()
+
+        if tips[0].get_weight() == tips[1].get_weight():
+            return True
+        else:
+            return False
+
+    def animate_these_blocks_blue(self, list_of_blocks:list):
+        animate_turn_blue = []
+
+        for each in list_of_blocks:
+            animate_turn_blue.extend([each.fade_blue()])
+
+        return AnimationGroup(
+            animate_turn_blue
+        )
+
+    def animate_these_blocks_red(self, list_of_blocks:list):
+        animate_turn_red = []
+
+        for each in list_of_blocks:
+            animate_turn_red.extend([each.fade_red()])
+
+        return AnimationGroup(
+            animate_turn_red
+        )
+
+
+    def adjust_block_color_by_longest_chain(self):
+        """
+        Returns animations to change block color depending on if they are part of the longest chain.
+        """
+        lists_of_past_blocks_of_tips = self.get_past_of_tips()
+        block_color_animations = []
+
+        if self.are_heaviest_two_tips_equal_weight():
+            block_color_animations.append(self.animate_these_blocks_red(lists_of_past_blocks_of_tips[0])) # TODO change back to blue, using red for testing
+            block_color_animations.append(self.animate_these_blocks_red(lists_of_past_blocks_of_tips[1]))
+            return AnimationGroup(
+                block_color_animations
+            )
+        else:
+            pass
+
+
+
+#        for each in lists_of_past_blocks_of_tips:
+#            each.sort(key=lambda x: x.weight)
+
+        return None # TODO change this to animations
+
+
 
 
     ####################
     # Get past/future/anticone and blink
     ####################
 
-    def blink_these_blocks(self, blocks_to_blink:list = []):
+    def blink_these_blocks(self, blocks_to_blink:list):
+        """
+        Returns an animation that blinks all blocks in the list provided.
+        """
         blink_these_animations = []
         current_list_to_blink = blocks_to_blink
 
@@ -817,8 +923,12 @@ class Bitcoin:
 
         return AnimationGroup(*blink_these_animations)
 
-    # returns group of blink animations on past of block at selected round
     def blink_past_of_random_block(self):
+        """
+        Returns an animation,
+        picks a block at random and blinks the reachable past,
+        while highlighting the block.
+        """
         random_block = choice(self.all_blocks)
         blink_past_animations = []
         current_list_to_blink = random_block.get_past()
@@ -829,8 +939,12 @@ class Bitcoin:
 
         return AnimationGroup(*blink_past_animations)
 
-    # returns group of blink animations on future of block at selected round
     def blink_future_of_random_block(self):
+        """
+        Returns an animation,
+        picks a block at random and blinks the reachable future,
+        while highlighting the block.
+        """
         random_block = choice(self.all_blocks)
         blink_future_animations = []
         current_list_to_blink = random_block.get_future()
@@ -841,8 +955,12 @@ class Bitcoin:
 
         return AnimationGroup(*blink_future_animations)
 
-    # returns group of blink animations on anticone of block at selected round
     def blink_anticone_of_random_block(self):
+        """
+        Returns an animation,
+        picks a block at random and blinks the anticone(unreachable blocks),
+        while highlighting the block.
+        """
         random_block = choice(self.all_blocks)
         blink_anticone_animations = []
 
@@ -870,7 +988,7 @@ class Bitcoin:
 
         return AnimationGroup(animations)
 
-    # TODO test this
+    # TODO rewrite this to use new functions created above
     ####################
     # Positioning Blocks in Bitcoin
     ####################
@@ -1319,6 +1437,9 @@ class BTCBlock(Square):
     ####################
 
     def get_future(self):
+        """
+        Returns an ordered list of the future blocks, sorted by weight
+        """
         future_of_this_block = []
         future_of_this_block.extend(self.children)
 
@@ -1326,9 +1447,15 @@ class BTCBlock(Square):
             future_of_this_block.extend(each.get_future())
 
         duplicates_removed = list(set(future_of_this_block))
-        return duplicates_removed
+
+        ordered_future = self.order_list_by_weight(duplicates_removed)
+
+        return ordered_future
 
     def get_past(self):
+        """
+        Returns an ordered list of the past blocks, sorted by weight
+        """
         past_of_this_block = []
         past_of_this_block.extend(self.mergeset)
 
@@ -1336,9 +1463,37 @@ class BTCBlock(Square):
             past_of_this_block.extend(each.get_past())
 
         duplicates_removed = list(set(past_of_this_block))
-        return duplicates_removed
+
+        ordered_past = self.order_list_by_weight(duplicates_removed)
+
+        return ordered_past
+
+    def get_self_inclusive_past(self):
+        """
+        Returns an ordered list of the past, self inclusive, blocks, sorted by weight
+        """
+        past_of_this_block = [self]
+        past_of_this_block.extend(self.mergeset)
+
+        for each in self.mergeset:
+            past_of_this_block.extend(each.get_past())
+
+        duplicates_removed = list(set(past_of_this_block))
+
+        ordered_past = self.order_list_by_weight(duplicates_removed)
+
+        return ordered_past
+
+
+    def order_list_by_weight(self, list_to_order:list):
+        list_to_order.sort(key=lambda x: x.weight)
+
+        return list_to_order
 
     def get_reachable(self):
+        """
+        Returns an ordered list of the reachable blocks, sorted by weight
+        """
         reachable = []
 
         reachable.extend(self.get_past())
@@ -1355,21 +1510,18 @@ class BTCBlock(Square):
     def get_number_of_blocks_in_reachable(self):
         return len(self.get_reachable())
 
-# TODO doublecheck this logic
     def is_from_fork(self):
         if self.is_fork:
             return True
 
         list_of_past_blocks = self.get_past()
 
-        for each in list_of_past_blocks:
+        for each in reversed(list_of_past_blocks):
             print(each.is_fork)
             if each.is_fork:
-                print("from fork")
                 return True
             else:
-                print("not from fork")
-                ...
+                pass
 
         return False
 
