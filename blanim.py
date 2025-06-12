@@ -48,31 +48,58 @@ class Block():
         self.DAG = DAG
         self.parents = [DAG.blocks[p.name] for p in parents]
         self.children = []
-#        self.rect = Rectangle(
-#            color      = color,
-#            fill_opacity    = 1,
-#            height          = h,
-#            width           = w,
-#        )
-        # currently breaks Block has no attribute "weight"
-#        self.selected_parent = None
-#        if len(self.parents) != 0:
-#            self.selected_parent = self.parents[0]
+        self.weight = self.calculate_weight_from_past()
+
+        self.rect = Rectangle(
+            color      = color,
+            fill_opacity    = 1,
+            height          = h,
+            width           = w,
+        )
+
+        self.selected_parent = None
+        if len(self.parents) != 0:
+            self.selected_parent = self.parents[0]
 
         # currently works, but does not take advantage of anything built into BlockMob
-        self.rect = BlockMob(
-            None
-        )
+#        self.rect = BlockMob(
+#            None
+#        )
+
         self.rect.move_to(pos)
+
+
         if label:
             self.label = Tex(label if label else name).set_z_index(1).scale(0.7)
             self.label.add_updater(lambda l: l.move_to(self.rect.get_center()), call_updater=True)
         else:
             self.label = None
 
+        self.label = Tex(self.weight).set_z_index(1).scale(0.7)
+        self.label.add_updater(lambda l: l.move_to(self.rect.get_center()), call_updater=True)
+
         for p in parents:
             DAG.blocks[p.name].children.append(self.name)
 
+
+    def calculate_weight_from_past(self):
+        """Calculate weight as the number of unique blocks in this block's past"""
+        visited = set()
+        self._collect_past_blocks(visited)
+        return len(visited) + 1  # +1 to include this block itself
+
+    def _collect_past_blocks(self, visited):
+        """Recursively collect all unique blocks in the past"""
+        for parent in self.parents:
+            if parent.name not in visited:
+                visited.add(parent.name)
+                parent._collect_past_blocks(visited)
+
+    def get_past_blocks(self):
+        """Public method to get all blocks in the past"""
+        visited = set()
+        self._collect_past_blocks(visited)
+        return visited
 
     def is_tip(self):
         return bool(self.children)
@@ -279,6 +306,145 @@ class LayerDAG(BlockDAG):
     def adjust_layers(self, chained=True):
         shifts = list(filter(None,[self.adjust_layer(layer) for layer in range(len(self.layers))]))
         return list(chain(*shifts)) if chained else shifts
+
+
+class GHOSTDAG(LayerDAG):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def add(self, name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs):
+        # Convert to list if string
+        if isinstance(parent_names, str):
+            parent_names = [parent_names]
+
+            # Use ALL parents passed to the method
+        selected_parent_names = parent_names
+
+        # Find the highest weight parent to use as the selected parent
+        if isinstance(parent_names, list) and len(parent_names) > 0:
+            heaviest_parent = None
+            max_weight = -1
+
+            for block_name in parent_names:
+                if block_name in self.blocks:
+                    block = self.blocks[block_name]
+                    # Get weight from block
+                    weight = getattr(block, 'weight', 0) if hasattr(block, 'weight') else 0
+                    print("weight ", weight)
+
+                    if weight > max_weight:
+                        max_weight = weight
+                        heaviest_parent = block_name
+
+                        # Set the heaviest parent as the selected parent
+            selected_parent = heaviest_parent if heaviest_parent else parent_names[0]
+
+            # Use LayerDAG's add method with ALL parents and the heaviest as selected
+        return super().add(name, selected_parent_names, selected_parent=selected_parent, random_sp=False, *args,
+                           **kwargs)
+
+    def highlight_random_block_and_past(self, scene):
+        """
+        Pick a random block and fade everything else to half opacity,
+        keeping only the selected block and its past visible
+        """
+        from random import choice
+
+        # Step 1: Pick a random block
+        if not self.blocks:
+            return
+
+        random_block_name = choice(list(self.blocks.keys()))
+        random_block = self.blocks[random_block_name]
+
+        # Step 2: Get all blocks in the past of the selected block
+        past_blocks = set()
+        if hasattr(random_block, 'get_past_blocks'):
+            past_blocks = random_block.get_past_blocks()
+        else:
+            past_blocks = self._get_past_blocks_recursive(random_block)
+
+            # Include the selected block itself
+        highlighted_blocks = past_blocks.copy()
+        highlighted_blocks.add(random_block_name)
+
+        # Step 3: Create animations to fade non-highlighted blocks and their outgoing pointers
+        animations = []
+
+        for block_name, block in self.blocks.items():
+            if block_name not in highlighted_blocks:
+                # Fade the block itself
+                animations.append(block.rect.animate.set_opacity(0.2))
+                if hasattr(block, 'label') and block.label:
+                    animations.append(block.label.animate.set_opacity(0.2))
+
+                    # Fade the block's incoming pointer (if it has one)
+                if hasattr(block, 'pointer') and block.pointer:
+                    animations.append(block.pointer.animate.set_opacity(0.2))
+
+                    # NEW: Fade all outgoing pointers from this faded block
+                for child_block_name in block.children:
+                    if child_block_name in self.blocks:
+                        child_block = self.blocks[child_block_name]
+                        if hasattr(child_block, 'pointer') and child_block.pointer:
+                            # Check if this pointer originates from the current faded block
+                            if hasattr(child_block.pointer,
+                                       'parent_block') and child_block.pointer.parent_block == block:
+                                animations.append(child_block.pointer.animate.set_opacity(0.2))
+
+                                # Step 4: Ensure highlighted blocks and their connections are at full opacity
+        for block_name in highlighted_blocks:
+            if block_name in self.blocks:
+                block = self.blocks[block_name]
+                animations.append(block.rect.animate.set_opacity(1.0))
+                if hasattr(block, 'label') and block.label:
+                    animations.append(block.label.animate.set_opacity(1.0))
+
+                    # Keep pointers between highlighted blocks at full opacity
+                if hasattr(block, 'pointer') and block.pointer:
+                    # Only keep at full opacity if the parent is also highlighted
+                    if hasattr(block.pointer, 'parent_block'):
+                        parent_name = block.pointer.parent_block.name
+                        if parent_name in highlighted_blocks:
+                            animations.append(block.pointer.animate.set_opacity(1.0))
+
+        return AnimationGroup(*animations)
+
+    def _get_past_blocks_recursive(self, block, visited=None):
+        """Helper method to recursively get all blocks in the past"""
+        if visited is None:
+            visited = set()
+
+        for parent in block.parents:
+            if parent.name not in visited:
+                visited.add(parent.name)
+                self._get_past_blocks_recursive(parent, visited)
+
+        return visited
+
+    def reset_all_opacity(self, scene):
+        """Reset all blocks and pointers to full opacity"""
+        animations = []
+
+        for block_name, block in self.blocks.items():
+            animations.append(block.rect.animate.set_opacity(1.0))
+            if hasattr(block, 'label') and block.label:
+                animations.append(block.label.animate.set_opacity(1.0))
+            if hasattr(block, 'pointer') and block.pointer:
+                animations.append(block.pointer.animate.set_opacity(1.0))
+
+        return AnimationGroup(*animations)
+
+    def get_tips(self, missed_blocks=0):
+        """Get tip blocks for parent selection, similar to LayerDAG"""
+        # This should return available tip blocks for parent selection
+        # You'll need to implement this based on your block structure
+        if hasattr(super(), 'get_tips'):
+            return super().get_tips(missed_blocks)
+        else:
+            # Fallback implementation
+            tips = [name for name, block in self.blocks.items() if block.is_tip()]
+            return tips
 
 class Miner():
     def __init__(self, scene, x=0 , y=0, attempts = 20):

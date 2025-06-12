@@ -32,20 +32,66 @@ class RandomDAG(Scene):
     BLOCKS = 20
     DAG_WIDTH = 5
     MAX_BLOCKS_PER_BATCH = 2 #doesn't affect resulting DAG, just the animation
+
     def construct(self):
         blocks = self.BLOCKS
+
         LD = LayerDAG(width=self.DAG_WIDTH, block_w = BLOCK_W*0.75, block_h = BLOCK_H*0.75)
+
         self.play(LD.init_animation)
+
         safe_play(self, LD.adjust_layers())
+
         i = 0
         while blocks > 0:
             i += 1
+
             batch_size = randint(1,min(self.MAX_BLOCKS_PER_BATCH,blocks))
+
             blocks -= batch_size
+
             self.play(
                 *[LD.add("V%d%d"%(i,j),LD.get_tips(missed_blocks=poi(lam=self.AVG_AC)),random_sp=True) for j in range(batch_size)]
                       )
             safe_play(self, LD.adjust_layers())
+
+        self.wait(3)
+
+
+class GHOSTDAGScene(Scene):
+    AVG_AC = 4
+    BLOCKS = 20
+    DAG_WIDTH = 5
+    MAX_BLOCKS_PER_BATCH = 2
+
+    def construct(self):
+        blocks = self.BLOCKS
+
+        GD = GHOSTDAG(width=self.DAG_WIDTH, block_w=BLOCK_W * 0.75, block_h=BLOCK_H * 0.75)
+
+        self.play(GD.init_animation)
+        safe_play(self, GD.adjust_layers())
+
+        i = 0
+        while blocks > 0:
+            i += 1
+            batch_size = randint(1, min(self.MAX_BLOCKS_PER_BATCH, blocks))
+            blocks -= batch_size
+
+            # Use GHOSTDAG's weight-based parent selection
+            self.play(
+                *[GD.add("V%d%d" % (i, j), GD.get_tips(missed_blocks=poi(lam=self.AVG_AC)), random_sp=False)
+                  for j in range(batch_size)]
+            )
+            safe_play(self, GD.adjust_layers())
+
+        self.play(GD.highlight_random_block_and_past(self))
+        self.wait(2)
+
+        # Reset to normal
+        self.play(GD.reset_all_opacity(self))
+        self.wait(1)
+        self.wait(3)
 
 class BlinkTest(Scene):
     AVG_AC = 5
