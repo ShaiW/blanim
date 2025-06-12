@@ -49,6 +49,7 @@ class Block():
         self.parents = [DAG.blocks[p.name] for p in parents]
         self.children = []
         self.weight = self.calculate_weight_from_past()
+        self.outgoing_arrows = []
 
         self.rect = Rectangle(
             color      = color,
@@ -200,7 +201,18 @@ class BlockDAG():
             return {"start":s, "end":e}
 
         a.put_start_and_end_on(**get_start_end())
-        return GrowArrowUpdater(a,lambda a: a.put_start_and_end_on(**get_start_end()))
+
+        # Create the arrow updater
+        arrow_updater = GrowArrowUpdater(a, lambda a: a.put_start_and_end_on(**get_start_end()))
+
+        # Store the actual arrow (not the updater) in outgoing_arrows with source/target info
+        a.source_block = f
+        a.target_block = t
+
+        if hasattr(f, 'outgoing_arrows'):
+            f.outgoing_arrows.append(a)  # Store the actual arrow, not the updater
+
+        return arrow_updater
     
     ## combinatorics
 
@@ -345,70 +357,46 @@ class GHOSTDAG(LayerDAG):
 
     def highlight_random_block_and_past(self, scene):
         """
-        Pick a random block and fade everything else to half opacity,
+        Pick a random block and instantly set opacity for everything else,
         keeping only the selected block and its past visible
         """
         from random import choice
 
-        # Step 1: Pick a random block
         if not self.blocks:
             return
 
         random_block_name = choice(list(self.blocks.keys()))
         random_block = self.blocks[random_block_name]
 
-        # Step 2: Get all blocks in the past of the selected block
         past_blocks = set()
         if hasattr(random_block, 'get_past_blocks'):
             past_blocks = random_block.get_past_blocks()
         else:
             past_blocks = self._get_past_blocks_recursive(random_block)
 
-            # Include the selected block itself
         highlighted_blocks = past_blocks.copy()
         highlighted_blocks.add(random_block_name)
 
-        # Step 3: Create animations to fade non-highlighted blocks and their outgoing pointers
-        animations = []
-
+        # No animations list needed, as we're setting properties directly
         for block_name, block in self.blocks.items():
             if block_name not in highlighted_blocks:
-                # Fade the block itself
-                animations.append(block.rect.animate.set_opacity(0.2))
+                block.rect.set_opacity(0.2)
                 if hasattr(block, 'label') and block.label:
-                    animations.append(block.label.animate.set_opacity(0.2))
-
-                    # Fade the block's incoming pointer (if it has one)
-                if hasattr(block, 'pointer') and block.pointer:
-                    animations.append(block.pointer.animate.set_opacity(0.2))
-
-                    # NEW: Fade all outgoing pointers from this faded block
-                for child_block_name in block.children:
-                    if child_block_name in self.blocks:
-                        child_block = self.blocks[child_block_name]
-                        if hasattr(child_block, 'pointer') and child_block.pointer:
-                            # Check if this pointer originates from the current faded block
-                            if hasattr(child_block.pointer,
-                                       'parent_block') and child_block.pointer.parent_block == block:
-                                animations.append(child_block.pointer.animate.set_opacity(0.2))
-
-                                # Step 4: Ensure highlighted blocks and their connections are at full opacity
-        for block_name in highlighted_blocks:
-            if block_name in self.blocks:
-                block = self.blocks[block_name]
-                animations.append(block.rect.animate.set_opacity(1.0))
+                    block.label.set_opacity(0.2)
+                if hasattr(block, 'outgoing_arrows'):
+                    for arrow in block.outgoing_arrows:
+                        arrow.set_opacity(0.2)
+            else:
+                block.rect.set_opacity(1.0)
                 if hasattr(block, 'label') and block.label:
-                    animations.append(block.label.animate.set_opacity(1.0))
+                    block.label.set_opacity(1.0)
+                if hasattr(block, 'outgoing_arrows'):
+                    for arrow in block.outgoing_arrows:
+                        if hasattr(arrow, 'target_block') and arrow.target_block.name in highlighted_blocks:
+                            arrow.set_opacity(1.0)
 
-                    # Keep pointers between highlighted blocks at full opacity
-                if hasattr(block, 'pointer') and block.pointer:
-                    # Only keep at full opacity if the parent is also highlighted
-                    if hasattr(block.pointer, 'parent_block'):
-                        parent_name = block.pointer.parent_block.name
-                        if parent_name in highlighted_blocks:
-                            animations.append(block.pointer.animate.set_opacity(1.0))
-
-        return AnimationGroup(*animations)
+                            # Return an empty AnimationGroup or None if no animations are desired
+        return AnimationGroup(Wait(0.1))
 
     def _get_past_blocks_recursive(self, block, visited=None):
         """Helper method to recursively get all blocks in the past"""
@@ -423,17 +411,21 @@ class GHOSTDAG(LayerDAG):
         return visited
 
     def reset_all_opacity(self, scene):
-        """Reset all blocks and pointers to full opacity"""
-        animations = []
-
+        """Reset all blocks and pointers to full opacity instantly."""
+        # No animations list needed, as we're setting properties directly
         for block_name, block in self.blocks.items():
-            animations.append(block.rect.animate.set_opacity(1.0))
+            block.rect.set_opacity(1.0)
             if hasattr(block, 'label') and block.label:
-                animations.append(block.label.animate.set_opacity(1.0))
+                block.label.set_opacity(1.0)
+                # Assuming 'pointer' refers to the incoming arrow, and 'outgoing_arrows' are also tracked
             if hasattr(block, 'pointer') and block.pointer:
-                animations.append(block.pointer.animate.set_opacity(1.0))
+                block.pointer.set_opacity(1.0)
+            if hasattr(block, 'outgoing_arrows'):
+                for arrow in block.outgoing_arrows:
+                    arrow.set_opacity(1.0)
 
-        return AnimationGroup(*animations)
+                    # Return an empty AnimationGroup or None if no animations are desired
+        return AnimationGroup(Wait(0.1))
 
     def get_tips(self, missed_blocks=0):
         """Get tip blocks for parent selection, similar to LayerDAG"""
