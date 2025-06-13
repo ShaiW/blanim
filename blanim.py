@@ -9,6 +9,8 @@ from typing_extensions import runtime
 from common import *
 import string
 import math
+import numpy as np
+import random
 
 BLOCK_H = 0.4
 BLOCK_W = 0.4
@@ -105,15 +107,24 @@ class Block():
     def is_tip(self):
         return bool(self.children)
 
-class BlockDAG():
+
+class BlockDAG:
+    """A Directed Acyclic Graph visualization system for blockchain-like structures."""
 
     blocks: Dict[str, Block]
-    history: List[str]
-    block_color : ManimColor
+    history: List[List[str]]  # History of tip states
+    block_color: ManimColor
     block_w: float
     block_h: float
 
-    def __init__(self, history_size = 20, block_color = BLUE, block_w=BLOCK_W, block_h=BLOCK_H):
+    def __init__(
+            self,
+            history_size: int = 20,
+            block_color: ManimColor = BLUE,
+            block_w: float = BLOCK_W,
+            block_h: float = BLOCK_H
+    ):
+        """Initialize the BlockDAG with configuration parameters."""
         self.blocks = {}
         self.history = []
         self.history_size = history_size
@@ -121,146 +132,232 @@ class BlockDAG():
         self.block_h = block_h
         self.block_w = block_w
 
-    ## construction
+        ## Construction Methods
 
-    def add(self, name, pos, parents = [], **kwargs):
-        #label = None, color=block_color, w=BLOCK_W, h=BLOCK_H
-        kwargs.setdefault("label",None)
-        kwargs.setdefault("color",self.block_color)
-        kwargs.setdefault("w",self.block_w)
-        kwargs.setdefault("h",self.block_h)
+    def add(self, name: str, pos: list, parents: list = [], **kwargs):
+        """Add a new block to the DAG with animations."""
+        # Set default values
+        self._set_default_kwargs(kwargs)
 
-        anims = []
-        pos = pos+[0]
+        # Validate and prepare data
+        self._validate_new_block(name)
+        pos = self._normalize_position(pos)
+        parents = self._normalize_parents(parents)
 
-        assert(not name in self.blocks)
-        
-        parents = list(map(lambda p: Parent(p) if type(p) is str else p, parents))
+        # Create the block
+        block = Block(name, self, parents, pos, **kwargs)
 
-        B = Block(name, self, parents, pos, **kwargs)
+        # Generate animations and update state
+        animations = self._create_block_animations(block, parents)
+        self._register_block(name, block)
+        self._update_history()
 
-        anims = [FadeIn(B.rect)] + \
-                ([FadeIn(B.label)] if B.label else []) + \
-                [self.add_arrow(B,self.blocks[p.name],**p.kwargs) for p in parents]
-        
-        self.blocks[name] = B
+        return animations
 
-        self.history.insert(0,self._get_tips())
-        if len(self.history)  > self.history_size:
+    def _set_default_kwargs(self, kwargs: dict):
+        """Set default values for block creation."""
+        kwargs.setdefault("label", None)
+        kwargs.setdefault("color", self.block_color)
+        kwargs.setdefault("w", self.block_w)
+        kwargs.setdefault("h", self.block_h)
+
+    def _validate_new_block(self, name: str):
+        """Ensure the block name doesn't already exist."""
+        assert name not in self.blocks, f"Block '{name}' already exists"
+
+    def _normalize_position(self, pos: list) -> list:
+        """Ensure position has 3D coordinates."""
+        return pos + [0]
+
+    def _normalize_parents(self, parents: list) -> list:
+        """Convert parent names to Parent objects."""
+        return [Parent(p) if isinstance(p, str) else p for p in parents]
+
+    def _create_block_animations(self, block: Block, parents: list) -> list:
+        """Create all animations for adding a block."""
+        animations = [FadeIn(block.rect)]
+
+        if block.label:
+            animations.append(FadeIn(block.label))
+
+            # Add arrow animations for each parent
+        for parent in parents:
+            arrow_anim = self.add_arrow(block, self.blocks[parent.name], **parent.kwargs)
+            animations.append(arrow_anim)
+
+        return animations
+
+    def _register_block(self, name: str, block: Block):
+        """Add the block to the DAG."""
+        self.blocks[name] = block
+
+    def _update_history(self):
+        """Update the history with current tips."""
+        self.history.insert(0, self._get_tips())
+        if len(self.history) > self.history_size:
             self.history.pop()
 
-        return anims
-
-    def random_block(self):
+    def random_block(self) -> str:
+        """Get a random block name from the DAG."""
         return choice(list(self.blocks.keys()))
 
-    def add_arrow(self, f :Block, t :Block, **kwargs):
+        ## Arrow Creation Methods
 
-        # For some reason ArrowUpdater gets crazy if you add it before initing the arrow
-        # This hack solves it
+    def add_arrow(self, from_block: Block, to_block: Block, **kwargs):
+        """Create an arrow between two blocks with automatic positioning."""
+        # Set arrow defaults
+        self._set_arrow_defaults(kwargs)
+
+        # Create arrow with positioning
+        arrow = self._create_positioned_arrow(from_block, to_block, **kwargs)
+
+        # Set up arrow tracking
+        self._setup_arrow_tracking(arrow, from_block, to_block)
+
+        # Create updater animation
+        return self._create_arrow_updater(arrow, from_block, to_block)
+
+    def _set_arrow_defaults(self, kwargs: dict):
+        """Set default arrow styling."""
+        defaults = {
+            "buff": 0,
+            "stroke_width": 2,
+            "tip_shape": StealthTip,
+            "max_tip_length_to_length_ratio": 0.04,
+            "color": WHITE
+        }
+        for key, value in defaults.items():
+            kwargs.setdefault(key, value)
+
+    def _create_positioned_arrow(self, from_block: Block, to_block: Block, **kwargs) -> Arrow:
+        """Create an arrow with optimal positioning between blocks."""
+        arrow = Arrow(**kwargs)
+
+        def get_start_end():
+            return self._calculate_arrow_endpoints(from_block, to_block)
+
+        arrow.put_start_and_end_on(**get_start_end())
+        return arrow
+
+    def _calculate_arrow_endpoints(self, from_block: Block, to_block: Block) -> dict:
+        """Calculate optimal start and end points for arrow between blocks."""
+        # Get block boundaries
+        from_rect = from_block.rect
+        to_rect = to_block.rect
+
+        # Calculate positions
+        from_left, from_right = from_rect.get_left()[0], from_rect.get_right()[0]
+        to_left, to_right = to_rect.get_left()[0], to_rect.get_right()[0]
+        from_top, from_bottom = from_rect.get_top()[1], from_rect.get_bottom()[1]
+        to_top, to_bottom = to_rect.get_top()[1], to_rect.get_bottom()[1]
+
+        # Default to horizontal connection
+        start = from_rect.get_left()
+        end = to_rect.get_right()
+
+        # Adjust for horizontal overlap
+        if to_right - from_left > 0:
+            start = from_rect.get_right()
+            end = to_rect.get_left()
+
+            # Check if vertical connection is better
+        horizontal_overlap = max(to_right - from_left, from_right - to_left)
+        vertical_overlap = max(to_bottom - from_top, from_bottom - to_top)
+
+        if horizontal_overlap < vertical_overlap:
+            if to_bottom - from_top > from_bottom - to_top:
+                start = from_rect.get_top()
+                end = to_rect.get_bottom()
+            else:
+                start = from_rect.get_bottom()
+                end = to_rect.get_top()
+
+        return {"start": start, "end": end}
+
+    def _setup_arrow_tracking(self, arrow: Arrow, from_block: Block, to_block: Block):
+        """Set up arrow tracking information."""
+        arrow.source_block = from_block
+        arrow.target_block = to_block
+
+        if hasattr(from_block, 'outgoing_arrows'):
+            from_block.outgoing_arrows.append(arrow)
+
+    def _create_arrow_updater(self, arrow: Arrow, from_block: Block, to_block: Block):
+        """Create the arrow updater animation."""
+
         class GrowArrowUpdater(GrowArrow):
-
-            def __init__(self, a, u, **kwargs):
-                super().__init__(a, **kwargs)
-                self.a = a
-                self.u = u
+            def __init__(self, arrow, updater_func, **kwargs):
+                super().__init__(arrow, **kwargs)
+                self.arrow = arrow
+                self.updater_func = updater_func
 
             def __del__(self):
-                self.a.add_updater(self.u)
+                self.arrow.add_updater(self.updater_func)
 
-        kwargs.setdefault("buff",0)
-        kwargs.setdefault("stroke_width",2)
-        kwargs.setdefault("tip_shape",StealthTip)
-        kwargs.setdefault("max_tip_length_to_length_ratio",0.04)
-        kwargs.setdefault("color",WHITE)
-        a = Arrow(**kwargs)
-        # if "z_index" in kwargs:
-        #     a.set_z_index(kwargs["z_index"])
-        
-        def get_start_end():
-            fl = f.rect.get_left()[0]
-            fr = f.rect.get_right()[0]
-            tl = t.rect.get_left()[0]
-            tr = t.rect.get_right()[0]
-            ft = f.rect.get_top()[1]
-            fb = f.rect.get_bottom()[1]
-            tt = t.rect.get_top()[1]
-            tb = t.rect.get_bottom()[1]
-            s = f.rect.get_left()
-            e = t.rect.get_right()
-            if tr - fl > 0:
-                s = f.rect.get_right()
-                e = t.rect.get_left()
-            if max(tr-fl,fr-tl) < max(tb-ft,fb-tt):
-                if tb-ft > fb-tt:
-                    s = f.rect.get_top()
-                    e = t.rect.get_bottom()
-                else:
-                    s = f.rect.get_bottom()
-                    e = t.rect.get_top()
-            return {"start":s, "end":e}
+        updater_func = lambda a: a.put_start_and_end_on(
+            **self._calculate_arrow_endpoints(from_block, to_block)
+        )
 
-        a.put_start_and_end_on(**get_start_end())
+        return GrowArrowUpdater(arrow, updater_func)
 
-        # Create the arrow updater
-        arrow_updater = GrowArrowUpdater(a, lambda a: a.put_start_and_end_on(**get_start_end()))
+        ## Combinatorics Methods
 
-        # Store the actual arrow (not the updater) in outgoing_arrows with source/target info
-        a.source_block = f
-        a.target_block = t
+    def get_future(self, block_name: str) -> list[str]:
+        """Get all blocks in the future of the given block."""
+        future_blocks = []
+        self._collect_future_blocks(block_name, future_blocks)
+        return future_blocks
 
-        if hasattr(f, 'outgoing_arrows'):
-            f.outgoing_arrows.append(a)  # Store the actual arrow, not the updater
+    def _collect_future_blocks(self, block_name: str, visited: list[str]):
+        """Recursively collect all blocks in the future."""
+        if block_name not in visited:
+            visited.append(block_name)
+            for child_name in self.blocks[block_name].children:
+                self._collect_future_blocks(child_name, visited)
 
-        return arrow_updater
-    
-    ## combinatorics
+    def get_tips(self, missed_blocks: int = 0) -> list[str]:
+        """Get the tips from history at a specific point in time."""
+        return self.history[min(missed_blocks, len(self.history) - 1)]
 
-    def get_future(self, B):
-        f = []
-
-        def _calc_future(A):
-            if not (A in f):
-                f.append(A)
-                [_calc_future(C) for C in self.blocks[A].children]
-
-        _calc_future(B)
-
-        return f
-        
-
-
-    def get_tips(self, missed_blocks = 0):
-        return self.history[min(missed_blocks,len(self.history)-1)]
-
-    def _get_tips(self):
+    def _get_tips(self) -> list[str]:
+        """Get current tip blocks (blocks with no children)."""
         tips = list(filter(lambda x: not self.blocks[x].is_tip(), self.blocks.keys()))
         return tips
-    
-    ## transformations
 
-    def shift(self, name, offset, rate_func=DEF_RATE_FUNC, run_time=DEF_RUN_TIME):
+        ## Transformation Methods
+
+    def shift(self, name: str, offset: list, rate_func=DEF_RATE_FUNC, run_time=DEF_RUN_TIME):
+        """Create a shift animation for a block."""
         rects = self._name_to_rect(name)
         return Transform(rects, rects.copy().shift(offset + [0]), rate_func=rate_func, run_time=run_time)
-    
-    def change_color(self, blocks: str | list[str], color):
-        if type(blocks) is str:
+
+    def change_color(self, blocks: str | list[str], color: ManimColor) -> list:
+        """Create color change animations for blocks."""
+        if isinstance(blocks, str):
             blocks = [blocks]
         return [FadeToColor(rect, color=color) for rect in self._name_to_rect(blocks)]
 
-    ## gestures
-    def blink(self, B):
-        if type(B) is str:    
-            rect = self._name_to_rect(B)
-            rect_color = rect.color
-            return Succession(FadeToColor(rect, color=YELLOW, run_time=0.2),FadeToColor(rect, color=rect_color))
-        return [self.blink(b) for b in B]
+        ## Gesture Methods
 
-    
-    ## utility
-    
-    def _name_to_rect(self, name : str | list[str]):
-        return self.blocks[name].rect if type(name) is str else VGroup(*[self.blocks[b].rect for b in name])
+    def blink(self, block_names: str | list[str]):
+        """Create a blink animation for blocks."""
+        if isinstance(block_names, str):
+            rect = self._name_to_rect(block_names)
+            rect_color = rect.color
+            return Succession(
+                FadeToColor(rect, color=YELLOW, run_time=0.2),
+                FadeToColor(rect, color=rect_color)
+            )
+        return [self.blink(b) for b in block_names]
+
+        ## Utility Methods
+
+    def _name_to_rect(self, name: str | list[str]):
+        """Convert block name(s) to rectangle mobject(s)."""
+        if isinstance(name, str):
+            return self.blocks[name].rect
+        else:
+            return VGroup(*[self.blocks[b].rect for b in name])
     
     
 class LayerDAG(BlockDAG):
@@ -279,41 +376,94 @@ class LayerDAG(BlockDAG):
         self.block_spacing = block_spacing
         self.width = width
 
-    def add(self, name, parent_names, selected_parent=None, random_sp = False, *args, **kwargs):
-        layer = 0
-        top_parent_layer = 0
-        if type(parent_names) is str:
+    def add(self, name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs):
+        # Normalize parent_names to list
+        if isinstance(parent_names, str):
             parent_names = [parent_names]
-        for i in range(len(self.layers)):
-            if any(b in self.layers[i] for b in parent_names):
-                top_parent_layer = i
-        for i in range(top_parent_layer+1,len(self.layers)):
-            if len(self.layers[i]) < self.width - ((i+1)%2):
-                layer = i
-                break
-        if layer <= top_parent_layer: #all layers above top parent are full
-            layer = len(self.layers)
-        layer_top = -self.chain_spacing
-        if layer == len(self.layers):
-            self.layers.append([name])
-        else:
-            layer_top = self.blocks[self.layers[layer][-1]].rect.get_center()[1]
-            self.layers[layer].append(name)
-        pos = [layer*self.layer_spacing+self.gen_pos[0],layer_top+self.chain_spacing]
-        if random_sp:
-            selected_parent = choice(parent_names)
-        parents = [Parent(p,color=BLUE,stroke_width=3,z_index=-1) if p == selected_parent else Parent(p,z_index=-2) for p in parent_names]
+
+            # Find appropriate layer
+        top_parent_layer = self._find_top_parent_layer(parent_names)
+        target_layer = self._find_available_layer(top_parent_layer)
+
+        # Calculate position and update layer structure
+        pos = self._calculate_layer_position(target_layer)
+        self.layers[target_layer].append(name)
+
+        # Process parents with styling
+        parents = self._process_parents(parent_names, selected_parent, random_sp)
+
+        # Delegate to parent class
         return super().add(name, pos, parents=parents, *args, **kwargs)
-    
-    def adjust_layer(self,layer):
-        if layer >= len(self.layers): #empty layer
+
+    def _process_parents(self, parent_names: list[str], selected_parent: str = None, random_sp: bool = False) -> list:
+        """Process parent names and create Parent objects with appropriate styling."""
+        if random_sp and parent_names:
+            selected_parent = choice(parent_names)
+
+        parents = []
+        for parent_name in parent_names:
+            if parent_name == selected_parent:
+                parents.append(Parent(parent_name, color=BLUE, stroke_width=3, z_index=-1))
+            else:
+                parents.append(Parent(parent_name, z_index=-2))
+
+        return parents
+
+    def _find_top_parent_layer(self, parent_names: list[str]) -> int:
+        """Find the topmost layer containing any parent block."""
+        top_parent_layer = 0
+        for i in range(len(self.layers)):
+            if any(block_name in self.layers[i] for block_name in parent_names):
+                top_parent_layer = i
+        return top_parent_layer
+
+    def _find_available_layer(self, top_parent_layer: int) -> int:
+        """Find the next available layer for block placement."""
+        # Check existing layers for space
+        for i in range(top_parent_layer + 1, len(self.layers)):
+            if len(self.layers[i]) < self.width - ((i + 1) % 2):
+                return i
+
+                # All layers are full, need a new one
+        return len(self.layers)
+
+    def _calculate_layer_position(self, layer: int) -> list[float]:
+        """Calculate the position for a block in the given layer."""
+        layer_top = -self.chain_spacing
+
+        if layer == len(self.layers):
+            # New layer
+            self.layers.append([])
+        else:
+            # Existing layer - get position from last block
+            last_block_name = self.layers[layer][-1]
+            layer_top = self.blocks[last_block_name].rect.get_center()[1]
+
+        x_pos = layer * self.layer_spacing + self.gen_pos[0]
+        y_pos = layer_top + self.chain_spacing
+        return [x_pos, y_pos]
+
+    def adjust_layer(self, layer_index: int):
+        """Adjust vertical positioning of blocks in a specific layer."""
+        if layer_index >= len(self.layers):
             return None
-        top = self.blocks[self.layers[layer][-1]].rect.get_center()[1]
-        bot = self.blocks[self.layers[layer][0]].rect.get_center()[1]
-        shift = abs(top-bot)/2 - top
-        if shift == 0:
-            return None #layer already adjusted
-        return [self.shift(b,[0,shift]) for b in self.layers[layer]]
+
+        layer_blocks = self.layers[layer_index]
+        if not layer_blocks:
+            return None
+
+            # Calculate current bounds
+        top_y = self.blocks[layer_blocks[-1]].rect.get_center()[1]
+        bottom_y = self.blocks[layer_blocks[0]].rect.get_center()[1]
+
+        # Calculate needed shift to center the layer
+        center_shift = abs(top_y - bottom_y) / 2 - top_y
+
+        if center_shift == 0:
+            return None  # Already centered
+
+        # Return shift animations for all blocks in layer
+        return [self.shift(block_name, [0, center_shift]) for block_name in layer_blocks]
 
     def adjust_layers(self, chained=True):
         shifts = list(filter(None,[self.adjust_layer(layer) for layer in range(len(self.layers))]))
