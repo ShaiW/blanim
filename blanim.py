@@ -30,47 +30,42 @@ def safe_play(scene, anims):
     if anims:
         scene.play(anims)
 
-class Parent():
+class Parent:
     def __init__(self, name, **kwargs):
         self.name = name
         self.kwargs = kwargs
 
-class Block():
+class Block:
 
     parents: list[Self]
     children: list[Self]
     rect: Rectangle
     label: Tex
-    
-    def __init__(self, name, DAG, parents, pos, label = None, color  = BLUE, h = BLOCK_H, w = BLOCK_W):
 
+    def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
         self.name = name
         self.width = w
         self.height = h
         self.DAG = DAG
         self.parents = [DAG.blocks[p.name] for p in parents]
         self.children = []
-        self.weight = self.calculate_weight_from_past()
+
+        # Cache past blocks - calculated only once
+        self.past_blocks = self._calculate_past_blocks()
+        self.weight = len(self.past_blocks) + 1
         self.outgoing_arrows = []
 
         self.rect = Rectangle(
-            color      = color,
-            fill_opacity    = 1,
-            height          = h,
-            width           = w,
+            color=color,
+            fill_opacity=1,
+            height=h,
+            width=w,
         )
 
-        self.selected_parent = None
-        if len(self.parents) != 0:
-            self.selected_parent = self.parents[0]
-
-        # currently works, but does not take advantage of anything built into BlockMob
-#        self.rect = BlockMob(
-#            None
-#        )
+        # Smart parent selection based on blue blocks
+        self.selected_parent = self._select_parent_with_most_blue_blocks()
 
         self.rect.move_to(pos)
-
 
         if label:
             self.label = Tex(label if label else name).set_z_index(1).scale(0.7)
@@ -84,12 +79,11 @@ class Block():
         for p in parents:
             DAG.blocks[p.name].children.append(self.name)
 
-
-    def calculate_weight_from_past(self):
-        """Calculate weight as the number of unique blocks in this block's past"""
+    def _calculate_past_blocks(self):
+        """Calculate and cache the set of blocks in this block's past (calculated only once)"""
         visited = set()
         self._collect_past_blocks(visited)
-        return len(visited) + 1  # +1 to include this block itself
+        return visited
 
     def _collect_past_blocks(self, visited):
         """Recursively collect all unique blocks in the past"""
@@ -99,10 +93,40 @@ class Block():
                 parent._collect_past_blocks(visited)
 
     def get_past_blocks(self):
-        """Public method to get all blocks in the past"""
-        visited = set()
-        self._collect_past_blocks(visited)
-        return visited
+        """Public method to get all blocks in the past (returns cached result)"""
+        return self.past_blocks
+
+    def _select_parent_with_most_blue_blocks(self):
+        """Select the parent with the most blue blocks in its past"""
+        if not self.parents:
+            return None
+
+        best_parent = None
+        max_blue_count = -1
+
+        for parent in self.parents:
+            blue_count = self._count_blue_blocks_in_past(parent)
+            if blue_count > max_blue_count:
+                max_blue_count = blue_count
+                best_parent = parent
+
+        return best_parent
+
+    def _count_blue_blocks_in_past(self, block):
+        """Count the number of blue blocks in the given block's past"""
+        blue_count = 0
+
+        # Count the block itself if it's blue
+        if hasattr(block, 'rect') and block.rect.color == BLUE:
+            blue_count += 1
+
+            # Count blue blocks in its past
+        for past_block_name in block.get_past_blocks():
+            past_block = self.DAG.blocks[past_block_name]
+            if hasattr(past_block, 'rect') and past_block.rect.color == BLUE:
+                blue_count += 1
+
+        return blue_count
 
     def is_tip(self):
         return bool(self.children)
@@ -182,7 +206,20 @@ class BlockDAG:
 
             # Add arrow animations for each parent
         for parent in parents:
-            arrow_anim = self.add_arrow(block, self.blocks[parent.name], **parent.kwargs)
+            parent_block = self.blocks[parent.name]
+
+            # Determine arrow styling based on whether this is the selected parent
+            arrow_kwargs = parent.kwargs.copy()  # Start with parent's kwargs
+
+            if parent_block == block.selected_parent:
+                # Override with blue styling for selected parent
+                arrow_kwargs.update({
+                    "color": BLUE,
+                    "stroke_width": 3,
+                    "z_index": -1  # Bring selected parent arrow to front
+                })
+
+            arrow_anim = self.add_arrow(block, parent_block, **arrow_kwargs)
             animations.append(arrow_anim)
 
         return animations
@@ -402,10 +439,8 @@ class LayerDAG(BlockDAG):
 
         parents = []
         for parent_name in parent_names:
-            if parent_name == selected_parent:
-                parents.append(Parent(parent_name, color=BLUE, stroke_width=3, z_index=-1))
-            else:
-                parents.append(Parent(parent_name, z_index=-2))
+            # Remove the blue styling logic - let the smart selection handle it
+            parents.append(Parent(parent_name, z_index=-2))
 
         return parents
 
