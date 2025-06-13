@@ -5,6 +5,7 @@ from manim import *
 from itertools import chain
 from numpy import array
 from typing_extensions import runtime
+from abc import ABC, abstractmethod
 
 from common import *
 import string
@@ -35,13 +36,8 @@ class Parent:
         self.name = name
         self.kwargs = kwargs
 
-class Block:
 
-    parents: list[Self]
-    children: list[Self]
-    rect: Rectangle
-    label: Tex
-
+class Block(ABC):
     def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
         self.name = name
         self.width = w
@@ -49,6 +45,7 @@ class Block:
         self.DAG = DAG
         self.parents = [DAG.blocks[p.name] for p in parents]
         self.children = []
+        self.hash = id(self)
 
         # Cache past blocks - calculated only once
         self.past_blocks = self._calculate_past_blocks()
@@ -62,8 +59,8 @@ class Block:
             width=w,
         )
 
-        # Smart parent selection based on blue blocks
-        self.selected_parent = self._select_parent_with_most_blue_blocks()
+        # Each block type implements its own parent selection
+        self.selected_parent = self._select_parent()
 
         self.rect.move_to(pos)
 
@@ -79,57 +76,65 @@ class Block:
         for p in parents:
             DAG.blocks[p.name].children.append(self.name)
 
+    @abstractmethod
+    def _select_parent(self):
+        """Each block type must implement its own parent selection logic"""
+        pass
+
+        # Common methods remain the same
+
     def _calculate_past_blocks(self):
-        """Calculate and cache the set of blocks in this block's past (calculated only once)"""
         visited = set()
         self._collect_past_blocks(visited)
         return visited
 
     def _collect_past_blocks(self, visited):
-        """Recursively collect all unique blocks in the past"""
         for parent in self.parents:
             if parent.name not in visited:
                 visited.add(parent.name)
                 parent._collect_past_blocks(visited)
 
     def get_past_blocks(self):
-        """Public method to get all blocks in the past (returns cached result)"""
         return self.past_blocks
 
-    def _select_parent_with_most_blue_blocks(self):
-        """Select the parent with the most blue blocks in its past"""
+    def is_tip(self):
+        return bool(self.children)
+
+
+class GhostDAGBlock(Block):
+    """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
+
+    def _select_parent(self):
         if not self.parents:
             return None
 
         best_parent = None
-        max_blue_count = -1
+        max_weight = -1
+        best_hash = None
 
         for parent in self.parents:
-            blue_count = self._count_blue_blocks_in_past(parent)
-            if blue_count > max_blue_count:
-                max_blue_count = blue_count
+            weight = getattr(parent, 'weight', 0)
+            parent_hash = getattr(parent, 'hash', 2 ** 32)  # fallback for blocks without hash
+
+            # Select parent with highest weight, breaking ties by lowest hash
+            if (weight > max_weight or
+                    (weight == max_weight and parent_hash < best_hash)):
+                max_weight = weight
                 best_parent = parent
+                best_hash = parent_hash
 
         return best_parent
 
-    def _count_blue_blocks_in_past(self, block):
-        """Count the number of blue blocks in the given block's past"""
-        blue_count = 0
 
-        # Count the block itself if it's blue
-        if hasattr(block, 'rect') and block.rect.color == BLUE:
-            blue_count += 1
+class RandomBlock(Block):
+    """Block that randomly selects a parent"""
 
-            # Count blue blocks in its past
-        for past_block_name in block.get_past_blocks():
-            past_block = self.DAG.blocks[past_block_name]
-            if hasattr(past_block, 'rect') and past_block.rect.color == BLUE:
-                blue_count += 1
+    def _select_parent(self):
+        if not self.parents:
+            return None
 
-        return blue_count
-
-    def is_tip(self):
-        return bool(self.children)
+        from random import choice
+        return choice(self.parents)
 
 
 class BlockDAG:
@@ -146,7 +151,8 @@ class BlockDAG:
             history_size: int = 20,
             block_color: ManimColor = BLUE,
             block_w: float = BLOCK_W,
-            block_h: float = BLOCK_H
+            block_h: float = BLOCK_H,
+            block_type: type = RandomBlock
     ):
         """Initialize the BlockDAG with configuration parameters."""
         self.blocks = {}
@@ -155,11 +161,10 @@ class BlockDAG:
         self.block_color = block_color
         self.block_h = block_h
         self.block_w = block_w
-
+        self.block_type = block_type  # Store the block type to use
         ## Construction Methods
 
     def add(self, name: str, pos: list, parents: list = [], **kwargs):
-        """Add a new block to the DAG with animations."""
         # Set default values
         self._set_default_kwargs(kwargs)
 
@@ -168,8 +173,8 @@ class BlockDAG:
         pos = self._normalize_position(pos)
         parents = self._normalize_parents(parents)
 
-        # Create the block
-        block = Block(name, self, parents, pos, **kwargs)
+        # Create the block using the configured block type
+        block = self.block_type(name, self, parents, pos, **kwargs)
 
         # Generate animations and update state
         animations = self._create_block_animations(block, parents)
@@ -395,16 +400,21 @@ class BlockDAG:
             return self.blocks[name].rect
         else:
             return VGroup(*[self.blocks[b].rect for b in name])
-    
-    
+
+
 class LayerDAG(BlockDAG):
+    def __init__(self,
+                 layer_spacing=1.5,
+                 chain_spacing=1,
+                 gen_pos=[-6.5, 0],
+                 width=4,
+                 block_spacing=1,
+                 block_type=RandomBlock,
+                 *args,
+                 **kwargs
+                 ):
+        super().__init__(block_type=block_type, *args, **kwargs)
 
-    layers : List[List[str]]
-
-    ## Automagically orders DAGs into layers
-    ##
-    def __init__(self, layer_spacing = 1.5, chain_spacing = 1, gen_pos = [-6.5,0], width=4, block_spacing = 1, *args, **kwargs):
-        super().__init__(*args,**kwargs)
         self.init_animation = super().add("Gen", gen_pos)[0]
         self.layers = [["Gen"]]
         self.layer_spacing = layer_spacing
@@ -418,6 +428,11 @@ class LayerDAG(BlockDAG):
         if isinstance(parent_names, str):
             parent_names = [parent_names]
 
+            # Override block type based on random_sp parameter
+        original_block_type = self.block_type
+        if random_sp:
+            self.block_type = RandomBlock
+
             # Find appropriate layer
         top_parent_layer = self._find_top_parent_layer(parent_names)
         target_layer = self._find_available_layer(top_parent_layer)
@@ -430,7 +445,12 @@ class LayerDAG(BlockDAG):
         parents = self._process_parents(parent_names, selected_parent, random_sp)
 
         # Delegate to parent class
-        return super().add(name, pos, parents=parents, *args, **kwargs)
+        result = super().add(name, pos, parents=parents, *args, **kwargs)
+
+        # Restore original block type
+        self.block_type = original_block_type
+
+        return result
 
     def _process_parents(self, parent_names: list[str], selected_parent: str = None, random_sp: bool = False) -> list:
         """Process parent names and create Parent objects with appropriate styling."""
@@ -507,38 +527,15 @@ class LayerDAG(BlockDAG):
 
 class GHOSTDAG(LayerDAG):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Force GhostDAGBlock type for GHOSTDAG, overriding LayerDAG's default
+        super().__init__(block_type=GhostDAGBlock, *args, **kwargs)
 
     def add(self, name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs):
-        # Convert to list if string
         if isinstance(parent_names, str):
             parent_names = [parent_names]
 
-            # Use ALL parents passed to the method
-        selected_parent_names = parent_names
-
-        # Find the highest weight parent to use as the selected parent
-        if isinstance(parent_names, list) and len(parent_names) > 0:
-            heaviest_parent = None
-            max_weight = -1
-
-            for block_name in parent_names:
-                if block_name in self.blocks:
-                    block = self.blocks[block_name]
-                    # Get weight from block
-                    weight = getattr(block, 'weight', 0) if hasattr(block, 'weight') else 0
-                    print("weight ", weight)
-
-                    if weight > max_weight:
-                        max_weight = weight
-                        heaviest_parent = block_name
-
-                        # Set the heaviest parent as the selected parent
-            selected_parent = heaviest_parent if heaviest_parent else parent_names[0]
-
-            # Use LayerDAG's add method with ALL parents and the heaviest as selected
-        return super().add(name, selected_parent_names, selected_parent=selected_parent, random_sp=False, *args,
-                           **kwargs)
+            # Force random_sp=False and maintain GhostDAGBlock behavior
+        return super().add(name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs)
 
     def highlight_random_block_and_past(self, scene):
         """
@@ -581,6 +578,32 @@ class GHOSTDAG(LayerDAG):
                             arrow.set_opacity(1.0)
 
                             # Return an empty AnimationGroup or None if no animations are desired
+        return AnimationGroup(Wait(0.1))
+
+    def fade_except_parent_arrows(self, scene):
+        """
+        Set opacity to fade everything except the selected parent arrows (blue arrows)
+        """
+        # No animations list needed, as we're setting properties directly
+        for block_name, block in self.blocks.items():
+            # Fade block rectangles to low opacity
+            block.rect.set_opacity(0.2)
+
+            # Fade block labels to low opacity
+            if hasattr(block, 'label') and block.label:
+                block.label.set_opacity(0.2)
+
+                # Handle arrows - fade all arrows first, then restore selected parent arrows
+            if hasattr(block, 'outgoing_arrows'):
+                for arrow in block.outgoing_arrows:
+                    arrow.set_opacity(0.2)
+
+                    # Keep selected parent arrows at full opacity
+                    if (hasattr(arrow, 'target_block') and
+                            arrow.target_block == block.selected_parent):
+                        arrow.set_opacity(1.0)
+
+                        # Return an empty AnimationGroup or None if no animations are desired
         return AnimationGroup(Wait(0.1))
 
     def _get_past_blocks_recursive(self, block, visited=None):

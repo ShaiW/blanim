@@ -61,7 +61,7 @@ class RandomDAG(Scene):
 class GHOSTDAGScene(Scene):
     AVG_AC = 4
     BLOCKS = 20
-    DAG_WIDTH = 5
+    DAG_WIDTH = 4
     MAX_BLOCKS_PER_BATCH = 2
 
     def construct(self):
@@ -89,6 +89,13 @@ class GHOSTDAGScene(Scene):
         self.wait(2)
 
         # Reset to normal
+        self.play(GD.reset_all_opacity(self))
+        self.wait(1)
+        # After building the DAG, fade everything except parent arrows
+        self.play(GD.fade_except_parent_arrows(self))
+        self.wait(2)
+
+        # You can still use your existing methods
         self.play(GD.reset_all_opacity(self))
         self.wait(1)
         self.wait(3)
