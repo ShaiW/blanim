@@ -38,8 +38,13 @@ class Parent:
 
 
 class Block(ABC):
-    def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
-        self.name = name
+#    def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
+    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=PURE_BLUE, h=BLOCK_H, w=BLOCK_W):
+#    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, h=BLOCK_H, w=BLOCK_W):
+
+        # Use provided name or fall back to string ID
+        self.name = name if name is not None else str(id(self))
+
         self.width = w
         self.height = h
         self.DAG = DAG
@@ -64,14 +69,17 @@ class Block(ABC):
 
         self.rect.move_to(pos)
 
-        if label:
-            self.label = Tex(label if label else name).set_z_index(1).scale(0.7)
-            self.label.add_updater(lambda l: l.move_to(self.rect.get_center()), call_updater=True)
+        if label is None:
+            # each block is initialized with a label of its weight
+            self.label = Tex(str(self.weight)).set_z_index(1).scale(0.7)
+            self.label.move_to(self.rect.get_center())  # Position it initially
+            self.rect.add(self.label)  # Add as submobject
         else:
-            self.label = None
+            # each block is initialized with a label of its weight
+            self.label = Tex(label).set_z_index(1).scale(0.7)
+            self.label.move_to(self.rect.get_center())  # Position it initially
+            self.rect.add(self.label)  # Add as submobject
 
-        self.label = Tex(self.weight).set_z_index(1).scale(0.7)
-        self.label.add_updater(lambda l: l.move_to(self.rect.get_center()), call_updater=True)
 
         for p in parents:
             DAG.blocks[p.name].children.append(self.name)
@@ -142,7 +150,7 @@ class BlockDAG:
 
     blocks: Dict[str, Block]
     history: List[List[str]]  # History of tip states
-    block_color: ManimColor
+    #block_color: ManimColor
     block_w: float
     block_h: float
 
@@ -158,7 +166,7 @@ class BlockDAG:
         self.blocks = {}
         self.history = []
         self.history_size = history_size
-        self.block_color = block_color
+        #self.block_color = block_color
         self.block_h = block_h
         self.block_w = block_w
         self.block_type = block_type  # Store the block type to use
@@ -186,7 +194,7 @@ class BlockDAG:
     def _set_default_kwargs(self, kwargs: dict):
         """Set default values for block creation."""
         kwargs.setdefault("label", None)
-        kwargs.setdefault("color", self.block_color)
+#        kwargs.setdefault("color", self.block_color)
         kwargs.setdefault("w", self.block_w)
         kwargs.setdefault("h", self.block_h)
 
@@ -205,9 +213,6 @@ class BlockDAG:
     def _create_block_animations(self, block: Block, parents: list) -> list:
         """Create all animations for adding a block."""
         animations = [FadeIn(block.rect)]
-
-        if block.label:
-            animations.append(FadeIn(block.label))
 
             # Add arrow animations for each parent
         for parent in parents:
@@ -645,6 +650,7 @@ class GHOSTDAG(LayerDAG):
             # Fallback implementation
             tips = [name for name, block in self.blocks.items() if block.is_tip()]
             return tips
+
 
 class Miner():
     def __init__(self, scene, x=0 , y=0, attempts = 20):
@@ -2032,11 +2038,12 @@ class NarrationMathTex(MathTex):
 # TODO
 #  This is rough notes from discussion
 #  priorities
-#               labels misbehaving,
-#  CURRENT      blockchain class - location updates based on parent,
+#  ...
+#  COMPLETE     labels misbehaving, # Currently labels function as intended
+#  PAUSED       blockchain class - location updates based on parent,  # when getting to about 6 or more btc blocks, simple animations start taking too much time(mem leaks?)
 #  COMPLETE     for BlockMobBitcoin(BlockDAG(blink(get_past, get future, get_anticone)) #method works for Kaspa),
 #               parallel chains like kadena, ect,
-#               ghostdag, function that computes k cluster and blueset for each block,
+#  CURRENT      ghostdag, function that computes k cluster and blueset for each block, # Up to selecting parent from mergeset based on weight, with deterministic tie breaking
 #               output a transcript that has each step eg. added to blue set, appended children,
 
 # TODO please list priorities here
