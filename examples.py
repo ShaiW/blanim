@@ -79,9 +79,13 @@ class GHOSTDAGScene(Scene):
             blocks -= batch_size
 
             # Use GHOSTDAG's weight-based parent selection
+            # GHOSTDAG automagically names each block, based on position in the DAG,
+            # L3_1 will be 3rd layer, first block,
+            # L6_2 will be 6th layer, second block.
+            # Gen will be Genesis.
             self.play(
-                *[GD.add("V%d%d" % (i, j), GD.get_tips(missed_blocks=poi(lam=self.AVG_AC)), random_sp=False)
-                  for j in range(batch_size)]
+                *[GD.add(GD.get_tips(missed_blocks=poi(lam=self.AVG_AC)))
+                  for each in range(batch_size)]
             )
             safe_play(self, GD.adjust_layers())
 

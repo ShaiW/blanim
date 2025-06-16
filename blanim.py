@@ -38,12 +38,19 @@ class Parent:
 
 
 class Block(ABC):
-#    def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
-    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=PURE_BLUE, h=BLOCK_H, w=BLOCK_W):
+
+    DEFAULT_COLOR = BLUE
+
+#   def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
+    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=None, h=BLOCK_H, w=BLOCK_W):
 #    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, h=BLOCK_H, w=BLOCK_W):
 
         # Use provided name or fall back to string ID
         self.name = name if name is not None else str(id(self))
+
+        # set default color of block
+        if color is None:
+            color = self.DEFAULT_COLOR
 
         self.width = w
         self.height = h
@@ -54,7 +61,7 @@ class Block(ABC):
 
         # Cache past blocks - calculated only once
         self.past_blocks = self._calculate_past_blocks()
-        self.weight = len(self.past_blocks) + 1
+        self.weight = len(self.past_blocks)
         self.outgoing_arrows = []
 
         self.rect = Rectangle(
@@ -70,10 +77,15 @@ class Block(ABC):
         self.rect.move_to(pos)
 
         if label is None:
-            # each block is initialized with a label of its weight
-            self.label = Tex(str(self.weight)).set_z_index(1).scale(0.7)
-            self.label.move_to(self.rect.get_center())  # Position it initially
-            self.rect.add(self.label)  # Add as submobject
+            if self.name == "Gen":
+                self.label = Tex("Gen").set_z_index(1).scale(0.7)
+                self.label.move_to(self.rect.get_center())  # Position it initially
+                self.rect.add(self.label)  # Add as submobject
+            else:
+                # each block is initialized with a label of its weight
+                self.label = Tex(str(self.weight)).set_z_index(1).scale(0.7)
+                self.label.move_to(self.rect.get_center())  # Position it initially
+                self.rect.add(self.label)  # Add as submobject
         else:
             # each block is initialized with a label of its weight
             self.label = Tex(label).set_z_index(1).scale(0.7)
@@ -110,9 +122,10 @@ class Block(ABC):
 
 
 class GhostDAGBlock(Block):
-    """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
+   """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
+   DEFAULT_COLOR = PURE_BLUE
 
-    def _select_parent(self):
+   def _select_parent(self):
         if not self.parents:
             return None
 
@@ -535,10 +548,32 @@ class GHOSTDAG(LayerDAG):
         # Force GhostDAGBlock type for GHOSTDAG, overriding LayerDAG's default
         super().__init__(block_type=GhostDAGBlock, *args, **kwargs)
 
-    def add(self, name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs):
+    def _generate_semantic_name(self, block_type: type, parents: list, layer: int = None) -> str:
+        """Generate semantically meaningful names."""
+#        type_prefix = block_type.__name__.replace('Block', '')[0]  # 'G' for GhostDAG
+
+# Never used since "Gen" is parent name created on init.
+#        if not parents:
+#            return f"{type_prefix}_Genesis"
+
+            # Find the target layer (where this block will be placed)
+        if layer is None:
+            parent_names = [p.name if hasattr(p, 'name') else p for p in parents]
+            top_parent_layer = self._find_top_parent_layer(parent_names)
+            target_layer = self._find_available_layer(top_parent_layer)
+        else:
+            target_layer = layer
+
+            # Count existing blocks in target layer
+        block_count_in_layer = len(self.layers[target_layer]) if target_layer < len(self.layers) else 0
+
+        return f"L{target_layer}_{block_count_in_layer + 1}"
+
+    def add(self, parent_names, selected_parent=None, random_sp=False, name= None, *args, **kwargs):
         if isinstance(parent_names, str):
             parent_names = [parent_names]
-
+        name = self._generate_semantic_name(block_type=self.block_type, parents=parent_names, layer=selected_parent)
+        print(name)
             # Force random_sp=False and maintain GhostDAGBlock behavior
         return super().add(name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs)
 
