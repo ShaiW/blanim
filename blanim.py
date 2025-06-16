@@ -122,6 +122,72 @@ class GhostDAGBlock(Block):
        # Call parent constructor first with all required parameters
        super().__init__(name, DAG, parents, pos, label, color, h, w)  # Sort parents by blue blocks criteria
        self.parents = self._sort_parents_by_blue_blocks()
+       self.mergeset = self._calculate_mergeset()
+       print("mergeset", self.mergeset)
+
+   def _calculate_mergeset(self):
+       """Calculate mergeset: blocks from non-selected parents and their mergesets,
+       excluding blocks already in selected parent chain mergesets AND parent chain blocks"""
+       mergeset = set()
+
+       # Get all mergesets from the selected parent chain
+       selected_parent_chain_mergesets = self._get_selected_parent_chain_mergesets()
+
+       # Get all blocks in the selected parent chain
+       selected_parent_chain_blocks = self._get_selected_parent_chain_blocks()
+
+       # Get non-selected parents
+       non_selected_parents = [p for p in self.parents if p != self.selected_parent]
+
+       # Recursively collect blocks from non-selected parents and their mergesets
+       for parent in non_selected_parents:
+           # Combine both exclusion sets
+           excluded_blocks = selected_parent_chain_mergesets | selected_parent_chain_blocks
+           self._collect_mergeset_blocks(parent, mergeset, excluded_blocks)
+
+       return mergeset
+
+   def _get_selected_parent_chain_blocks(self):
+       """Get all blocks in the selected parent chain"""
+       chain_blocks = set()
+       current = self.selected_parent
+
+       while current is not None:
+           chain_blocks.add(current.name)
+           current = getattr(current, 'selected_parent', None)
+
+       return chain_blocks
+
+   def _collect_mergeset_blocks(self, block, mergeset, excluded_blocks, visited=None):
+       """Recursively collect blocks from a parent and its mergeset, excluding specified blocks"""
+       if visited is None:
+           visited = set()
+
+       if block.name in visited or block.name in excluded_blocks:
+           return
+
+       visited.add(block.name)
+       mergeset.add(block.name)
+
+       # If this block has a mergeset, recursively include its blocks
+       if hasattr(block, 'mergeset'):
+           for mergeset_block_name in block.mergeset:
+               if mergeset_block_name not in excluded_blocks and mergeset_block_name not in visited:
+                   mergeset_block = self.DAG.blocks.get(mergeset_block_name)
+                   if mergeset_block:
+                       self._collect_mergeset_blocks(mergeset_block, mergeset, excluded_blocks, visited)
+
+   def _get_selected_parent_chain_mergesets(self):
+       """Get all blocks included in mergesets along the selected parent chain"""
+       chain_mergesets = set()
+       current = self.selected_parent
+
+       while current is not None:
+           if hasattr(current, 'mergeset'):
+               chain_mergesets.update(current.mergeset)
+           current = getattr(current, 'selected_parent', None)
+
+       return chain_mergesets
 
    def _select_parent(self):
         if not self.parents:
@@ -599,6 +665,94 @@ class GHOSTDAG(LayerDAG):
         block_count_in_layer = len(self.layers[target_layer]) if target_layer < len(self.layers) else 0
 
         return f"L{target_layer}_{block_count_in_layer + 1}"
+
+    def create_tree_animation_fast(self, vertical_offset=0.5, horizontal_offset=1.25):
+        # Calculate positions as before
+        best_tip = self._find_best_tip()
+        if not best_tip:
+            return AnimationGroup(Wait(0.1))
+
+        parent_chain = self._get_parent_chain(best_tip)
+        new_positions = self._calculate_chain_tree_positions(parent_chain, vertical_offset, horizontal_offset)
+
+        # Set fade properties directly (no animation)
+        best_tip_block = self.blocks[best_tip]
+        past_blocks = best_tip_block.get_past_blocks()
+        highlighted_blocks = past_blocks.copy()
+        highlighted_blocks.add(best_tip)
+
+        for block_name, block in self.blocks.items():
+            if block_name not in highlighted_blocks:
+                block.rect.set_opacity(0.2)
+                if hasattr(block, 'label') and block.label:
+                    block.label.set_opacity(0.2)
+                    # Set opacity for outgoing arrows as well
+                if hasattr(block, 'outgoing_arrows'):
+                    for arrow in block.outgoing_arrows:
+                        arrow.set_opacity(0.2)  # Set arrow opacity directly
+
+        # Only animate the movement
+        movement_animations = []
+        for block_name, new_pos in new_positions.items():
+            if block_name in self.blocks:
+                current_block = self.blocks[block_name]
+                movement_animations.append(current_block.rect.animate.move_to(new_pos))
+
+        return AnimationGroup(*movement_animations, run_time=1.0)
+
+    def _find_best_tip(self):
+        """Find tip block with most blue work (blue blocks in past)"""
+        tips = [name for name, block in self.blocks.items() if not block.children]
+        if not tips:
+            return None
+
+        best_tip = None
+        max_blue_work = -1
+
+        for tip_name in tips:
+            tip_block = self.blocks[tip_name]
+            # Call the method on the block instance, not on self
+            blue_work = tip_block.weight
+            if blue_work > max_blue_work:
+                max_blue_work = blue_work
+                best_tip = tip_name
+
+        return best_tip
+
+    def _get_parent_chain(self, tip_name):
+        """Get the selected parent chain from tip to genesis"""
+        chain = []
+        current = self.blocks[tip_name]
+
+        while current:
+            chain.append(current.name)
+            current = getattr(current, 'selected_parent', None)
+
+        return chain
+
+    def _calculate_chain_tree_positions(self, parent_chain, v_offset, h_offset):
+        """Calculate positions with parent chain at bottom and mergesets above"""
+        new_positions = {}
+
+        # Position parent chain blocks at the bottom, maintaining current horizontal spacing
+#        chain_y = min(block.rect.get_center()[1] for block in self.blocks.values()) - v_offset
+        chain_y = min(block.rect.get_center()[1] for block in self.blocks.values())
+
+        for i, block_name in enumerate(reversed(parent_chain)):  # Genesis first
+            current_block = self.blocks[block_name]
+            current_x = current_block.rect.get_center()[0]  # Keep current x position
+            new_positions[block_name] = [current_x, chain_y, 0]
+
+            # Position mergeset blocks above and slightly left
+            if hasattr(current_block, 'mergeset') and current_block.mergeset:
+                mergeset_blocks = list(current_block.mergeset)
+                for j, mergeset_block_name in enumerate(mergeset_blocks):
+                    if mergeset_block_name in self.blocks:
+                        mergeset_x = current_x - h_offset
+                        mergeset_y = chain_y + v_offset + (j * 0.5)  # Stack vertically if multiple
+                        new_positions[mergeset_block_name] = [mergeset_x, mergeset_y, 0]
+
+        return new_positions
 
     def add(self, parent_names, selected_parent=None, random_sp=False, name= None, *args, **kwargs):
         if isinstance(parent_names, str):

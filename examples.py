@@ -97,12 +97,11 @@ class GHOSTDAGScene(Scene):
         self.play(GD.reset_all_opacity(self))
         self.wait(1)
         # After building the DAG, fade everything except parent arrows
-        self.play(GD.fade_except_parent_arrows(self))
-        self.wait(2)
-
-        # You can still use your existing methods
-        self.play(GD.reset_all_opacity(self))
-        self.wait(1)
+        print("b4 create tree animations")
+        tree_animations = GD.create_tree_animation_fast()
+        print("b4 play tree animations")
+        self.play(tree_animations, run_time=3.0)
+        print("after play tree animations")
         self.wait(3)
 
 class BlinkTest(Scene):
