@@ -125,6 +125,11 @@ class GhostDAGBlock(Block):
    """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
    DEFAULT_COLOR = PURE_BLUE
 
+   def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=None, h=BLOCK_H, w=BLOCK_W):
+       # Call parent constructor first with all required parameters
+       super().__init__(name, DAG, parents, pos, label, color, h, w)  # Sort parents by blue blocks criteria
+       self.parents = self._sort_parents_by_blue_blocks()
+
    def _select_parent(self):
         if not self.parents:
             return None
@@ -146,6 +151,28 @@ class GhostDAGBlock(Block):
 
         return best_parent
 
+   def _sort_parents_by_blue_blocks(self):
+       """Sort parents (excluding selected parent) by blue blocks in past, ascending, with lowest hash as tiebreaker"""
+       if not self.parents or not self.selected_parent:
+           return self.parents
+
+       other_parents = [p for p in self.parents if p != self.selected_parent]
+
+       def sort_key(parent):
+           blue_blocks_count = self._count_blue_blocks_in_past(parent)
+           return (blue_blocks_count, parent.hash)
+
+       sorted_parents = sorted(other_parents, key=sort_key)
+       return [self.selected_parent] + sorted_parents
+
+   def _count_blue_blocks_in_past(self, block):
+       """Count blue blocks in the past of a given block"""
+       blue_count = 0
+       for past_block_name in block.past_blocks:  # Use cached past_blocks directly
+           past_block = self.DAG.blocks[past_block_name]
+           if past_block.rect.color == PURE_BLUE:
+               blue_count += 1
+       return blue_count
 
 class RandomBlock(Block):
     """Block that randomly selects a parent"""
