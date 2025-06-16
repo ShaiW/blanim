@@ -57,17 +57,17 @@ class RandomDAG(Scene):
 
         self.wait(3)
 
-
 class GHOSTDAGScene(Scene):
     AVG_AC = 4
     BLOCKS = 20
     DAG_WIDTH = 4
     MAX_BLOCKS_PER_BATCH = 2
+    GD_K = 1
 
     def construct(self):
         blocks = self.BLOCKS
 
-        GD = GHOSTDAG(width=self.DAG_WIDTH, block_w=BLOCK_W * 0.75, block_h=BLOCK_H * 0.75)
+        GD = GHOSTDAG(self.GD_K, width=self.DAG_WIDTH, block_w=BLOCK_W * 0.75, block_h=BLOCK_H * 0.75)
 
         self.play(GD.init_animation)
         safe_play(self, GD.adjust_layers())
@@ -83,6 +83,7 @@ class GHOSTDAGScene(Scene):
             # L3_1 will be 3rd layer, first block,
             # L6_2 will be 6th layer, second block.
             # Gen will be Genesis.
+            # TODO add return limits for requesting out of bound names so referencing a block that does not exist, returns a nearby block
             self.play(
                 *[GD.add(GD.get_tips(missed_blocks=poi(lam=self.AVG_AC)))
                   for each in range(batch_size)]

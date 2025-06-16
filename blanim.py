@@ -1,17 +1,10 @@
-from codecs import namereplace_errors
-from random import random, choice, randint
-from typing import Self, Dict, List
-from manim import *
+from random import choice, randint
+from typing import Dict, List
 from itertools import chain
-from numpy import array
-from typing_extensions import runtime
 from abc import ABC, abstractmethod
 
 from common import *
 import string
-import math
-import numpy as np
-import random
 
 BLOCK_H = 0.4
 BLOCK_W = 0.4
@@ -42,15 +35,15 @@ class Block(ABC):
     DEFAULT_COLOR = BLUE
 
 #   def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
-    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=None, h=BLOCK_H, w=BLOCK_W):
-#    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, h=BLOCK_H, w=BLOCK_W):
+    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, block_color=None, h=BLOCK_H, w=BLOCK_W):
+#   def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, h=BLOCK_H, w=BLOCK_W):
 
         # Use provided name or fall back to string ID
         self.name = name if name is not None else str(id(self))
 
         # set default color of block
-        if color is None:
-            color = self.DEFAULT_COLOR
+        if block_color is None:
+            block_color = self.DEFAULT_COLOR
 
         self.width = w
         self.height = h
@@ -65,7 +58,7 @@ class Block(ABC):
         self.outgoing_arrows = []
 
         self.rect = Rectangle(
-            color=color,
+            color=block_color,
             fill_opacity=1,
             height=h,
             width=w,
@@ -212,8 +205,10 @@ class BlockDAG:
         self.block_type = block_type  # Store the block type to use
         ## Construction Methods
 
-    def add(self, name: str, pos: list, parents: list = [], **kwargs):
+    def add(self, name: str, pos: list, parents: list = None, **kwargs):
         # Set default values
+        if parents is None:
+            parents = []
         self._set_default_kwargs(kwargs)
 
         # Validate and prepare data
@@ -242,11 +237,13 @@ class BlockDAG:
         """Ensure the block name doesn't already exist."""
         assert name not in self.blocks, f"Block '{name}' already exists"
 
-    def _normalize_position(self, pos: list) -> list:
+    @staticmethod
+    def _normalize_position(pos: list) -> list:
         """Ensure position has 3D coordinates."""
         return pos + [0]
 
-    def _normalize_parents(self, parents: list) -> list:
+    @staticmethod
+    def _normalize_parents(parents: list) -> list:
         """Convert parent names to Parent objects."""
         return [Parent(p) if isinstance(p, str) else p for p in parents]
 
@@ -304,7 +301,8 @@ class BlockDAG:
         # Create updater animation
         return self._create_arrow_updater(arrow, from_block, to_block)
 
-    def _set_arrow_defaults(self, kwargs: dict):
+    @staticmethod
+    def _set_arrow_defaults(kwargs: dict):
         """Set default arrow styling."""
         defaults = {
             "buff": 0,
@@ -326,7 +324,8 @@ class BlockDAG:
         arrow.put_start_and_end_on(**get_start_end())
         return arrow
 
-    def _calculate_arrow_endpoints(self, from_block: Block, to_block: Block) -> dict:
+    @staticmethod
+    def _calculate_arrow_endpoints(from_block: Block, to_block: Block) -> dict:
         """Calculate optimal start and end points for arrow between blocks."""
         # Get block boundaries
         from_rect = from_block.rect
@@ -361,7 +360,8 @@ class BlockDAG:
 
         return {"start": start, "end": end}
 
-    def _setup_arrow_tracking(self, arrow: Arrow, from_block: Block, to_block: Block):
+    @staticmethod
+    def _setup_arrow_tracking(arrow: Arrow, from_block: Block, to_block: Block):
         """Set up arrow tracking information."""
         arrow.source_block = from_block
         arrow.target_block = to_block
@@ -451,13 +451,15 @@ class LayerDAG(BlockDAG):
     def __init__(self,
                  layer_spacing=1.5,
                  chain_spacing=1,
-                 gen_pos=[-6.5, 0],
+                 gen_pos=None,
                  width=4,
                  block_spacing=1,
                  block_type=RandomBlock,
                  *args,
                  **kwargs
                  ):
+        if gen_pos is None:
+            gen_pos = [-6.5, 0]
         super().__init__(block_type=block_type, *args, **kwargs)
 
         self.init_animation = super().add("Gen", gen_pos)[0]
@@ -490,7 +492,7 @@ class LayerDAG(BlockDAG):
         parents = self._process_parents(parent_names, selected_parent, random_sp)
 
         # Delegate to parent class
-        result = super().add(name, pos, parents=parents, *args, **kwargs)
+        result = super().add(name, pos, parents=parents, **kwargs)
 
         # Restore original block type
         self.block_type = original_block_type
@@ -571,7 +573,9 @@ class LayerDAG(BlockDAG):
 
 
 class GHOSTDAG(LayerDAG):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, gd_k = 0, *args, **kwargs):
+
+        self.k_param = gd_k
         # Force GhostDAGBlock type for GHOSTDAG, overriding LayerDAG's default
         super().__init__(block_type=GhostDAGBlock, *args, **kwargs)
 
