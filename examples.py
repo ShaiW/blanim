@@ -78,7 +78,7 @@ class GHOSTDAGScene(Scene):
             batch_size = randint(1, min(self.MAX_BLOCKS_PER_BATCH, blocks))
             blocks -= batch_size
 
-            # Use GHOSTDAG's weight-based parent selection
+            # Use GHOSTDAG's blue_score-based parent selection
             # GHOSTDAG automagically names each block, based on position in the DAG,
             # L3_1 will be 3rd layer, first block,
             # L6_2 will be 6th layer, second block.
@@ -96,9 +96,8 @@ class GHOSTDAGScene(Scene):
         # Reset to normal
         self.play(GD.reset_all_opacity(self))
         self.wait(1)
-        # After building the DAG, fade everything except parent arrows
         print("b4 create tree animations")
-        tree_animations = GD.create_tree_animation_fast()
+        tree_animations = GD.create_ghostdag_step_by_step_animation()
         print("b4 play tree animations")
         self.play(tree_animations, run_time=3.0)
         print("after play tree animations")

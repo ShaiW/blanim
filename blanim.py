@@ -1,3 +1,4 @@
+from enum import Enum
 from random import choice, randint
 from typing import Dict, List
 from itertools import chain
@@ -23,12 +24,27 @@ PROMPT_DELAY = 2
 def safe_play(scene, anims):
     if anims:
         scene.play(anims)
+####################
+class ColoringState(Enum):
+    BLUE = "blue"
+    RED = "red"
+    PENDING = "pending"
+
+class ColoringOutput:
+    def __init__(self, state, anticone_size=0, anticone_sizes=None):
+        self.state = state
+        self.anticone_size = anticone_size
+        self.anticone_sizes = anticone_sizes or {}
+
+class ChainBlock:
+    def __init__(self, hash_val, ghostdag_data):
+        self.hash = hash_val
+        self.data = ghostdag_data
 
 class Parent:
     def __init__(self, name, **kwargs):
         self.name = name
         self.kwargs = kwargs
-
 
 class Block(ABC):
 
@@ -113,125 +129,302 @@ class Block(ABC):
     def is_tip(self):
         return bool(self.children)
 
-
 class GhostDAGBlock(Block):
-   """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
-   DEFAULT_COLOR = PURE_BLUE
+    """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
+    DEFAULT_COLOR = PURE_BLUE
 
-   def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=None, h=BLOCK_H, w=BLOCK_W):
-       # Call parent constructor first with all required parameters
-       super().__init__(name, DAG, parents, pos, label, color, h, w)  # Sort parents by blue blocks criteria
-       self.parents = self._sort_parents_by_blue_blocks()
-       self.mergeset = self._calculate_mergeset()
-       print("mergeset", self.mergeset)
+    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=None, h=BLOCK_H, w=BLOCK_W):
+        # Initialize blue_count BEFORE calling parent constructor
+        self.blue_count = 0
 
-   def _calculate_mergeset(self):
-       """Calculate mergeset: blocks from non-selected parents and their mergesets,
-       excluding blocks already in selected parent chain mergesets AND parent chain blocks"""
-       mergeset = set()
+        # Call parent constructor
+        super().__init__(name, DAG, parents, pos, label, color, h, w)
 
-       # Get all mergesets from the selected parent chain
-       selected_parent_chain_mergesets = self._get_selected_parent_chain_mergesets()
+        # Handle genesis block case
+        if not self.selected_parent:
+            self.mergeset = set()
+            self.mergeset_blues = []
+            self.mergeset_reds = []
+            self.blues_anticone_sizes = {}
+            # Genesis should have blue_count = 0, which is already set
+            return
 
-       # Get all blocks in the selected parent chain
-       selected_parent_chain_blocks = self._get_selected_parent_chain_blocks()
+            # Now do GHOSTDAG calculations
+        self.mergeset = self._calculate_mergeset_proper()
+        k = getattr(DAG, 'k_param', 3)
+        self.mergeset_blues, self.mergeset_reds, self.blues_anticone_sizes = self._color_mergeset_blocks(
+            self.mergeset,k
+        )
 
-       # Get non-selected parents
-       non_selected_parents = [p for p in self.parents if p != self.selected_parent]
+        # Recalculate blue_count with proper GHOSTDAG data
+        self.blue_count = self._calculate_blue_count()
 
-       # Recursively collect blocks from non-selected parents and their mergesets
-       for parent in non_selected_parents:
-           # Combine both exclusion sets
-           excluded_blocks = selected_parent_chain_mergesets | selected_parent_chain_blocks
-           self._collect_mergeset_blocks(parent, mergeset, excluded_blocks)
+        # Update the label
+        if self.name != "Gen":
+            self.rect.remove(self.label)
+            self.label = Tex(str(self.blue_count)).set_z_index(1).scale(0.7)
+            self.label.move_to(self.rect.get_center())
+            self.rect.add(self.label)
 
-       return mergeset
+    def _check_blue_candidate(self, new_block_data, blue_candidate, k):
+        """
+        Main k-cluster validation with chain traversal.
+        Returns ColoringOutput with state and anticone information.
+        """
+        # Rule 1: Check if we already have exactly K+1 blues
+        if len(new_block_data.mergeset_blues) == k + 1:  # Changed from >=
+            return ColoringOutput(ColoringState.RED)
 
-   def _get_selected_parent_chain_blocks(self):
-       """Get all blocks in the selected parent chain"""
-       chain_blocks = set()
-       current = self.selected_parent
+        candidate_blues_anticone_sizes = {}
+        candidate_blue_anticone_size = [0]  # Use list for mutable reference
 
-       while current is not None:
-           chain_blocks.add(current.name)
-           current = getattr(current, 'selected_parent', None)
+        # Start with the new block data (chain_block with hash=None)
+        chain_block = ChainBlock(None, new_block_data)
 
-       return chain_blocks
+        while True:
+            state = self._check_blue_candidate_with_chain_block(
+                new_block_data, chain_block, blue_candidate,
+                candidate_blues_anticone_sizes, candidate_blue_anticone_size, k
+            )
 
-   def _collect_mergeset_blocks(self, block, mergeset, excluded_blocks, visited=None):
-       """Recursively collect blocks from a parent and its mergeset, excluding specified blocks"""
-       if visited is None:
-           visited = set()
+            if state == ColoringState.BLUE:
+                return ColoringOutput(ColoringState.BLUE,
+                                      candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
+            elif state == ColoringState.RED:
+                return ColoringOutput(ColoringState.RED)
+                # If PENDING, continue to next chain block
 
-       if block.name in visited or block.name in excluded_blocks:
-           return
+            # Move to next chain block (selected parent)
+            if not hasattr(chain_block.data,
+                           'selected_parent') or chain_block.data.selected_parent not in self.DAG.blocks:
+                # Reached end of chain without violations - candidate is blue
+                return ColoringOutput(ColoringState.BLUE,
+                                      candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
 
-       visited.add(block.name)
-       mergeset.add(block.name)
+            next_parent = self.DAG.blocks[chain_block.data.selected_parent]
+            if not hasattr(next_parent, 'mergeset_blues'):
+                # Parent doesn't have GHOSTDAG data - candidate is blue
+                return ColoringOutput(ColoringState.BLUE,
+                                      candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
 
-       # If this block has a mergeset, recursively include its blocks
-       if hasattr(block, 'mergeset'):
-           for mergeset_block_name in block.mergeset:
-               if mergeset_block_name not in excluded_blocks and mergeset_block_name not in visited:
-                   mergeset_block = self.DAG.blocks.get(mergeset_block_name)
-                   if mergeset_block:
-                       self._collect_mergeset_blocks(mergeset_block, mergeset, excluded_blocks, visited)
+            chain_block = ChainBlock(chain_block.data.selected_parent, next_parent)
 
-   def _get_selected_parent_chain_mergesets(self):
-       """Get all blocks included in mergesets along the selected parent chain"""
-       chain_mergesets = set()
-       current = self.selected_parent
+    def _color_mergeset_blocks(self, mergeset, k):
+        """
+        Color blocks in mergeset using proper GHOSTDAG k-cluster validation.
+        """
+        print(f"Block {self.name}: Processing mergeset {mergeset} with k={k}")
+        print(f"Selected parent: {self.selected_parent.name}")
+        # Create new_block_data structure
+        new_block_data = type('GhostdagData', (), {
+            'selected_parent': self.selected_parent.name,
+            'mergeset_blues': [self.selected_parent.name],
+            'mergeset_reds': [],
+            'blues_anticone_sizes': {self.selected_parent.name: 0}
+        })()
 
-       while current is not None:
-           if hasattr(current, 'mergeset'):
-               chain_mergesets.update(current.mergeset)
-           current = getattr(current, 'selected_parent', None)
+        blue_blocks = []
+        red_blocks = []
 
-       return chain_mergesets
+        # Process mergeset in topological order
+        ordered_mergeset = self._topological_sort_mergeset(mergeset)
 
-   def _select_parent(self):
+        for candidate_name in ordered_mergeset:
+            coloring = self._check_blue_candidate(new_block_data, candidate_name, k)
+            print(f"  Checking candidate {candidate_name}")
+            print(f"  Result: {coloring.state}")
+
+            if coloring.state == ColoringState.BLUE:
+                # Add as blue
+                blue_blocks.append(candidate_name)
+                new_block_data.mergeset_blues.append(candidate_name)
+                new_block_data.blues_anticone_sizes[candidate_name] = coloring.anticone_size
+
+                # Update anticone sizes for affected blues
+                for blue_name, size in coloring.anticone_sizes.items():
+                    new_block_data.blues_anticone_sizes[blue_name] = size + 1
+            else:
+                # Add as red
+                red_blocks.append(candidate_name)
+                new_block_data.mergeset_reds.append(candidate_name)
+
+        return blue_blocks, red_blocks, new_block_data.blues_anticone_sizes
+
+    def _calculate_mergeset_proper(self):
+        """
+        Calculate mergeset using Kaspa's algorithm: all blocks reachable from
+        non-selected parents that are not in the past of selected parent.
+        """
+        if not self.parents or not self.selected_parent:
+            return set()
+
+        mergeset = set()
+        past_of_selected = set()
+        queue = []
+
+        # Initialize queue with non-selected parents
+        for parent in self.parents:
+            if parent != self.selected_parent:
+                queue.append(parent.name)
+                mergeset.add(parent.name)
+
+                # BFS to collect all blocks not in past of selected parent
+        while queue:
+            current_name = queue.pop(0)
+            current_block = self.DAG.blocks[current_name]
+
+            # Check all parents of current block
+            for parent in current_block.parents:
+                parent_name = parent.name
+
+                # Skip if already processed
+                if parent_name in mergeset or parent_name in past_of_selected:
+                    continue
+
+                    # Check if parent is in past of selected parent
+                if self._is_ancestor(parent, self.selected_parent):
+                    past_of_selected.add(parent_name)
+                    continue
+
+                    # Add to mergeset and queue for further processing
+                mergeset.add(parent_name)
+                queue.append(parent_name)
+
+        return mergeset
+
+    def _blue_anticone_size(self, block_hash, context_ghostdag_data):
+        """
+        Returns the blue anticone size of block from the worldview of context.
+        Traverses the selected parent chain to find the anticone size.
+        """
+        current_blues_anticone_sizes = context_ghostdag_data.blues_anticone_sizes.copy()
+        current_selected_parent = context_ghostdag_data.selected_parent
+
+        while True:
+            if block_hash in current_blues_anticone_sizes:
+                return current_blues_anticone_sizes[block_hash]
+
+                # Handle genesis/origin case
+            if (current_selected_parent == "Gen" or
+                    current_selected_parent is None or
+                    current_selected_parent not in self.DAG.blocks):
+                raise ValueError(f"Block {block_hash} is not in blue set of the given context")
+
+                # Move up the chain
+            parent_block = self.DAG.blocks[current_selected_parent]
+            if hasattr(parent_block, 'blues_anticone_sizes'):
+                current_blues_anticone_sizes = parent_block.blues_anticone_sizes.copy()
+            else:
+                current_blues_anticone_sizes = {}
+            current_selected_parent = getattr(parent_block, 'selected_parent', None)
+
+    def _is_ancestor(self, ancestor_block, descendant_block):
+        """Check if ancestor_block is in the past of descendant_block"""
+        return ancestor_block.name in descendant_block.past_blocks
+
+    def _check_blue_candidate_with_chain_block(self, new_block_data, chain_block,
+                                               blue_candidate, candidate_blues_anticone_sizes,
+                                               candidate_blue_anticone_size, k):
+        """
+        Check blue candidate against a specific chain block.
+        Returns ColoringState (BLUE, RED, or PENDING).
+        """
+        candidate_block = self.DAG.blocks[blue_candidate]
+
+        # If blue_candidate is in the future of chain_block, it means
+        # all remaining blues are in the past of chain_block and thus
+        # in the past of blue_candidate
+        if chain_block.hash and chain_block.hash in self.DAG.blocks:
+            chain_block_obj = self.DAG.blocks[chain_block.hash]
+            if self._is_ancestor(chain_block_obj, candidate_block):
+                return ColoringState.BLUE
+
+                # Iterate over blue peers and check for k-cluster violations
+        for peer_name in chain_block.data.mergeset_blues:
+            if peer_name not in self.DAG.blocks:
+                continue
+
+            peer_block = self.DAG.blocks[peer_name]
+
+            # Skip blocks that are in the past of blue_candidate
+            if self._is_ancestor(peer_block, candidate_block):
+                continue
+
+                # Get peer's blue anticone size
+            peer_blue_anticone_size = self._blue_anticone_size(peer_name, new_block_data)
+            candidate_blues_anticone_sizes[peer_name] = peer_blue_anticone_size
+
+            candidate_blue_anticone_size[0] += 1
+
+            # Check k-cluster violations
+            if candidate_blue_anticone_size[0] > k:
+                return ColoringState.RED
+
+            if peer_blue_anticone_size == k:
+                return ColoringState.RED
+
+                # Sanity check
+            assert peer_blue_anticone_size <= k, f"Found blue anticone larger than K: {peer_blue_anticone_size}"
+
+        return ColoringState.PENDING
+
+    def _sort_blocks_by_blue_count(self, blocks):
+        """Sort blocks by blue count (equivalent to blue work sorting)"""
+
+        def get_sort_key(block_name):
+            block = self.DAG.blocks[block_name]
+            blue_count = getattr(block, 'blue_count', 0)
+            block_hash = getattr(block, 'hash', block_name)
+            return (blue_count, block_hash)
+
+        return sorted(blocks, key=get_sort_key)
+
+    def _topological_sort_mergeset(self, mergeset):
+        """Sort mergeset blocks in proper topological order"""
+        return self._sort_blocks_by_blue_count(list(mergeset))
+
+    def _calculate_blue_count(self):
+        """Calculate blue count as selected parent's blue count + mergeset blues"""
+        if not self.selected_parent:
+            print(f"Block {self.name}: No selected parent, blue_count = 0")
+            return 0
+
+            # Get the selected parent's blue count (should be properly calculated by now)
+        selected_parent_blue_count = getattr(self.selected_parent, 'blue_count', 0)
+
+        # Count of blue blocks in this block's mergeset (excluding selected parent)
+        mergeset_blue_count = len(getattr(self, 'mergeset_blues', []))
+
+        # The total blue count is parent's blue count + 1 (for the selected parent itself) + mergeset blues
+        total = selected_parent_blue_count + 1 + mergeset_blue_count
+
+        print(
+            f"Block {self.name}: parent_blue_count={selected_parent_blue_count}, mergeset_blues={mergeset_blue_count}, total={total}")
+        return total
+
+    def _select_parent(self):
         if not self.parents:
             return None
 
         best_parent = None
-        max_weight = -1
+        max_blue_count = -1
         best_hash = None
 
         for parent in self.parents:
-            weight = getattr(parent, 'weight', 0)
-            parent_hash = getattr(parent, 'hash', 2 ** 32)  # fallback for blocks without hash
+            # Use getattr with fallback for safety during initialization
+            blue_count = getattr(parent, 'blue_count', 0)
+            parent_hash = getattr(parent, 'hash', id(parent))
 
-            # Select parent with highest weight, breaking ties by lowest hash
-            if (weight > max_weight or
-                    (weight == max_weight and parent_hash < best_hash)):
-                max_weight = weight
+            if (blue_count > max_blue_count or
+                    (blue_count == max_blue_count and parent_hash < best_hash)):
+                max_blue_count = blue_count
                 best_parent = parent
                 best_hash = parent_hash
 
         return best_parent
-
-   def _sort_parents_by_blue_blocks(self):
-       """Sort parents (excluding selected parent) by blue blocks in past, ascending, with lowest hash as tiebreaker"""
-       if not self.parents or not self.selected_parent:
-           return self.parents
-
-       other_parents = [p for p in self.parents if p != self.selected_parent]
-
-       def sort_key(parent):
-           blue_blocks_count = self._count_blue_blocks_in_past(parent)
-           return (blue_blocks_count, parent.hash)
-
-       sorted_parents = sorted(other_parents, key=sort_key)
-       return [self.selected_parent] + sorted_parents
-
-   def _count_blue_blocks_in_past(self, block):
-       """Count blue blocks in the past of a given block"""
-       blue_count = 0
-       for past_block_name in block.past_blocks:  # Use cached past_blocks directly
-           past_block = self.DAG.blocks[past_block_name]
-           if past_block.rect.color == PURE_BLUE:
-               blue_count += 1
-       return blue_count
 
 class RandomBlock(Block):
     """Block that randomly selects a parent"""
@@ -242,7 +435,6 @@ class RandomBlock(Block):
 
         from random import choice
         return choice(self.parents)
-
 
 class BlockDAG:
     """A Directed Acyclic Graph visualization system for blockchain-like structures."""
@@ -512,7 +704,6 @@ class BlockDAG:
         else:
             return VGroup(*[self.blocks[b].rect for b in name])
 
-
 class LayerDAG(BlockDAG):
     def __init__(self,
                  layer_spacing=1.5,
@@ -637,13 +828,227 @@ class LayerDAG(BlockDAG):
         shifts = list(filter(None,[self.adjust_layer(layer) for layer in range(len(self.layers))]))
         return list(chain(*shifts)) if chained else shifts
 
-
 class GHOSTDAG(LayerDAG):
     def __init__(self, gd_k = 0, *args, **kwargs):
 
         self.k_param = gd_k
         # Force GhostDAGBlock type for GHOSTDAG, overriding LayerDAG's default
         super().__init__(block_type=GhostDAGBlock, *args, **kwargs)
+
+    def create_ghostdag_step_by_step_animation(self, vertical_offset=0.5, horizontal_offset=1.25):
+        """
+        Create step-by-step GHOSTDAG animation showing the algorithm progression
+        from genesis to the heaviest tip, highlighting what's being checked at each step.
+        """
+        best_tip = self._find_best_tip()
+        if not best_tip:
+            return AnimationGroup(Wait(0.1))
+
+        parent_chain = self._get_parent_chain(best_tip)
+        new_positions = self._calculate_chain_tree_positions_ordered(parent_chain, vertical_offset, horizontal_offset)
+
+        # Start with everything faded
+        self._fade_all_blocks()
+
+        animations = []
+
+        # Process each block in the parent chain from genesis to tip
+        for i, current_block_name in enumerate(reversed(parent_chain)):  # Genesis first
+            current_block = self.blocks[current_block_name]
+
+            # Skip genesis (no GHOSTDAG calculation needed)
+            if current_block_name == "Gen":
+                # Just highlight genesis
+                highlight_anim = self._highlight_block(current_block_name)
+                animations.append(highlight_anim)
+                continue
+
+                # Step 1: Highlight the current block being processed
+            step_animations = []
+            step_animations.append(self._highlight_block(current_block_name))
+
+            # Step 2: Show selected parent selection
+            if hasattr(current_block, 'selected_parent') and current_block.selected_parent:
+                step_animations.append(self._highlight_selected_parent(current_block))
+
+                # Step 3: Show mergeset calculation
+            if hasattr(current_block, 'mergeset') and current_block.mergeset:
+                step_animations.append(self._highlight_mergeset(current_block))
+
+                # Step 4: Show blue/red coloring process
+            if hasattr(current_block, 'mergeset_blues') or hasattr(current_block, 'mergeset_reds'):
+                step_animations.append(self._show_coloring_process(current_block))
+
+                # Add all step animations for this block
+            animations.extend(step_animations)
+
+            # Brief pause between blocks
+            animations.append(Wait(0.5))
+
+            # Final positioning animation
+        movement_animations = []
+        for block_name, new_pos in new_positions.items():
+            if block_name in self.blocks:
+                current_block = self.blocks[block_name]
+                movement_animations.append(current_block.rect.animate.move_to(new_pos))
+
+        if movement_animations:
+            animations.append(AnimationGroup(*movement_animations, run_time=1.0))
+
+        return Succession(*animations)
+
+    def _fade_all_blocks(self):
+        """Set all blocks to low opacity initially"""
+        for block_name, block in self.blocks.items():
+            block.rect.set_opacity(0.2)
+            if hasattr(block, 'label') and block.label:
+                block.label.set_opacity(0.2)
+            if hasattr(block, 'outgoing_arrows'):
+                for arrow in block.outgoing_arrows:
+                    arrow.set_opacity(0.2)
+
+    def _highlight_block(self, block_name):
+        """Highlight a specific block and its relevant arrows"""
+        block = self.blocks[block_name]
+        animations = []
+
+        # Highlight the block itself
+        animations.append(block.rect.animate.set_opacity(1.0))
+        if hasattr(block, 'label') and block.label:
+            animations.append(block.label.animate.set_opacity(1.0))
+
+            # Highlight incoming arrows (arrows pointing to this block)
+        for other_block_name, other_block in self.blocks.items():
+            if hasattr(other_block, 'outgoing_arrows'):
+                for arrow in other_block.outgoing_arrows:
+                    if hasattr(arrow, 'target_block') and arrow.target_block.name == block_name:
+                        animations.append(arrow.animate.set_opacity(1.0))
+
+        return AnimationGroup(*animations, run_time=0.3)
+
+    def _highlight_selected_parent(self, current_block):
+        """Highlight the selected parent and show the selection process with arrows"""
+        animations = []
+
+        # Highlight all parents first (showing selection process)
+        for parent in current_block.parents:
+            parent_block = self.blocks[parent.name]
+            animations.append(parent_block.rect.animate.set_color(YELLOW).set_opacity(1.0))
+
+            # Highlight arrows from current block to all parents
+            if hasattr(current_block, 'outgoing_arrows'):
+                for arrow in current_block.outgoing_arrows:
+                    if hasattr(arrow, 'target_block') and arrow.target_block.name == parent.name:
+                        animations.append(arrow.animate.set_opacity(1.0))
+
+                        # Then highlight the selected parent in blue
+        selected_animations = []
+        if current_block.selected_parent:
+            selected_parent_block = self.blocks[current_block.selected_parent.name]
+            selected_animations.append(selected_parent_block.rect.animate.set_color(BLUE).set_opacity(1.0))
+
+            # Highlight the arrow to selected parent with blue color
+            if hasattr(current_block, 'outgoing_arrows'):
+                for arrow in current_block.outgoing_arrows:
+                    if (hasattr(arrow, 'target_block') and
+                            arrow.target_block.name == current_block.selected_parent.name):
+                        selected_animations.append(arrow.animate.set_color(BLUE).set_opacity(1.0))
+
+        return Succession(
+            AnimationGroup(*animations, run_time=0.5),  # Show all parents with arrows
+            AnimationGroup(*selected_animations, run_time=0.5)  # Highlight selected with blue arrow
+        )
+
+    def _highlight_mergeset(self, current_block):
+        """Highlight the mergeset blocks and their connecting arrows"""
+        animations = []
+
+        if hasattr(current_block, 'mergeset'):
+            for mergeset_block_name in current_block.mergeset:
+                if mergeset_block_name in self.blocks:
+                    mergeset_block = self.blocks[mergeset_block_name]
+                    animations.append(mergeset_block.rect.animate.set_color(ORANGE).set_opacity(1.0))
+
+                    # Highlight arrows connecting mergeset blocks to the current block's parents
+                    # and arrows within the mergeset
+                    if hasattr(mergeset_block, 'outgoing_arrows'):
+                        for arrow in mergeset_block.outgoing_arrows:
+                            if hasattr(arrow, 'target_block'):
+                                target_name = arrow.target_block.name
+                                # Show arrows to parents or other mergeset blocks
+                                if (target_name in [p.name for p in current_block.parents] or
+                                        target_name in current_block.mergeset):
+                                    animations.append(arrow.animate.set_opacity(1.0))
+
+        return AnimationGroup(*animations, run_time=0.5) if animations else Wait(0.1)
+
+    def _show_coloring_process(self, current_block):
+        """Show the blue/red coloring process with relevant arrows"""
+        animations = []
+
+        # First show blue blocks with their arrows
+        if hasattr(current_block, 'mergeset_blues'):
+            for blue_block_name in current_block.mergeset_blues:
+                if blue_block_name in self.blocks and blue_block_name != current_block.selected_parent.name:
+                    blue_block = self.blocks[blue_block_name]
+                    animations.append(blue_block.rect.animate.set_color(PURE_BLUE).set_opacity(1.0))
+
+                    # Highlight arrows from blue blocks
+                    if hasattr(blue_block, 'outgoing_arrows'):
+                        for arrow in blue_block.outgoing_arrows:
+                            if hasattr(arrow, 'target_block'):
+                                target_name = arrow.target_block.name
+                                # Show arrows to other blue blocks or selected parent
+                                if (target_name in current_block.mergeset_blues or
+                                        target_name == current_block.selected_parent.name):
+                                    animations.append(arrow.animate.set_color(PURE_BLUE).set_opacity(1.0))
+
+                                    # Then show red blocks with their arrows
+        if hasattr(current_block, 'mergeset_reds'):
+            for red_block_name in current_block.mergeset_reds:
+                if red_block_name in self.blocks:
+                    red_block = self.blocks[red_block_name]
+                    animations.append(red_block.rect.animate.set_color(PURE_RED).set_opacity(1.0))
+
+                    # Highlight arrows from red blocks with reduced opacity
+                    if hasattr(red_block, 'outgoing_arrows'):
+                        for arrow in red_block.outgoing_arrows:
+                            animations.append(arrow.animate.set_color(PURE_RED).set_opacity(0.6))
+
+        return AnimationGroup(*animations, run_time=0.7) if animations else Wait(0.1)
+
+    def _show_k_cluster_check(self, current_block, candidate_block_name):
+        """Show the k-cluster validation process with anticone arrows highlighted"""
+        animations = []
+
+        # Highlight the candidate being checked
+        candidate_block = self.blocks[candidate_block_name]
+        animations.append(candidate_block.rect.animate.set_color(YELLOW).set_opacity(1.0))
+
+        # Show the chain blocks being checked against
+        parent_chain = self._get_parent_chain(current_block.name)
+        for chain_block_name in parent_chain:
+            if chain_block_name in self.blocks:
+                chain_block = self.blocks[chain_block_name]
+                if hasattr(chain_block, 'mergeset_blues'):
+                    # Highlight blue blocks in the chain that affect the anticone calculation
+                    for blue_name in chain_block.mergeset_blues:
+                        if blue_name in self.blocks and blue_name != candidate_block_name:
+                            blue_block = self.blocks[blue_name]
+                            # Check if this blue block is in the anticone of candidate
+                            if not self._is_ancestor(blue_block, candidate_block):
+                                animations.append(blue_block.rect.animate.set_color(LIGHT_BLUE).set_opacity(1.0))
+
+                                # Highlight arrows showing the anticone relationship
+                                # (no direct arrows between anticone blocks, but show their connections to common ancestors)
+                                if hasattr(blue_block, 'outgoing_arrows'):
+                                    for arrow in blue_block.outgoing_arrows:
+                                        if hasattr(arrow, 'target_block'):
+                                            target_name = arrow.target_block.name
+                                            if target_name in parent_chain:
+                                                animations.append(arrow.animate.set_opacity(1.0))
+
+        return AnimationGroup(*animations, run_time=0.5) if animations else Wait(0.1)
 
     def _generate_semantic_name(self, block_type: type, parents: list, layer: int = None) -> str:
         """Generate semantically meaningful names."""
@@ -673,7 +1078,7 @@ class GHOSTDAG(LayerDAG):
             return AnimationGroup(Wait(0.1))
 
         parent_chain = self._get_parent_chain(best_tip)
-        new_positions = self._calculate_chain_tree_positions(parent_chain, vertical_offset, horizontal_offset)
+        new_positions = self._calculate_chain_tree_positions_ordered(parent_chain, vertical_offset, horizontal_offset)
 
         # Set fade properties directly (no animation)
         best_tip_block = self.blocks[best_tip]
@@ -681,15 +1086,45 @@ class GHOSTDAG(LayerDAG):
         highlighted_blocks = past_blocks.copy()
         highlighted_blocks.add(best_tip)
 
+        # Collect all red and blue blocks from the parent chain
+        red_blocks = set()
+        blue_blocks = set()
+
+        for chain_block_name in parent_chain:
+            chain_block = self.blocks[chain_block_name]
+            if hasattr(chain_block, 'mergeset_reds'):
+                red_blocks.update(chain_block.mergeset_reds)
+            if hasattr(chain_block, 'mergeset_blues'):
+                blue_blocks.update(chain_block.mergeset_blues)
+
         for block_name, block in self.blocks.items():
             if block_name not in highlighted_blocks:
                 block.rect.set_opacity(0.2)
                 if hasattr(block, 'label') and block.label:
                     block.label.set_opacity(0.2)
-                    # Set opacity for outgoing arrows as well
                 if hasattr(block, 'outgoing_arrows'):
                     for arrow in block.outgoing_arrows:
-                        arrow.set_opacity(0.2)  # Set arrow opacity directly
+                        arrow.set_opacity(0.2)
+            else:
+                # Apply specific coloring based on GHOSTDAG data
+                if block_name in red_blocks:
+                    block.rect.set_color(PURE_RED, family=False)
+
+                    # Set full opacity for highlighted blocks
+                block.rect.set_opacity(1.0)
+                if hasattr(block, 'label') and block.label:
+                    block.label.set_opacity(1.0)
+                if hasattr(block, 'outgoing_arrows'):
+                    for arrow in block.outgoing_arrows:
+                        if hasattr(arrow, 'target_block') and arrow.target_block.name in highlighted_blocks:
+                            arrow.set_opacity(1.0)
+
+            for red_block_name in red_blocks:
+                if red_block_name in self.blocks and red_block_name in highlighted_blocks:
+                    red_block = self.blocks[red_block_name]
+                    if hasattr(red_block, 'outgoing_arrows'):
+                        for arrow in red_block.outgoing_arrows:
+                            arrow.set_opacity(0.2)
 
         # Only animate the movement
         movement_animations = []
@@ -700,6 +1135,45 @@ class GHOSTDAG(LayerDAG):
 
         return AnimationGroup(*movement_animations, run_time=1.0)
 
+    def _calculate_chain_tree_positions_ordered(self, parent_chain, v_offset, h_offset):
+        """Calculate positions with parent chain at bottom and mergesets ordered by blue work"""
+        new_positions = {}
+
+        # Position parent chain blocks at the bottom
+        chain_y = min(block.rect.get_center()[1] for block in self.blocks.values())
+
+        for i, block_name in enumerate(reversed(parent_chain)):  # Genesis first
+            current_block = self.blocks[block_name]
+            current_x = current_block.rect.get_center()[0]  # Keep current x position
+            new_positions[block_name] = [current_x, chain_y, 0]
+
+            # Position mergeset blocks above, ordered by distance from parent chain
+            if hasattr(current_block, 'mergeset') and current_block.mergeset:
+                # Sort mergeset blocks by blue_count (ascending = closest to parent chain first)
+                mergeset_blocks = list(current_block.mergeset)
+                ordered_mergeset = self._sort_mergeset_by_distance_to_chain(mergeset_blocks, current_block)
+
+                for j, mergeset_block_name in enumerate(ordered_mergeset):
+                    if mergeset_block_name in self.blocks:
+                        mergeset_x = current_x - h_offset
+                        # Position closer blocks (lower blue_count) closer to chain
+                        mergeset_y = chain_y + v_offset + (j * 0.5)
+                        new_positions[mergeset_block_name] = [mergeset_x, mergeset_y, 0]
+
+        return new_positions
+
+    def _sort_mergeset_by_distance_to_chain(self, mergeset_blocks, chain_block):
+        """Sort mergeset blocks by their distance from the parent chain (blue_count ascending)"""
+
+        def get_distance_key(block_name):
+            block = self.blocks[block_name]
+            blue_count = getattr(block, 'blue_count', 0)
+            block_hash = getattr(block, 'hash', block_name)
+            # Lower blue_count = closer to parent chain = should be positioned first
+            return (blue_count, block_hash)
+
+        return sorted(mergeset_blocks, key=get_distance_key)
+
     def _find_best_tip(self):
         """Find tip block with most blue work (blue blocks in past)"""
         tips = [name for name, block in self.blocks.items() if not block.children]
@@ -707,14 +1181,14 @@ class GHOSTDAG(LayerDAG):
             return None
 
         best_tip = None
-        max_blue_work = -1
+        max_blue_count = -1  # Changed from max_blue_work
 
         for tip_name in tips:
             tip_block = self.blocks[tip_name]
-            # Call the method on the block instance, not on self
-            blue_work = tip_block.weight
-            if blue_work > max_blue_work:
-                max_blue_work = blue_work
+            # Use blue_count for comparison
+            current_blue_count = tip_block.blue_count  # Changed from tip_block.weight
+            if current_blue_count > max_blue_count:  # Changed from max_blue_work
+                max_blue_count = current_blue_count  # Changed from max_blue_work
                 best_tip = tip_name
 
         return best_tip
@@ -870,7 +1344,6 @@ class GHOSTDAG(LayerDAG):
             # Fallback implementation
             tips = [name for name, block in self.blocks.items() if block.is_tip()]
             return tips
-
 
 class Miner():
     def __init__(self, scene, x=0 , y=0, attempts = 20):
@@ -2263,7 +2736,7 @@ class NarrationMathTex(MathTex):
 #  PAUSED       blockchain class - location updates based on parent,  # when getting to about 6 or more btc blocks, simple animations start taking too much time(mem leaks?)
 #  COMPLETE     for BlockMobBitcoin(BlockDAG(blink(get_past, get future, get_anticone)) #method works for Kaspa),
 #               parallel chains like kadena, ect,
-#  CURRENT      ghostdag, function that computes k cluster and blueset for each block, # Up to selecting parent from mergeset based on weight, with deterministic tie breaking
+#  CURRENT      ghostdag, function that computes k cluster and blueset for each block, # still working out bugs
 #               output a transcript that has each step eg. added to blue set, appended children,
 
 # TODO please list priorities here
