@@ -61,7 +61,7 @@ class GHOSTDAGScene(Scene):
     AVG_AC = 4
     BLOCKS = 20
     DAG_WIDTH = 4
-    MAX_BLOCKS_PER_BATCH = 2
+    MAX_BLOCKS_PER_BATCH = 1
     GD_K = 1
 
     def construct(self):
@@ -97,9 +97,9 @@ class GHOSTDAGScene(Scene):
         self.play(GD.reset_all_opacity(self))
         self.wait(1)
         print("b4 create tree animations")
-        tree_animations = GD.create_ghostdag_step_by_step_animation()
+        tree_animations = GD.create_tree_animation_fast()
         print("b4 play tree animations")
-        self.play(tree_animations, run_time=3.0)
+        self.play(tree_animations, run_time=5.0)
         print("after play tree animations")
         self.wait(3)
 

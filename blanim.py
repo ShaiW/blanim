@@ -96,7 +96,7 @@ class Block(ABC):
                 self.label.move_to(self.rect.get_center())  # Position it initially
                 self.rect.add(self.label)  # Add as submobject
         else:
-            # each block is initialized with a label of its weight
+            # create a label
             self.label = Tex(label).set_z_index(1).scale(0.7)
             self.label.move_to(self.rect.get_center())  # Position it initially
             self.rect.add(self.label)  # Add as submobject
@@ -166,58 +166,15 @@ class GhostDAGBlock(Block):
             self.label.move_to(self.rect.get_center())
             self.rect.add(self.label)
 
-    def _check_blue_candidate(self, new_block_data, blue_candidate, k):
-        """
-        Main k-cluster validation with chain traversal.
-        Returns ColoringOutput with state and anticone information.
-        """
-        # Rule 1: Check if we already have exactly K+1 blues
-        if len(new_block_data.mergeset_blues) == k + 1:  # Changed from >=
-            return ColoringOutput(ColoringState.RED)
-
-        candidate_blues_anticone_sizes = {}
-        candidate_blue_anticone_size = [0]  # Use list for mutable reference
-
-        # Start with the new block data (chain_block with hash=None)
-        chain_block = ChainBlock(None, new_block_data)
-
-        while True:
-            state = self._check_blue_candidate_with_chain_block(
-                new_block_data, chain_block, blue_candidate,
-                candidate_blues_anticone_sizes, candidate_blue_anticone_size, k
-            )
-
-            if state == ColoringState.BLUE:
-                return ColoringOutput(ColoringState.BLUE,
-                                      candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-            elif state == ColoringState.RED:
-                return ColoringOutput(ColoringState.RED)
-                # If PENDING, continue to next chain block
-
-            # Move to next chain block (selected parent)
-            if not hasattr(chain_block.data,
-                           'selected_parent') or chain_block.data.selected_parent not in self.DAG.blocks:
-                # Reached end of chain without violations - candidate is blue
-                return ColoringOutput(ColoringState.BLUE,
-                                      candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-
-            next_parent = self.DAG.blocks[chain_block.data.selected_parent]
-            if not hasattr(next_parent, 'mergeset_blues'):
-                # Parent doesn't have GHOSTDAG data - candidate is blue
-                return ColoringOutput(ColoringState.BLUE,
-                                      candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-
-            chain_block = ChainBlock(chain_block.data.selected_parent, next_parent)
-
     def _color_mergeset_blocks(self, mergeset, k):
         """
         Color blocks in mergeset using proper GHOSTDAG k-cluster validation.
         """
-        print(f"Block {self.name}: Processing mergeset {mergeset} with k={k}")
+        print(f"\n{'=' * 60}")
+        print(f"GHOSTDAG COLORING: Block {self.name} (k={k})")
         print(f"Selected parent: {self.selected_parent.name}")
+        print(f"Mergeset: {mergeset}")
+        print(f"{'=' * 60}")
         # Create new_block_data structure
         new_block_data = type('GhostdagData', (), {
             'selected_parent': self.selected_parent.name,
@@ -250,6 +207,12 @@ class GhostDAGBlock(Block):
                 # Add as red
                 red_blocks.append(candidate_name)
                 new_block_data.mergeset_reds.append(candidate_name)
+
+        print(f"\nCOLORING SUMMARY for {self.name}:")
+        print(f"  Blue blocks: {blue_blocks}")
+        print(f"  Red blocks: {red_blocks}")
+        print(f"  Final anticone sizes: {new_block_data.blues_anticone_sizes}")
+        print(f"{'=' * 60}\n")
 
         return blue_blocks, red_blocks, new_block_data.blues_anticone_sizes
 
@@ -300,75 +263,181 @@ class GhostDAGBlock(Block):
         Returns the blue anticone size of block from the worldview of context.
         Traverses the selected parent chain to find the anticone size.
         """
+        print(f"        Looking up anticone size for {block_hash}")
+
         current_blues_anticone_sizes = context_ghostdag_data.blues_anticone_sizes.copy()
         current_selected_parent = context_ghostdag_data.selected_parent
+        lookup_depth = 0
 
         while True:
+            print(f"          Lookup depth {lookup_depth}: Checking in {current_selected_parent or 'NEW_BLOCK'}")
+            print(f"          Available anticone sizes: {list(current_blues_anticone_sizes.keys())}")
+
             if block_hash in current_blues_anticone_sizes:
-                return current_blues_anticone_sizes[block_hash]
+                size = current_blues_anticone_sizes[block_hash]
+                print(f"          Found {block_hash} anticone size: {size}")
+                return size
 
                 # Handle genesis/origin case
             if (current_selected_parent == "Gen" or
                     current_selected_parent is None or
                     current_selected_parent not in self.DAG.blocks):
+                print(f"          Reached end of chain without finding {block_hash}")
                 raise ValueError(f"Block {block_hash} is not in blue set of the given context")
 
                 # Move up the chain
             parent_block = self.DAG.blocks[current_selected_parent]
             if hasattr(parent_block, 'blues_anticone_sizes'):
                 current_blues_anticone_sizes = parent_block.blues_anticone_sizes.copy()
+                print(f"          Moving to parent {current_selected_parent}")
             else:
                 current_blues_anticone_sizes = {}
+                print(f"          Parent {current_selected_parent} has no anticone data")
+
             current_selected_parent = getattr(parent_block, 'selected_parent', None)
+            lookup_depth += 1
 
     def _is_ancestor(self, ancestor_block, descendant_block):
         """Check if ancestor_block is in the past of descendant_block"""
         return ancestor_block.name in descendant_block.past_blocks
 
-    def _check_blue_candidate_with_chain_block(self, new_block_data, chain_block,
-                                               blue_candidate, candidate_blues_anticone_sizes,
-                                               candidate_blue_anticone_size, k):
-        """
-        Check blue candidate against a specific chain block.
-        Returns ColoringState (BLUE, RED, or PENDING).
-        """
-        candidate_block = self.DAG.blocks[blue_candidate]
+    def _check_blue_candidate(self, new_block_data, blue_candidate, k):
+        print(f"\n=== CHECKING BLUE CANDIDATE: {blue_candidate} (k={k}) ===")
 
-        # If blue_candidate is in the future of chain_block, it means
-        # all remaining blues are in the past of chain_block and thus
-        # in the past of blue_candidate
+        # Rule 1: Check if we already have K+1 blues (including selected parent)
+        if len(new_block_data.mergeset_blues) == k + 1:
+            print(f"  REJECTED: Already have {len(new_block_data.mergeset_blues)} blues (k+1={k + 1})")
+            return ColoringOutput(ColoringState.RED)
+
+        candidate_blues_anticone_sizes = {}
+        candidate_blue_anticone_size = [0]
+        chain_depth = 0
+
+        # Start with the new block data (chain_block with hash=None)
+        chain_block = ChainBlock(None, new_block_data)
+        print(f"  Starting chain traversal from new block")
+
+        while True:
+            print(f"  Chain depth {chain_depth}: Checking against chain_block {chain_block.hash or 'NEW_BLOCK'}")
+
+            state = self._check_blue_candidate_with_chain_block(
+                new_block_data, chain_block, blue_candidate,
+                candidate_blues_anticone_sizes, candidate_blue_anticone_size, k
+            )
+
+            print(f"    Result at depth {chain_depth}: {state}")
+            print(f"    Current anticone size: {candidate_blue_anticone_size[0]}")
+
+            if state == ColoringState.BLUE:
+                print(f"  ACCEPTED: Candidate {blue_candidate} colored BLUE")
+                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
+            elif state == ColoringState.RED:
+                print(f"  REJECTED: Candidate {blue_candidate} colored RED")
+                return ColoringOutput(ColoringState.RED)
+            if not hasattr(chain_block.data, 'selected_parent'):
+                print(f"  ACCEPTED: No selected parent at depth {chain_depth}")
+                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
+
+                # Get the selected parent name properly
+            selected_parent = chain_block.data.selected_parent
+            if hasattr(selected_parent, 'name'):
+                selected_parent_name = selected_parent.name
+            else:
+                selected_parent_name = selected_parent
+
+            if selected_parent_name not in self.DAG.blocks:
+                print(f"  ACCEPTED: Selected parent {selected_parent_name} not in DAG at depth {chain_depth}")
+                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
+
+                # Check if we've reached genesis
+            if selected_parent_name == "Gen":
+                print(f"  ACCEPTED: Reached genesis at depth {chain_depth}")
+                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
+                                      candidate_blues_anticone_sizes)
+
+            next_parent = self.DAG.blocks[selected_parent_name]
+
+            chain_block = ChainBlock(selected_parent_name, next_parent)
+            chain_depth += 1
+            print(f"  Moving to chain depth {chain_depth}: {chain_block.hash}")
+
+    def _check_blue_candidate_with_chain_block(self, new_block_data, chain_block, blue_candidate,
+                                               candidate_blues_anticone_sizes, candidate_blue_anticone_size, k):
+        candidate_block = self.DAG.blocks[blue_candidate]
+        chain_name = chain_block.hash or "NEW_BLOCK"
+
+        print(f"    Checking {blue_candidate} against chain block {chain_name}")
+
+        # If blue_candidate is in the future of chain_block, return BLUE
         if chain_block.hash and chain_block.hash in self.DAG.blocks:
             chain_block_obj = self.DAG.blocks[chain_block.hash]
             if self._is_ancestor(chain_block_obj, candidate_block):
+                print(f"      {chain_name} is ancestor of {blue_candidate} -> BLUE")
                 return ColoringState.BLUE
 
-                # Iterate over blue peers and check for k-cluster violations
-        for peer_name in chain_block.data.mergeset_blues:
+                # NEW: Check the chain block itself as a potential blue peer
+        if chain_block.hash and chain_block.hash in self.DAG.blocks:
+            chain_block_obj = self.DAG.blocks[chain_block.hash]
+            # Check if chain block is in anticone of candidate
+            if (not self._is_ancestor(chain_block_obj, candidate_block) and
+                    not self._is_ancestor(candidate_block, chain_block_obj)):
+                print(f"        Chain block {chain_name} and {blue_candidate} are in ANTICONE")
+                candidate_blue_anticone_size[0] += 1
+                print(f"        Candidate anticone size now: {candidate_blue_anticone_size[0]}")
+
+                if candidate_blue_anticone_size[0] > k:
+                    print(f"        VIOLATION: Candidate anticone size {candidate_blue_anticone_size[0]} > k={k}")
+                    return ColoringState.RED
+
+                    # Existing logic for checking mergeset_blues
+        blues_in_chain = chain_block.data.mergeset_blues
+        print(f"      Blues in {chain_name}: {blues_in_chain}")
+
+        for peer_name in blues_in_chain:
             if peer_name not in self.DAG.blocks:
                 continue
 
             peer_block = self.DAG.blocks[peer_name]
+            print(f"        Checking peer {peer_name}:")
 
             # Skip blocks that are in the past of blue_candidate
             if self._is_ancestor(peer_block, candidate_block):
+                print(f"          {peer_name} is ancestor of {blue_candidate} -> SKIP")
                 continue
 
-                # Get peer's blue anticone size
-            peer_blue_anticone_size = self._blue_anticone_size(peer_name, new_block_data)
-            candidate_blues_anticone_sizes[peer_name] = peer_blue_anticone_size
+                # Skip if candidate is in past of peer (not in anticone)
+            if self._is_ancestor(candidate_block, peer_block):
+                print(f"          {blue_candidate} is ancestor of {peer_name} -> SKIP")
+                continue
 
+                # They're in anticone - increment counters
+            print(f"          {peer_name} and {blue_candidate} are in ANTICONE")
             candidate_blue_anticone_size[0] += 1
+            print(f"          Candidate anticone size now: {candidate_blue_anticone_size[0]}")
 
-            # Check k-cluster violations
+            # Check k-cluster violations immediately - this is critical for k=1
             if candidate_blue_anticone_size[0] > k:
+                print(f"          VIOLATION: Candidate anticone size {candidate_blue_anticone_size[0]} > k={k}")
                 return ColoringState.RED
 
-            if peer_blue_anticone_size == k:
+                # Get peer's existing anticone size and check if adding candidate would violate k
+            try:
+                peer_blue_anticone_size = self._blue_anticone_size(peer_name, new_block_data)
+                print(f"          Peer {peer_name} current anticone size: {peer_blue_anticone_size}")
+
+                if peer_blue_anticone_size == k:
+                    print(f"          VIOLATION: Peer {peer_name} already has k={k} blues in anticone")
+                    return ColoringState.RED
+
+                candidate_blues_anticone_sizes[peer_name] = peer_blue_anticone_size
+            except ValueError as e:
+                print(f"          ERROR: Could not find {peer_name} in blue set: {e}")
                 return ColoringState.RED
 
-                # Sanity check
-            assert peer_blue_anticone_size <= k, f"Found blue anticone larger than K: {peer_blue_anticone_size}"
-
+        print(f"      No violations found at this chain level")
         return ColoringState.PENDING
 
     def _sort_blocks_by_blue_count(self, blocks):
@@ -387,22 +456,16 @@ class GhostDAGBlock(Block):
         return self._sort_blocks_by_blue_count(list(mergeset))
 
     def _calculate_blue_count(self):
-        """Calculate blue count as selected parent's blue count + mergeset blues"""
+        """Calculate blue count as selected parent's blue count + 1 (for selected parent) + mergeset blues"""
         if not self.selected_parent:
-            print(f"Block {self.name}: No selected parent, blue_count = 0")
             return 0
 
-            # Get the selected parent's blue count (should be properly calculated by now)
         selected_parent_blue_count = getattr(self.selected_parent, 'blue_count', 0)
-
-        # Count of blue blocks in this block's mergeset (excluding selected parent)
+        # Count ONLY the mergeset blues (not including selected parent)
         mergeset_blue_count = len(getattr(self, 'mergeset_blues', []))
 
-        # The total blue count is parent's blue count + 1 (for the selected parent itself) + mergeset blues
+        # Total = parent's blue count + 1 (for selected parent itself) + mergeset blues
         total = selected_parent_blue_count + 1 + mergeset_blue_count
-
-        print(
-            f"Block {self.name}: parent_blue_count={selected_parent_blue_count}, mergeset_blues={mergeset_blue_count}, total={total}")
         return total
 
     def _select_parent(self):
@@ -835,6 +898,7 @@ class GHOSTDAG(LayerDAG):
         # Force GhostDAGBlock type for GHOSTDAG, overriding LayerDAG's default
         super().__init__(block_type=GhostDAGBlock, *args, **kwargs)
 
+
     def create_ghostdag_step_by_step_animation(self, vertical_offset=0.5, horizontal_offset=1.25):
         """
         Create step-by-step GHOSTDAG animation showing the algorithm progression
@@ -896,6 +960,171 @@ class GHOSTDAG(LayerDAG):
             animations.append(AnimationGroup(*movement_animations, run_time=1.0))
 
         return Succession(*animations)
+
+    def create_block_perspective_animation(self, vertical_offset=0.5, horizontal_offset=1.25, hold_duration=1.0):
+        """
+        Animate each block (layer 2+) showing its GHOSTDAG perspective as a tree,
+        then return to original positions before moving to the next block.
+        """
+        # Store original positions at the beginning
+        self._store_original_positions()
+
+        # Get blocks from layer 2 and higher
+        blocks_to_animate = []
+        for layer_idx in range(2, len(self.layers)):
+            blocks_to_animate.extend(self.layers[layer_idx])
+
+        if not blocks_to_animate:
+            return AnimationGroup(Wait(0.1))
+
+        animations = []
+
+        for block_name in blocks_to_animate:
+            current_block = self.blocks[block_name]
+
+            # Step 1: Show this block's perspective
+            perspective_animations = self._show_block_perspective(
+                block_name, vertical_offset, horizontal_offset
+            )
+            animations.extend(perspective_animations)
+
+            # Step 2: Hold the view
+            animations.append(Wait(hold_duration))
+
+            # Step 3: Return to original positions
+            reset_animations = self._reset_to_original_positions()
+            animations.append(reset_animations)
+
+            # Brief pause before next block
+            animations.append(Wait(0.3))
+
+        return Succession(*animations)
+
+    def _show_block_perspective(self, focus_block_name, v_offset, h_offset):
+        """Show the DAG from a specific block's GHOSTDAG perspective"""
+        focus_block = self.blocks[focus_block_name]
+
+        # Calculate tree positions from this block's perspective
+        tree_positions = self._calculate_perspective_tree_positions(
+            focus_block_name, v_offset, h_offset
+        )
+
+        # Apply coloring based on this block's GHOSTDAG data
+        coloring_animations = self._apply_perspective_coloring(focus_block)
+
+        # Move blocks to tree positions
+        movement_animations = []
+        for block_name, new_pos in tree_positions.items():
+            if block_name in self.blocks:
+                current_block = self.blocks[block_name]
+                movement_animations.append(
+                    current_block.rect.animate.move_to(new_pos)
+                )
+
+        return [
+            AnimationGroup(*coloring_animations, run_time=0.5),
+            AnimationGroup(*movement_animations, run_time=0.8)
+        ]
+
+    def _calculate_perspective_tree_positions(self, focus_block_name, v_offset, h_offset):
+        """Calculate tree positions from a specific block's perspective"""
+        focus_block = self.blocks[focus_block_name]
+        new_positions = {}
+
+        # Get the selected parent chain from focus block to genesis
+        parent_chain = self._get_parent_chain(focus_block_name)
+
+        # Position the parent chain horizontally at bottom
+        chain_y = min(block.rect.get_center()[1] for block in self.blocks.values())
+
+        for i, chain_block_name in enumerate(reversed(parent_chain)):
+            chain_block = self.blocks[chain_block_name]
+            # Spread parent chain horizontally
+            chain_x = i * h_offset - (len(parent_chain) * h_offset / 2)
+            new_positions[chain_block_name] = [chain_x, chain_y, 0]
+
+            # Position mergeset blocks above each chain block
+            if hasattr(chain_block, 'mergeset') and chain_block.mergeset:
+                mergeset_blocks = list(chain_block.mergeset)
+                for j, mergeset_block_name in enumerate(mergeset_blocks):
+                    if mergeset_block_name in self.blocks:
+                        mergeset_x = chain_x - h_offset * 0.5
+                        mergeset_y = chain_y + v_offset + (j * 0.4)
+                        new_positions[mergeset_block_name] = [mergeset_x, mergeset_y, 0]
+
+                        # Position the focus block prominently
+        focus_x = 0
+        focus_y = chain_y + v_offset * 2
+        new_positions[focus_block_name] = [focus_x, focus_y, 0]
+
+        return new_positions
+
+    def _apply_perspective_coloring(self, focus_block):
+        """Apply coloring based on the focus block's GHOSTDAG perspective"""
+        animations = []
+
+        # Reset all blocks to default opacity and color first
+        for block_name, block in self.blocks.items():
+            animations.append(block.rect.animate.set_opacity(0.3).set_color(GRAY))
+
+            # Highlight the focus block
+        animations.append(
+            focus_block.rect.animate.set_opacity(1.0).set_color(YELLOW)
+        )
+
+        # Color selected parent chain in blue
+        parent_chain = self._get_parent_chain(focus_block.name)
+        for chain_block_name in parent_chain:
+            if chain_block_name != focus_block.name:
+                chain_block = self.blocks[chain_block_name]
+                animations.append(
+                    chain_block.rect.animate.set_opacity(1.0).set_color(PURE_BLUE)
+                )
+
+                # Color mergeset blues and reds from focus block's perspective
+        if hasattr(focus_block, 'mergeset_blues'):
+            for blue_name in focus_block.mergeset_blues:
+                if blue_name in self.blocks and blue_name not in parent_chain:
+                    blue_block = self.blocks[blue_name]
+                    animations.append(
+                        blue_block.rect.animate.set_opacity(1.0).set_color(PURE_BLUE)
+                    )
+
+        if hasattr(focus_block, 'mergeset_reds'):
+            for red_name in focus_block.mergeset_reds:
+                if red_name in self.blocks:
+                    red_block = self.blocks[red_name]
+                    animations.append(
+                        red_block.rect.animate.set_opacity(1.0).set_color(PURE_RED)
+                    )
+
+        return animations
+
+    def _reset_to_original_positions(self):
+        """Reset all blocks to their original positions and colors"""
+        animations = []
+
+        for block_name, block in self.blocks.items():
+            # Get original position (you'll need to store this)
+            original_pos = getattr(block, 'original_position', block.rect.get_center())
+
+            # Reset position and appearance
+            animations.append(block.rect.animate.move_to(original_pos))
+            animations.append(block.rect.animate.set_opacity(1.0))
+
+            # Reset to original color based on block type
+            if isinstance(block, GhostDAGBlock):
+                animations.append(block.rect.animate.set_color(PURE_BLUE))
+            else:
+                animations.append(block.rect.animate.set_color(BLUE))
+
+        return AnimationGroup(*animations, run_time=0.8)
+
+    def _store_original_positions(self):
+        """Store original positions for reset functionality"""
+        for block_name, block in self.blocks.items():
+            if not hasattr(block, 'original_position'):
+                block.original_position = block.rect.get_center().copy()
 
     def _fade_all_blocks(self):
         """Set all blocks to low opacity initially"""
@@ -1109,21 +1338,31 @@ class GHOSTDAG(LayerDAG):
                 # Apply specific coloring based on GHOSTDAG data
                 if block_name in red_blocks:
                     block.rect.set_color(PURE_RED, family=False)
+                if block_name in blue_blocks:
+                    block.rect.set_color(GREEN, family=False)
 
-                    # Set full opacity for highlighted blocks
-                block.rect.set_opacity(1.0)
-                if hasattr(block, 'label') and block.label:
-                    block.label.set_opacity(1.0)
-                if hasattr(block, 'outgoing_arrows'):
-                    for arrow in block.outgoing_arrows:
-                        if hasattr(arrow, 'target_block') and arrow.target_block.name in highlighted_blocks:
-                            arrow.set_opacity(1.0)
+#                    # Set full opacity for highlighted blocks
+#                block.rect.set_opacity(1.0)
+#                if hasattr(block, 'label') and block.label:
+#                    block.label.set_opacity(1.0)
+#                if hasattr(block, 'outgoing_arrows'):
+#                    for arrow in block.outgoing_arrows:
+#                        if hasattr(arrow, 'target_block') and arrow.target_block.name in highlighted_blocks:
+#                            arrow.set_opacity(1.0)
 
             for red_block_name in red_blocks:
                 if red_block_name in self.blocks and red_block_name in highlighted_blocks:
                     red_block = self.blocks[red_block_name]
                     if hasattr(red_block, 'outgoing_arrows'):
                         for arrow in red_block.outgoing_arrows:
+                            arrow.set_opacity(0.2)
+            # NEW: Handle arrows TO red blocks
+            for block_name, block in self.blocks.items():
+                if hasattr(block, 'outgoing_arrows'):
+                    for arrow in block.outgoing_arrows:
+                        if (hasattr(arrow, 'target_block') and
+                                arrow.target_block.name in red_blocks and
+                                arrow.target_block.name in highlighted_blocks):
                             arrow.set_opacity(0.2)
 
         # Only animate the movement
