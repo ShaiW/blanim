@@ -368,7 +368,8 @@ class GhostDAGBlock(Block):
         return (not self._is_ancestor(block1, block2) and
                 not self._is_ancestor(block2, block1))
 
-    def _is_ancestor(self, ancestor_block, descendant_block):
+    @staticmethod
+    def _is_ancestor(ancestor_block, descendant_block):
         """Check if ancestor_block is in the past of descendant_block"""
         return ancestor_block.name in descendant_block.past_blocks
 
