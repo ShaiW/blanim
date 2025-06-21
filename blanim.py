@@ -300,14 +300,16 @@ class GhostDAGBlock(Block):
         raise ValueError(f"Block {block_name} is not in blue set of the given context")
 
     def _calculate_blue_count(self) -> int:
-        """Calculate blue count from GHOSTDAG data"""
         if not self.selected_parent:
             return 0
 
-        selected_parent_blue_count = getattr(self.selected_parent, 'blue_count', 0)
-        mergeset_blue_count = len(self.ghostdag_data.mergeset_blues) - 1  # Exclude selected parent
+            # Get selected parent's blue score (total blues in its past)
+        selected_parent_blue_score = getattr(self.selected_parent, 'blue_count', 0)
 
-        return selected_parent_blue_count + 1 + mergeset_blue_count
+        # Add the count of mergeset blues (which includes selected parent)
+        mergeset_blues_count = len(self.ghostdag_data.mergeset_blues)
+
+        return selected_parent_blue_score + mergeset_blues_count
 
     def _update_label(self):
         """Update block label with blue count"""
