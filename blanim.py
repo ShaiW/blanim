@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from enum import Enum
 from random import choice, randint
 from typing import Dict, List
@@ -30,11 +31,22 @@ class ColoringState(Enum):
     RED = "red"
     PENDING = "pending"
 
+@dataclass
+class GhostdagData:
+    """Standardized GHOSTDAG data structure matching Kaspa's implementation"""
+    blue_score: int = 0
+    blue_work: int = 0  # Simplified for visualization
+    selected_parent: str = ""
+    mergeset_blues: List[str] = field(default_factory=list)
+    mergeset_reds: List[str] = field(default_factory=list)
+    blues_anticone_sizes: Dict[str, int] = field(default_factory=dict)
+
+@dataclass
 class ColoringOutput:
-    def __init__(self, state, anticone_size=0, anticone_sizes=None):
-        self.state = state
-        self.anticone_size = anticone_size
-        self.anticone_sizes = anticone_sizes or {}
+    """Result of GHOSTDAG coloring for a candidate block"""
+    state: str  # "BLUE" or "RED"
+    anticone_size: int = 0
+    anticone_sizes: Dict[str, int] = field(default_factory=dict)
 
 class ChainBlock:
     def __init__(self, hash_val, ghostdag_data):
@@ -134,101 +146,188 @@ class GhostDAGBlock(Block):
     DEFAULT_COLOR = PURE_BLUE
 
     def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, color=None, h=BLOCK_H, w=BLOCK_W):
-        # Initialize blue_count BEFORE calling parent constructor
         self.blue_count = 0
-
-        # Call parent constructor
         super().__init__(name, DAG, parents, pos, label, color, h, w)
 
         # Handle genesis block case
         if not self.selected_parent:
-            self.mergeset = set()
-            self.mergeset_blues = []
-            self.mergeset_reds = []
-            self.blues_anticone_sizes = {}
-            # Genesis should have blue_count = 0, which is already set
+            self.ghostdag_data = GhostdagData()
             return
 
-            # Now do GHOSTDAG calculations
+            # Calculate GHOSTDAG data
         self.mergeset = self._calculate_mergeset_proper()
         k = getattr(DAG, 'k_param', 3)
-        self.mergeset_blues, self.mergeset_reds, self.blues_anticone_sizes = self._color_mergeset_blocks(
-            self.mergeset,k
+        self.ghostdag_data = self._calculate_ghostdag_data(k)
+
+        # Update blue count and label
+        self.blue_count = self._calculate_blue_count()
+        self._update_label()
+
+    def _calculate_ghostdag_data(self, k) -> GhostdagData:
+        """Calculate complete GHOSTDAG data for this block"""
+        print(f"\n{'=' * 60}")
+        print(f"GHOSTDAG COLORING: Block {self.name} (k={k})")
+        print(f"Selected parent: {self.selected_parent.name}")
+        print(f"Mergeset: {self.mergeset}")
+        print(f"{'=' * 60}")
+
+        # Initialize with selected parent as first blue
+        ghostdag_data = GhostdagData(
+            selected_parent=self.selected_parent.name,
+            mergeset_blues=[self.selected_parent.name],
+            blues_anticone_sizes={self.selected_parent.name: 0}
         )
 
-        # Recalculate blue_count with proper GHOSTDAG data
-        self.blue_count = self._calculate_blue_count()
+        # Process mergeset candidates
+        ordered_mergeset = self._topological_sort_mergeset(self.mergeset)
 
-        # Update the label
+        for candidate_name in ordered_mergeset:
+            coloring = self._check_blue_candidate_fixed(candidate_name, ghostdag_data, k)
+            print(f"  Checking candidate {candidate_name}: {coloring.state}")
+
+            if coloring.state == "BLUE":
+                ghostdag_data.mergeset_blues.append(candidate_name)
+                ghostdag_data.blues_anticone_sizes[candidate_name] = coloring.anticone_size
+
+                # Update anticone sizes for affected blues
+                for blue_name, size in coloring.anticone_sizes.items():
+                    ghostdag_data.blues_anticone_sizes[blue_name] = size + 1
+            else:
+                ghostdag_data.mergeset_reds.append(candidate_name)
+
+        print(f"\nCOLORING SUMMARY for {self.name}:")
+        print(f"  Blue blocks: {ghostdag_data.mergeset_blues[1:]}")  # Exclude selected parent
+        print(f"  Red blocks: {ghostdag_data.mergeset_reds}")
+        print(f"  Final anticone sizes: {ghostdag_data.blues_anticone_sizes}")
+        print(f"{'=' * 60}\n")
+
+        return ghostdag_data
+
+    def _check_blue_candidate_fixed(self, candidate_name: str, ghostdag_data: GhostdagData, k: int) -> ColoringOutput:
+        """Fixed k-cluster validation that properly traverses the selected parent chain"""
+        # Early exit if already at k+1 blues
+        if len(ghostdag_data.mergeset_blues) == k + 1:
+            return ColoringOutput(state="RED")
+
+        anticone_size = 0
+        counted_blocks = set()
+        affected_anticone_sizes = {}
+        candidate_block = self.DAG.blocks[candidate_name]
+
+        # Start chain traversal from the new block (similar to Kaspa's ChainBlock approach)
+        current_chain_data = ghostdag_data
+        current_chain_hash = None  # None represents the NEW_BLOCK
+
+        while True:
+            # Check if candidate is in future of current chain block
+            if current_chain_hash and current_chain_hash in self.DAG.blocks:
+                chain_block_obj = self.DAG.blocks[current_chain_hash]
+                if self._is_ancestor(chain_block_obj, candidate_block):
+                    # Candidate is in future, so all remaining blues are in past - safe to color BLUE
+                    return ColoringOutput(
+                        state="BLUE",
+                        anticone_size=anticone_size,
+                        anticone_sizes=affected_anticone_sizes
+                    )
+
+                    # Check all blues in current chain block's data
+            for peer_blue_name in current_chain_data.mergeset_blues:
+                if peer_blue_name in self.DAG.blocks and peer_blue_name not in counted_blocks:
+                    peer_blue = self.DAG.blocks[peer_blue_name]
+
+                    # Skip if peer is in past of candidate (not in anticone)
+                    if self._is_ancestor(peer_blue, candidate_block):
+                        continue
+
+                        # Skip if candidate is in past of peer (not in anticone)
+                    if self._is_ancestor(candidate_block, peer_blue):
+                        continue
+
+                        # They're in anticone - count this peer
+                    anticone_size += 1
+                    counted_blocks.add(peer_blue_name)
+
+                    # Check k-cluster violation for candidate
+                    if anticone_size > k:
+                        return ColoringOutput(state="RED")
+
+                        # Check if peer already has k blues in anticone (would violate k-cluster)
+                    peer_current_anticone_size = self._get_blue_anticone_size(peer_blue_name, current_chain_data)
+                    if peer_current_anticone_size == k:
+                        return ColoringOutput(state="RED")
+
+                    affected_anticone_sizes[peer_blue_name] = peer_current_anticone_size
+
+                    # Move to next block in selected parent chain
+            if not current_chain_data.selected_parent or current_chain_data.selected_parent == "Gen":
+                break
+
+            if current_chain_data.selected_parent not in self.DAG.blocks:
+                break
+
+                # Get the next chain block's GHOSTDAG data
+            next_chain_block = self.DAG.blocks[current_chain_data.selected_parent]
+            if hasattr(next_chain_block, 'ghostdag_data'):
+                current_chain_data = next_chain_block.ghostdag_data
+                current_chain_hash = current_chain_data.selected_parent
+            else:
+                break
+
+        return ColoringOutput(
+            state="BLUE",
+            anticone_size=anticone_size,
+            anticone_sizes=affected_anticone_sizes
+        )
+
+    def _get_blue_anticone_size(self, block_name: str, context_ghostdag_data: GhostdagData) -> int:
+        """Get the blue anticone size of a block from the given context"""
+        # First check in current context
+        if block_name in context_ghostdag_data.blues_anticone_sizes:
+            return context_ghostdag_data.blues_anticone_sizes[block_name]
+
+            # Traverse up the selected parent chain to find the anticone size
+        current_parent = context_ghostdag_data.selected_parent
+        while current_parent and current_parent != "Gen" and current_parent in self.DAG.blocks:
+            parent_block = self.DAG.blocks[current_parent]
+            if hasattr(parent_block, 'ghostdag_data'):
+                if block_name in parent_block.ghostdag_data.blues_anticone_sizes:
+                    return parent_block.ghostdag_data.blues_anticone_sizes[block_name]
+                current_parent = parent_block.ghostdag_data.selected_parent
+            else:
+                break
+
+                # If not found, the block is not in the blue set of this context
+        raise ValueError(f"Block {block_name} is not in blue set of the given context")
+
+    def _calculate_blue_count(self) -> int:
+        """Calculate blue count from GHOSTDAG data"""
+        if not self.selected_parent:
+            return 0
+
+        selected_parent_blue_count = getattr(self.selected_parent, 'blue_count', 0)
+        mergeset_blue_count = len(self.ghostdag_data.mergeset_blues) - 1  # Exclude selected parent
+
+        return selected_parent_blue_count + 1 + mergeset_blue_count
+
+    def _update_label(self):
+        """Update block label with blue count"""
         if self.name != "Gen":
             self.rect.remove(self.label)
             self.label = Tex(str(self.blue_count)).set_z_index(1).scale(0.7)
             self.label.move_to(self.rect.get_center())
             self.rect.add(self.label)
 
-    def _color_mergeset_blocks(self, mergeset, k):
-        """
-        Color blocks in mergeset using proper GHOSTDAG k-cluster validation.
-        """
-        print(f"\n{'=' * 60}")
-        print(f"GHOSTDAG COLORING: Block {self.name} (k={k})")
-        print(f"Selected parent: {self.selected_parent.name}")
-        print(f"Mergeset: {mergeset}")
-        print(f"{'=' * 60}")
-        # Create new_block_data structure
-        new_block_data = type('GhostdagData', (), {
-            'selected_parent': self.selected_parent.name,
-            'mergeset_blues': [self.selected_parent.name],
-            'mergeset_reds': [],
-            'blues_anticone_sizes': {self.selected_parent.name: 0}
-        })()
-
-        blue_blocks = []
-        red_blocks = []
-
-        # Process mergeset in topological order
-        ordered_mergeset = self._topological_sort_mergeset(mergeset)
-
-        for candidate_name in ordered_mergeset:
-            coloring = self._check_blue_candidate(new_block_data, candidate_name, k)
-            print(f"  Checking candidate {candidate_name}")
-            print(f"  Result: {coloring.state}")
-
-            if coloring.state == ColoringState.BLUE:
-                # Add as blue
-                blue_blocks.append(candidate_name)
-                new_block_data.mergeset_blues.append(candidate_name)
-                new_block_data.blues_anticone_sizes[candidate_name] = coloring.anticone_size
-
-                # Update anticone sizes for affected blues
-                for blue_name, size in coloring.anticone_sizes.items():
-                    new_block_data.blues_anticone_sizes[blue_name] = size + 1
-            else:
-                # Add as red
-                red_blocks.append(candidate_name)
-                new_block_data.mergeset_reds.append(candidate_name)
-
-        print(f"\nCOLORING SUMMARY for {self.name}:")
-        print(f"  Blue blocks: {blue_blocks}")
-        print(f"  Red blocks: {red_blocks}")
-        print(f"  Final anticone sizes: {new_block_data.blues_anticone_sizes}")
-        print(f"{'=' * 60}\n")
-
-        return blue_blocks, red_blocks, new_block_data.blues_anticone_sizes
+            # Keep essential helper methods
 
     def _calculate_mergeset_proper(self):
-        """
-        Calculate mergeset using Kaspa's algorithm: all blocks reachable from
-        non-selected parents that are not in the past of selected parent.
-        """
+        """Calculate mergeset using Kaspa's algorithm"""
         if not self.parents or not self.selected_parent:
             return set()
 
         mergeset = set()
-        past_of_selected = set()
         queue = []
 
-        # Initialize queue with non-selected parents
+        # Initialize with non-selected parents
         for parent in self.parents:
             if parent != self.selected_parent:
                 queue.append(parent.name)
@@ -239,255 +338,69 @@ class GhostDAGBlock(Block):
             current_name = queue.pop(0)
             current_block = self.DAG.blocks[current_name]
 
-            # Check all parents of current block
             for parent in current_block.parents:
                 parent_name = parent.name
-
-                # Skip if already processed
-                if parent_name in mergeset or parent_name in past_of_selected:
-                    continue
-
-                    # Check if parent is in past of selected parent
-                if self._is_ancestor(parent, self.selected_parent):
-                    past_of_selected.add(parent_name)
-                    continue
-
-                    # Add to mergeset and queue for further processing
-                mergeset.add(parent_name)
-                queue.append(parent_name)
+                if (parent_name not in mergeset and
+                        not self._is_ancestor(parent, self.selected_parent)):
+                    mergeset.add(parent_name)
+                    queue.append(parent_name)
 
         return mergeset
 
-    def _blue_anticone_size(self, block_hash, context_ghostdag_data):
-        """
-        Returns the blue anticone size of block from the worldview of context.
-        Traverses the selected parent chain to find the anticone size.
-        """
-        print(f"        Looking up anticone size for {block_hash}")
-
-        current_blues_anticone_sizes = context_ghostdag_data.blues_anticone_sizes.copy()
-        current_selected_parent = context_ghostdag_data.selected_parent
-        lookup_depth = 0
-
-        while True:
-            print(f"          Lookup depth {lookup_depth}: Checking in {current_selected_parent or 'NEW_BLOCK'}")
-            print(f"          Available anticone sizes: {list(current_blues_anticone_sizes.keys())}")
-
-            if block_hash in current_blues_anticone_sizes:
-                size = current_blues_anticone_sizes[block_hash]
-                print(f"          Found {block_hash} anticone size: {size}")
-                return size
-
-                # Handle genesis/origin case
-            if (current_selected_parent == "Gen" or
-                    current_selected_parent is None or
-                    current_selected_parent not in self.DAG.blocks):
-                print(f"          Reached end of chain without finding {block_hash}")
-                raise ValueError(f"Block {block_hash} is not in blue set of the given context")
-
-                # Move up the chain
-            parent_block = self.DAG.blocks[current_selected_parent]
-            if hasattr(parent_block, 'blues_anticone_sizes'):
-                current_blues_anticone_sizes = parent_block.blues_anticone_sizes.copy()
-                print(f"          Moving to parent {current_selected_parent}")
-            else:
-                current_blues_anticone_sizes = {}
-                print(f"          Parent {current_selected_parent} has no anticone data")
-
-            current_selected_parent = getattr(parent_block, 'selected_parent', None)
-            lookup_depth += 1
-
-    def _is_ancestor(self, ancestor_block, descendant_block):
-        """Check if ancestor_block is in the past of descendant_block"""
-        return ancestor_block.name in descendant_block.past_blocks
-
-    def _check_blue_candidate(self, new_block_data, blue_candidate, k):
-        print(f"\n=== CHECKING BLUE CANDIDATE: {blue_candidate} (k={k}) ===")
-
-        # Rule 1: Check if we already have K+1 blues (including selected parent)
-        if len(new_block_data.mergeset_blues) == k + 1:
-            print(f"  REJECTED: Already have {len(new_block_data.mergeset_blues)} blues (k+1={k + 1})")
-            return ColoringOutput(ColoringState.RED)
-
-        candidate_blues_anticone_sizes = {}
-        candidate_blue_anticone_size = [0]
-        chain_depth = 0
-
-        # Start with the new block data (chain_block with hash=None)
-        chain_block = ChainBlock(None, new_block_data)
-        print(f"  Starting chain traversal from new block")
-
-        while True:
-            print(f"  Chain depth {chain_depth}: Checking against chain_block {chain_block.hash or 'NEW_BLOCK'}")
-
-            state = self._check_blue_candidate_with_chain_block(
-                new_block_data, chain_block, blue_candidate,
-                candidate_blues_anticone_sizes, candidate_blue_anticone_size, k
-            )
-
-            print(f"    Result at depth {chain_depth}: {state}")
-            print(f"    Current anticone size: {candidate_blue_anticone_size[0]}")
-
-            if state == ColoringState.BLUE:
-                print(f"  ACCEPTED: Candidate {blue_candidate} colored BLUE")
-                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-            elif state == ColoringState.RED:
-                print(f"  REJECTED: Candidate {blue_candidate} colored RED")
-                return ColoringOutput(ColoringState.RED)
-            if not hasattr(chain_block.data, 'selected_parent'):
-                print(f"  ACCEPTED: No selected parent at depth {chain_depth}")
-                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-
-                # Get the selected parent name properly
-            selected_parent = chain_block.data.selected_parent
-            if hasattr(selected_parent, 'name'):
-                selected_parent_name = selected_parent.name
-            else:
-                selected_parent_name = selected_parent
-
-            if selected_parent_name not in self.DAG.blocks:
-                print(f"  ACCEPTED: Selected parent {selected_parent_name} not in DAG at depth {chain_depth}")
-                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-
-                # Check if we've reached genesis
-            if selected_parent_name == "Gen":
-                print(f"  ACCEPTED: Reached genesis at depth {chain_depth}")
-                return ColoringOutput(ColoringState.BLUE, candidate_blue_anticone_size[0],
-                                      candidate_blues_anticone_sizes)
-
-            next_parent = self.DAG.blocks[selected_parent_name]
-
-            chain_block = ChainBlock(selected_parent_name, next_parent)
-            chain_depth += 1
-            print(f"  Moving to chain depth {chain_depth}: {chain_block.hash}")
-
-    def _check_blue_candidate_with_chain_block(self, new_block_data, chain_block, blue_candidate,
-                                               candidate_blues_anticone_sizes, candidate_blue_anticone_size, k):
-        candidate_block = self.DAG.blocks[blue_candidate]
-        chain_name = chain_block.hash or "NEW_BLOCK"
-
-        print(f"    Checking {blue_candidate} against chain block {chain_name}")
-
-        # If blue_candidate is in the future of chain_block, return BLUE
-        if chain_block.hash and chain_block.hash in self.DAG.blocks:
-            chain_block_obj = self.DAG.blocks[chain_block.hash]
-            if self._is_ancestor(chain_block_obj, candidate_block):
-                print(f"      {chain_name} is ancestor of {blue_candidate} -> BLUE")
-                return ColoringState.BLUE
-
-                # NEW: Check the chain block itself as a potential blue peer
-        if chain_block.hash and chain_block.hash in self.DAG.blocks:
-            chain_block_obj = self.DAG.blocks[chain_block.hash]
-            # Check if chain block is in anticone of candidate
-            if (not self._is_ancestor(chain_block_obj, candidate_block) and
-                    not self._is_ancestor(candidate_block, chain_block_obj)):
-                print(f"        Chain block {chain_name} and {blue_candidate} are in ANTICONE")
-                candidate_blue_anticone_size[0] += 1
-                print(f"        Candidate anticone size now: {candidate_blue_anticone_size[0]}")
-
-                if candidate_blue_anticone_size[0] > k:
-                    print(f"        VIOLATION: Candidate anticone size {candidate_blue_anticone_size[0]} > k={k}")
-                    return ColoringState.RED
-
-                    # Existing logic for checking mergeset_blues
-        blues_in_chain = chain_block.data.mergeset_blues
-        print(f"      Blues in {chain_name}: {blues_in_chain}")
-
-        for peer_name in blues_in_chain:
-            if peer_name not in self.DAG.blocks:
-                continue
-
-            peer_block = self.DAG.blocks[peer_name]
-            print(f"        Checking peer {peer_name}:")
-
-            # Skip blocks that are in the past of blue_candidate
-            if self._is_ancestor(peer_block, candidate_block):
-                print(f"          {peer_name} is ancestor of {blue_candidate} -> SKIP")
-                continue
-
-                # Skip if candidate is in past of peer (not in anticone)
-            if self._is_ancestor(candidate_block, peer_block):
-                print(f"          {blue_candidate} is ancestor of {peer_name} -> SKIP")
-                continue
-
-                # They're in anticone - increment counters
-            print(f"          {peer_name} and {blue_candidate} are in ANTICONE")
-            candidate_blue_anticone_size[0] += 1
-            print(f"          Candidate anticone size now: {candidate_blue_anticone_size[0]}")
-
-            # Check k-cluster violations immediately - this is critical for k=1
-            if candidate_blue_anticone_size[0] > k:
-                print(f"          VIOLATION: Candidate anticone size {candidate_blue_anticone_size[0]} > k={k}")
-                return ColoringState.RED
-
-                # Get peer's existing anticone size and check if adding candidate would violate k
-            try:
-                peer_blue_anticone_size = self._blue_anticone_size(peer_name, new_block_data)
-                print(f"          Peer {peer_name} current anticone size: {peer_blue_anticone_size}")
-
-                if peer_blue_anticone_size == k:
-                    print(f"          VIOLATION: Peer {peer_name} already has k={k} blues in anticone")
-                    return ColoringState.RED
-
-                candidate_blues_anticone_sizes[peer_name] = peer_blue_anticone_size
-            except ValueError as e:
-                print(f"          ERROR: Could not find {peer_name} in blue set: {e}")
-                return ColoringState.RED
-
-        print(f"      No violations found at this chain level")
-        return ColoringState.PENDING
-
-    def _sort_blocks_by_blue_count(self, blocks):
-        """Sort blocks by blue count (equivalent to blue work sorting)"""
+    def _topological_sort_mergeset(self, mergeset):
+        """Sort mergeset blocks by blue count with debug output"""
 
         def get_sort_key(block_name):
             block = self.DAG.blocks[block_name]
             blue_count = getattr(block, 'blue_count', 0)
             block_hash = getattr(block, 'hash', block_name)
-            return (blue_count, block_hash)
+            sort_key = (blue_count, block_hash)
+            print(f"    Sort key for {block_name}: {sort_key}")
+            return sort_key
 
-        return sorted(blocks, key=get_sort_key)
+        print(f"  Sorting mergeset blocks:")
+        sorted_blocks = sorted(mergeset, key=get_sort_key)
+        print(f"  Final order: {sorted_blocks}")
+        return sorted_blocks
 
-    def _topological_sort_mergeset(self, mergeset):
-        """Sort mergeset blocks in proper topological order"""
-        return self._sort_blocks_by_blue_count(list(mergeset))
+    def _are_in_anticone(self, block1, block2):
+        """Check if two blocks are in anticone"""
+        return (not self._is_ancestor(block1, block2) and
+                not self._is_ancestor(block2, block1))
 
-    def _calculate_blue_count(self):
-        """Calculate blue count as selected parent's blue count + 1 (for selected parent) + mergeset blues"""
-        if not self.selected_parent:
-            return 0
-
-        selected_parent_blue_count = getattr(self.selected_parent, 'blue_count', 0)
-        # Count ONLY the mergeset blues (not including selected parent)
-        mergeset_blue_count = len(getattr(self, 'mergeset_blues', []))
-
-        # Total = parent's blue count + 1 (for selected parent itself) + mergeset blues
-        total = selected_parent_blue_count + 1 + mergeset_blue_count
-        return total
+    def _is_ancestor(self, ancestor_block, descendant_block):
+        """Check if ancestor_block is in the past of descendant_block"""
+        return ancestor_block.name in descendant_block.past_blocks
 
     def _select_parent(self):
+        """Select parent with highest blue count"""
         if not self.parents:
             return None
 
         best_parent = None
         max_blue_count = -1
-        best_hash = None
 
         for parent in self.parents:
-            # Use getattr with fallback for safety during initialization
             blue_count = getattr(parent, 'blue_count', 0)
-            parent_hash = getattr(parent, 'hash', id(parent))
-
-            if (blue_count > max_blue_count or
-                    (blue_count == max_blue_count and parent_hash < best_hash)):
+            if blue_count > max_blue_count:
                 max_blue_count = blue_count
                 best_parent = parent
-                best_hash = parent_hash
 
         return best_parent
+
+        # Properties for backward compatibility
+
+    @property
+    def mergeset_blues(self):
+        return self.ghostdag_data.mergeset_blues[1:]  # Exclude selected parent
+
+    @property
+    def mergeset_reds(self):
+        return self.ghostdag_data.mergeset_reds
+
+    @property
+    def blues_anticone_sizes(self):
+        return self.ghostdag_data.blues_anticone_sizes
 
 class RandomBlock(Block):
     """Block that randomly selects a parent"""
@@ -1266,7 +1179,7 @@ class GHOSTDAG(LayerDAG):
                             blue_block = self.blocks[blue_name]
                             # Check if this blue block is in the anticone of candidate
                             if not self._is_ancestor(blue_block, candidate_block):
-                                animations.append(blue_block.rect.animate.set_color(LIGHT_BLUE).set_opacity(1.0))
+                                animations.append(blue_block.rect.animate.set_color(BLUE).set_opacity(1.0))
 
                                 # Highlight arrows showing the anticone relationship
                                 # (no direct arrows between anticone blocks, but show their connections to common ancestors)
@@ -1339,7 +1252,7 @@ class GHOSTDAG(LayerDAG):
                 if block_name in red_blocks:
                     block.rect.set_color(PURE_RED, family=False)
                 if block_name in blue_blocks:
-                    block.rect.set_color(GREEN, family=False)
+                    block.rect.set_color(PURE_BLUE, family=False)
 
 #                    # Set full opacity for highlighted blocks
 #                block.rect.set_opacity(1.0)
@@ -2975,7 +2888,7 @@ class NarrationMathTex(MathTex):
 #  PAUSED       blockchain class - location updates based on parent,  # when getting to about 6 or more btc blocks, simple animations start taking too much time(mem leaks?)
 #  COMPLETE     for BlockMobBitcoin(BlockDAG(blink(get_past, get future, get_anticone)) #method works for Kaspa),
 #               parallel chains like kadena, ect,
-#  CURRENT      ghostdag, function that computes k cluster and blueset for each block, # still working out bugs
+#  COMPLETE     ghostdag, function that computes k cluster and blueset for each block, # pretty sure this is functional and correct
 #               output a transcript that has each step eg. added to blue set, appended children,
 
 # TODO please list priorities here

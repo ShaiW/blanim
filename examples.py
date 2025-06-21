@@ -90,12 +90,12 @@ class GHOSTDAGScene(Scene):
             )
             safe_play(self, GD.adjust_layers())
 
-        self.play(GD.highlight_random_block_and_past(self))
-        self.wait(2)
+#        self.play(GD.highlight_random_block_and_past(self))
+#        self.wait(2)
 
         # Reset to normal
-        self.play(GD.reset_all_opacity(self))
-        self.wait(1)
+#        self.play(GD.reset_all_opacity(self))
+#        self.wait(1)
         print("b4 create tree animations")
         tree_animations = GD.create_tree_animation_fast()
         print("b4 play tree animations")
