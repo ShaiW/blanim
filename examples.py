@@ -62,7 +62,7 @@ class GHOSTDAGScene(Scene):
     BLOCKS = 20
     DAG_WIDTH = 4
     MAX_BLOCKS_PER_BATCH = 1
-    GD_K = 1
+    GD_K = 2
 
     def construct(self):
         blocks = self.BLOCKS

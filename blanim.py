@@ -2892,6 +2892,7 @@ class NarrationMathTex(MathTex):
 #  COMPLETE     for BlockMobBitcoin(BlockDAG(blink(get_past, get future, get_anticone)) #method works for Kaspa),
 #               parallel chains like kadena, ect,
 #  COMPLETE     ghostdag, function that computes k cluster and blueset for each block, # pretty sure this is functional and correct
-#               output a transcript that has each step eg. added to blue set, appended children,
+#               refactor layerdag/blockdag/blocks/ghostdag for clear separation of functionality
+#  NEXT         output a transcript that has each step eg. added to blue set, appended children,
 
 # TODO please list priorities here
