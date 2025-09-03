@@ -1,9 +1,12 @@
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from random import choice, randint
 from typing import Dict, List
 from itertools import chain
 from abc import ABC, abstractmethod
+
+from blockanimator.animation import SequentialAnimations
 
 from common import *
 import string
@@ -48,23 +51,49 @@ class ColoringOutput:
     anticone_size: int = 0
     anticone_sizes: Dict[str, int] = field(default_factory=dict)
 
-class ChainBlock:
-    def __init__(self, hash_val, ghostdag_data):
-        self.hash = hash_val
-        self.data = ghostdag_data
-
+@dataclass
 class Parent:
-    def __init__(self, name, **kwargs):
-        self.name = name
-        self.kwargs = kwargs
+    name: str
+    is_selected_parent: bool
+#    kwargs: dict = field(default_factory=dict)
+
+@dataclass
+class ArrowStyle:
+    color: str = "WHITE"
+    stroke_width: float = 3
+    stroke_opacity: float = 1
+    z_index: float = -2
+    tip_config: dict = field(default_factory=dict)
+
+    @classmethod
+    def selected_parent_style(cls):
+        """Factory method for selected parent arrow styling"""
+        return cls(
+            color=BLUE,
+            stroke_width=3,
+            z_index=-1  # Behind blocks but in front of regular arrows
+        )
+
+    def to_kwargs(self) -> dict:
+        """Convert to kwargs dict, filtering out None values"""
+        kwargs = {}
+        if self.color is not None:
+            kwargs["color"] = self.color
+        if self.stroke_width is not None:
+            kwargs["stroke_width"] = self.stroke_width
+        if self.stroke_opacity is not None:
+            kwargs["stroke_opacity"] = self.stroke_opacity
+        if self.z_index is not None:
+            kwargs["z_index"] = self.z_index
+        if self.tip_config:
+            kwargs.update(self.tip_config)
+        return kwargs
 
 class Block(ABC):
 
     DEFAULT_COLOR = BLUE
 
-#   def __init__(self, name, DAG, parents, pos, label=None, color=BLUE, h=BLOCK_H, w=BLOCK_W):
     def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, block_color=None, h=BLOCK_H, w=BLOCK_W):
-#   def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, h=BLOCK_H, w=BLOCK_W):
 
         # Use provided name or fall back to string ID
         self.name = name if name is not None else str(id(self))
@@ -140,6 +169,188 @@ class Block(ABC):
 
     def is_tip(self):
         return bool(self.children)
+
+    def create_parent_arrows(self, dag):
+        """Create arrows to parent blocks with appropriate styling"""
+        arrows = []
+
+        for parent in self.parents:
+            # Determine if this parent is the selected parent
+            is_selected = (hasattr(self, 'selected_parent') and
+                           self.selected_parent and
+                           self.selected_parent.name == parent.name)
+
+            # Get appropriate arrow style
+            if is_selected:
+                arrow_style = ArrowStyle.selected_parent_style()
+            else:
+                arrow_style = ArrowStyle()
+
+                # Create arrow using DAG's arrow creation methods
+            arrow_kwargs = arrow_style.to_kwargs()
+            arrow_anim = dag.add_arrow(self, parent, **arrow_kwargs)
+            arrows.append(arrow_anim)
+
+        return arrows
+
+    def calculate_arrow_endpoints(self, parent_block) -> dict:
+        """Calculate optimal start and end points for arrow between blocks."""
+        # Get block boundaries
+        from_rect = self.rect
+        to_rect = parent_block.rect
+
+        # Calculate positions
+        from_left, from_right = from_rect.get_left()[0], from_rect.get_right()[0]
+        to_left, to_right = to_rect.get_left()[0], to_rect.get_right()[0]
+        from_top, from_bottom = from_rect.get_top()[1], from_rect.get_bottom()[1]
+        to_top, to_bottom = to_rect.get_top()[1], to_rect.get_bottom()[1]
+
+        # Default to horizontal connection
+        start = from_rect.get_left()
+        end = to_rect.get_right()
+
+        # Adjust for horizontal overlap
+        if to_right - from_left > 0:
+            start = from_rect.get_right()
+            end = to_rect.get_left()
+
+            # Check if vertical connection is better
+        horizontal_overlap = max(to_right - from_left, from_right - to_left)
+        vertical_overlap = max(to_bottom - from_top, from_bottom - to_top)
+
+        if horizontal_overlap < vertical_overlap:
+            if to_bottom - from_top > from_bottom - to_top:
+                start = from_rect.get_top()
+                end = to_rect.get_bottom()
+            else:
+                start = from_rect.get_bottom()
+                end = to_rect.get_top()
+
+        return {"start": start, "end": end}
+
+    def setup_arrow_tracking(self, arrow: Arrow, parent_block):
+        """Set up arrow tracking information."""
+        arrow.source_block = self
+        arrow.target_block = parent_block
+
+        if hasattr(self, 'outgoing_arrows'):
+            parent_block.outgoing_arrows.append(arrow)
+
+    def create_arrow_updater(self, arrow: Arrow, parent_block):
+        """Create the arrow updater animation."""
+
+        class GrowArrowUpdater(GrowArrow):
+            def __init__(self, arrow, updater_func, **kwargs):
+                super().__init__(arrow, **kwargs)
+                self.arrow = arrow
+                self.updater_func = updater_func
+
+            def __del__(self):
+                self.arrow.add_updater(self.updater_func)
+
+        updater_func = lambda a: a.put_start_and_end_on(
+            **self.calculate_arrow_endpoints(parent_block)  # Removed redundant 'self'
+        )
+
+        return GrowArrowUpdater(arrow, updater_func)
+
+    def get_arrow_style_for_parent(self, parent):
+        """Get arrow style based on whether parent is selected"""
+        is_selected = (hasattr(self, 'selected_parent') and
+                       self.selected_parent and
+                       self.selected_parent.name == parent.name)
+
+        if is_selected:
+            return ArrowStyle.selected_parent_style()
+        else:
+            return ArrowStyle()  # Use the default constructor
+
+    def create_and_manage_parent_arrows(self, dag):
+        """Complete arrow creation and management for this block"""
+        arrows = []
+
+        for parent in self.parents:
+            # Determine styling
+            arrow_style = self.get_arrow_style_for_parent(parent)
+
+            # Calculate endpoints
+            endpoints = self.calculate_arrow_endpoints(parent)
+
+            # Create arrow directly in the block
+            arrow = self._create_positioned_arrow(parent, **arrow_style.to_kwargs())
+
+            # Set up tracking
+            self.setup_arrow_tracking(arrow, parent)
+
+            # Create updater
+            arrow_anim = self.create_arrow_updater(arrow, parent)
+            arrows.append(arrow_anim)
+
+        return arrows
+
+    def _create_positioned_arrow(self, parent_block, **kwargs):
+        """Create an arrow with optimal positioning between this block and parent"""
+        # Extract z_index if present
+        z_index = kwargs.pop('z_index', None)
+
+        # Set default arrow styling
+        defaults = {
+            "buff": 0,
+            "stroke_width": 2,
+            "tip_shape": StealthTip,
+            "max_tip_length_to_length_ratio": 0.04,
+            "color": WHITE
+        }
+        for key, value in defaults.items():
+            kwargs.setdefault(key, value)
+
+        arrow = Arrow(**kwargs)
+
+        # Position the arrow
+        endpoints = self.calculate_arrow_endpoints(parent_block)  # Removed redundant 'self'
+        arrow.put_start_and_end_on(**endpoints)
+
+        # Apply z_index if provided
+        if z_index is not None:
+            arrow.set_z_index(z_index)
+
+        return arrow
+
+    def highlight_outgoing_arrows(self, color=None, opacity=None):
+        """
+        Creates animations to highlight the block's outgoing arrows.
+        This method needs to be implemented to apply the color and opacity
+        to the actual Manim Arrow objects in self.outgoing_arrows.
+        """
+        animations = []
+        for arrow in self.outgoing_arrows:
+            if color is not None:
+                animations.append(arrow.animate.set_color(color))
+            if opacity is not None:
+                animations.append(arrow.animate.set_opacity(opacity))
+        return AnimationGroup(*animations)
+
+    def fade_outgoing_arrows(self, opacity):
+        """
+        Creates animations to fade the block's outgoing arrows.
+        """
+        animations = []
+        for arrow in self.outgoing_arrows:
+            animations.append(arrow.animate.set_opacity(opacity))
+        return AnimationGroup(*animations)
+
+    def highlight_outgoing_arrows_to_parent(self, parent_block, color=None, opacity=None):
+        """
+        Creates animations to highlight specific outgoing arrows to a given parent.
+        """
+        animations = []
+        for arrow in self.outgoing_arrows:
+            if hasattr(arrow, 'target_block') and arrow.target_block == parent_block:
+                if color is not None:
+                    animations.append(arrow.animate.set_color(color))
+                if opacity is not None:
+                    animations.append(arrow.animate.set_opacity(opacity))
+        return AnimationGroup(*animations)
 
 class GhostDAGBlock(Block):
     """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
@@ -420,14 +631,12 @@ class BlockDAG:
 
     blocks: Dict[str, Block]
     history: List[List[str]]  # History of tip states
-    #block_color: ManimColor
     block_w: float
     block_h: float
 
     def __init__(
             self,
             history_size: int = 20,
-            block_color: ManimColor = BLUE,
             block_w: float = BLOCK_W,
             block_h: float = BLOCK_H,
             block_type: type = RandomBlock
@@ -436,11 +645,9 @@ class BlockDAG:
         self.blocks = {}
         self.history = []
         self.history_size = history_size
-        #self.block_color = block_color
         self.block_h = block_h
         self.block_w = block_w
         self.block_type = block_type  # Store the block type to use
-        ## Construction Methods
 
     def add(self, name: str, pos: list, parents: list = None, **kwargs):
         # Set default values
@@ -456,8 +663,15 @@ class BlockDAG:
         # Create the block using the configured block type
         block = self.block_type(name, self, parents, pos, **kwargs)
 
-        # Generate animations and update state
+        # UPDATE: Set the is_selected_parent flags based on block's actual selection
+        if hasattr(block, 'selected_parent') and block.selected_parent:
+            for parent in parents:
+                if parent.name == block.selected_parent.name:
+                    parent.is_selected_parent = True
+
+                    # Generate animations and update state
         animations = self._create_block_animations(block, parents)
+
         self._register_block(name, block)
         self._update_history()
 
@@ -488,23 +702,9 @@ class BlockDAG:
         """Create all animations for adding a block."""
         animations = [FadeIn(block.rect)]
 
-            # Add arrow animations for each parent
-        for parent in parents:
-            parent_block = self.blocks[parent.name]
-
-            # Determine arrow styling based on whether this is the selected parent
-            arrow_kwargs = parent.kwargs.copy()  # Start with parent's kwargs
-
-            if parent_block == block.selected_parent:
-                # Override with blue styling for selected parent
-                arrow_kwargs.update({
-                    "color": BLUE,
-                    "stroke_width": 3,
-                    "z_index": -1  # Bring selected parent arrow to front
-                })
-
-            arrow_anim = self.add_arrow(block, parent_block, **arrow_kwargs)
-            animations.append(arrow_anim)
+        # Let the block create its own parent arrows
+        arrow_animations = block.create_and_manage_parent_arrows(self)
+        animations.extend(arrow_animations)
 
         return animations
 
@@ -521,110 +721,6 @@ class BlockDAG:
     def random_block(self) -> str:
         """Get a random block name from the DAG."""
         return choice(list(self.blocks.keys()))
-
-        ## Arrow Creation Methods
-
-    def add_arrow(self, from_block: Block, to_block: Block, **kwargs):
-        """Create an arrow between two blocks with automatic positioning."""
-        # Set arrow defaults
-        self._set_arrow_defaults(kwargs)
-
-        # Create arrow with positioning
-        arrow = self._create_positioned_arrow(from_block, to_block, **kwargs)
-
-        # Set up arrow tracking
-        self._setup_arrow_tracking(arrow, from_block, to_block)
-
-        # Create updater animation
-        return self._create_arrow_updater(arrow, from_block, to_block)
-
-    @staticmethod
-    def _set_arrow_defaults(kwargs: dict):
-        """Set default arrow styling."""
-        defaults = {
-            "buff": 0,
-            "stroke_width": 2,
-            "tip_shape": StealthTip,
-            "max_tip_length_to_length_ratio": 0.04,
-            "color": WHITE
-        }
-        for key, value in defaults.items():
-            kwargs.setdefault(key, value)
-
-    def _create_positioned_arrow(self, from_block: Block, to_block: Block, **kwargs) -> Arrow:
-        """Create an arrow with optimal positioning between blocks."""
-        arrow = Arrow(**kwargs)
-
-        def get_start_end():
-            return self._calculate_arrow_endpoints(from_block, to_block)
-
-        arrow.put_start_and_end_on(**get_start_end())
-        return arrow
-
-    @staticmethod
-    def _calculate_arrow_endpoints(from_block: Block, to_block: Block) -> dict:
-        """Calculate optimal start and end points for arrow between blocks."""
-        # Get block boundaries
-        from_rect = from_block.rect
-        to_rect = to_block.rect
-
-        # Calculate positions
-        from_left, from_right = from_rect.get_left()[0], from_rect.get_right()[0]
-        to_left, to_right = to_rect.get_left()[0], to_rect.get_right()[0]
-        from_top, from_bottom = from_rect.get_top()[1], from_rect.get_bottom()[1]
-        to_top, to_bottom = to_rect.get_top()[1], to_rect.get_bottom()[1]
-
-        # Default to horizontal connection
-        start = from_rect.get_left()
-        end = to_rect.get_right()
-
-        # Adjust for horizontal overlap
-        if to_right - from_left > 0:
-            start = from_rect.get_right()
-            end = to_rect.get_left()
-
-            # Check if vertical connection is better
-        horizontal_overlap = max(to_right - from_left, from_right - to_left)
-        vertical_overlap = max(to_bottom - from_top, from_bottom - to_top)
-
-        if horizontal_overlap < vertical_overlap:
-            if to_bottom - from_top > from_bottom - to_top:
-                start = from_rect.get_top()
-                end = to_rect.get_bottom()
-            else:
-                start = from_rect.get_bottom()
-                end = to_rect.get_top()
-
-        return {"start": start, "end": end}
-
-    @staticmethod
-    def _setup_arrow_tracking(arrow: Arrow, from_block: Block, to_block: Block):
-        """Set up arrow tracking information."""
-        arrow.source_block = from_block
-        arrow.target_block = to_block
-
-        if hasattr(from_block, 'outgoing_arrows'):
-            from_block.outgoing_arrows.append(arrow)
-
-    def _create_arrow_updater(self, arrow: Arrow, from_block: Block, to_block: Block):
-        """Create the arrow updater animation."""
-
-        class GrowArrowUpdater(GrowArrow):
-            def __init__(self, arrow, updater_func, **kwargs):
-                super().__init__(arrow, **kwargs)
-                self.arrow = arrow
-                self.updater_func = updater_func
-
-            def __del__(self):
-                self.arrow.add_updater(self.updater_func)
-
-        updater_func = lambda a: a.put_start_and_end_on(
-            **self._calculate_arrow_endpoints(from_block, to_block)
-        )
-
-        return GrowArrowUpdater(arrow, updater_func)
-
-        ## Combinatorics Methods
 
     def get_future(self, block_name: str) -> list[str]:
         """Get all blocks in the future of the given block."""
@@ -742,9 +838,8 @@ class LayerDAG(BlockDAG):
 
         parents = []
         for parent_name in parent_names:
-            # Remove the blue styling logic - let the smart selection handle it
-            parents.append(Parent(parent_name, z_index=-2))
-
+            # The is_selected_parent flag will be updated after block creation
+            parents.append(Parent(parent_name, is_selected_parent=False))
         return parents
 
     def _find_top_parent_layer(self, parent_names: list[str]) -> int:
@@ -1079,25 +1174,18 @@ class GHOSTDAG(LayerDAG):
         for parent in current_block.parents:
             parent_block = self.blocks[parent.name]
             animations.append(parent_block.rect.animate.set_color(YELLOW).set_opacity(1.0))
+            # Assuming Block has a method to highlight its outgoing arrows
+            # This would need to be implemented in the Block class
+            animations.append(parent_block.highlight_outgoing_arrows(opacity=1.0))
 
-            # Highlight arrows from current block to all parents
-            if hasattr(current_block, 'outgoing_arrows'):
-                for arrow in current_block.outgoing_arrows:
-                    if hasattr(arrow, 'target_block') and arrow.target_block.name == parent.name:
-                        animations.append(arrow.animate.set_opacity(1.0))
-
-                        # Then highlight the selected parent in blue
+            # Then highlight the selected parent in blue
         selected_animations = []
         if current_block.selected_parent:
             selected_parent_block = self.blocks[current_block.selected_parent.name]
             selected_animations.append(selected_parent_block.rect.animate.set_color(BLUE).set_opacity(1.0))
-
-            # Highlight the arrow to selected parent with blue color
-            if hasattr(current_block, 'outgoing_arrows'):
-                for arrow in current_block.outgoing_arrows:
-                    if (hasattr(arrow, 'target_block') and
-                            arrow.target_block.name == current_block.selected_parent.name):
-                        selected_animations.append(arrow.animate.set_color(BLUE).set_opacity(1.0))
+            # Assuming Block has a method to highlight its outgoing arrows with a specific color
+            # This would need to be implemented in the Block class
+            selected_animations.append(selected_parent_block.highlight_outgoing_arrows(color=BLUE, opacity=1.0))
 
         return Succession(
             AnimationGroup(*animations, run_time=0.5),  # Show all parents with arrows
@@ -1113,17 +1201,9 @@ class GHOSTDAG(LayerDAG):
                 if mergeset_block_name in self.blocks:
                     mergeset_block = self.blocks[mergeset_block_name]
                     animations.append(mergeset_block.rect.animate.set_color(ORANGE).set_opacity(1.0))
-
-                    # Highlight arrows connecting mergeset blocks to the current block's parents
-                    # and arrows within the mergeset
-                    if hasattr(mergeset_block, 'outgoing_arrows'):
-                        for arrow in mergeset_block.outgoing_arrows:
-                            if hasattr(arrow, 'target_block'):
-                                target_name = arrow.target_block.name
-                                # Show arrows to parents or other mergeset blocks
-                                if (target_name in [p.name for p in current_block.parents] or
-                                        target_name in current_block.mergeset):
-                                    animations.append(arrow.animate.set_opacity(1.0))
+                    # Assuming Block has a method to highlight its outgoing arrows
+                    # This would need to be implemented in the Block class
+                    animations.append(mergeset_block.highlight_outgoing_arrows(opacity=1.0))
 
         return AnimationGroup(*animations, run_time=0.5) if animations else Wait(0.1)
 
@@ -1137,28 +1217,19 @@ class GHOSTDAG(LayerDAG):
                 if blue_block_name in self.blocks and blue_block_name != current_block.selected_parent.name:
                     blue_block = self.blocks[blue_block_name]
                     animations.append(blue_block.rect.animate.set_color(PURE_BLUE).set_opacity(1.0))
+                    # Assuming Block has a method to highlight its outgoing arrows with a specific color
+                    # This would need to be implemented in the Block class
+                    animations.append(blue_block.highlight_outgoing_arrows(color=PURE_BLUE, opacity=1.0))
 
-                    # Highlight arrows from blue blocks
-                    if hasattr(blue_block, 'outgoing_arrows'):
-                        for arrow in blue_block.outgoing_arrows:
-                            if hasattr(arrow, 'target_block'):
-                                target_name = arrow.target_block.name
-                                # Show arrows to other blue blocks or selected parent
-                                if (target_name in current_block.mergeset_blues or
-                                        target_name == current_block.selected_parent.name):
-                                    animations.append(arrow.animate.set_color(PURE_BLUE).set_opacity(1.0))
-
-                                    # Then show red blocks with their arrows
+                    # Then show red blocks with their arrows
         if hasattr(current_block, 'mergeset_reds'):
             for red_block_name in current_block.mergeset_reds:
                 if red_block_name in self.blocks:
                     red_block = self.blocks[red_block_name]
                     animations.append(red_block.rect.animate.set_color(PURE_RED).set_opacity(1.0))
-
-                    # Highlight arrows from red blocks with reduced opacity
-                    if hasattr(red_block, 'outgoing_arrows'):
-                        for arrow in red_block.outgoing_arrows:
-                            animations.append(arrow.animate.set_color(PURE_RED).set_opacity(0.6))
+                    # Assuming Block has a method to highlight its outgoing arrows with a specific color and reduced opacity
+                    # This would need to be implemented in the Block class
+                    animations.append(red_block.highlight_outgoing_arrows(color=PURE_RED, opacity=0.6))
 
         return AnimationGroup(*animations, run_time=0.7) if animations else Wait(0.1)
 
@@ -1183,15 +1254,9 @@ class GHOSTDAG(LayerDAG):
                             # Check if this blue block is in the anticone of candidate
                             if not self._is_ancestor(blue_block, candidate_block):
                                 animations.append(blue_block.rect.animate.set_color(BLUE).set_opacity(1.0))
-
-                                # Highlight arrows showing the anticone relationship
-                                # (no direct arrows between anticone blocks, but show their connections to common ancestors)
-                                if hasattr(blue_block, 'outgoing_arrows'):
-                                    for arrow in blue_block.outgoing_arrows:
-                                        if hasattr(arrow, 'target_block'):
-                                            target_name = arrow.target_block.name
-                                            if target_name in parent_chain:
-                                                animations.append(arrow.animate.set_opacity(1.0))
+                                # Assuming Block has a method to highlight its outgoing arrows
+                                # This would need to be implemented in the Block class
+                                animations.append(blue_block.highlight_outgoing_arrows(opacity=1.0))
 
         return AnimationGroup(*animations, run_time=0.5) if animations else Wait(0.1)
 
@@ -1217,15 +1282,26 @@ class GHOSTDAG(LayerDAG):
         return f"L{target_layer}_{block_count_in_layer + 1}"
 
     def create_tree_animation_fast(self, vertical_offset=0.5, horizontal_offset=1.25):
-        # Calculate positions as before
+        start_time_total = time.time()
+        print(f"--- Starting create_tree_animation_fast ---")
+
         best_tip = self._find_best_tip()
         if not best_tip:
+            print(
+                f"--- Finished create_tree_animation_fast (no best tip) in {time.time() - start_time_total:.4f} seconds ---")
             return AnimationGroup(Wait(0.1))
 
         parent_chain = self._get_parent_chain(best_tip)
-        new_positions = self._calculate_chain_tree_positions_ordered(parent_chain, vertical_offset, horizontal_offset)
 
-        # Set fade properties directly (no animation)
+        start_time_positions = time.time()
+        new_positions = self._calculate_chain_tree_positions_ordered(parent_chain, vertical_offset, horizontal_offset)
+        print(f"Time for _calculate_chain_tree_positions_ordered: {time.time() - start_time_positions:.4f} seconds")
+
+        self._fade_all_blocks()
+
+        animations = []
+
+        # Initialize highlighted_blocks BEFORE the loop that uses it
         best_tip_block = self.blocks[best_tip]
         past_blocks = best_tip_block.get_past_blocks()
         highlighted_blocks = past_blocks.copy()
@@ -1235,21 +1311,23 @@ class GHOSTDAG(LayerDAG):
         red_blocks = set()
         blue_blocks = set()
 
+        start_time_collect_colors = time.time()
         for chain_block_name in parent_chain:
             chain_block = self.blocks[chain_block_name]
             if hasattr(chain_block, 'mergeset_reds'):
                 red_blocks.update(chain_block.mergeset_reds)
             if hasattr(chain_block, 'mergeset_blues'):
                 blue_blocks.update(chain_block.mergeset_blues)
+        print(f"Time for collecting red/blue blocks: {time.time() - start_time_collect_colors:.4f} seconds")
 
+        start_time_set_properties = time.time()
         for block_name, block in self.blocks.items():
             if block_name not in highlighted_blocks:
                 block.rect.set_opacity(0.2)
                 if hasattr(block, 'label') and block.label:
                     block.label.set_opacity(0.2)
-                if hasattr(block, 'outgoing_arrows'):
-                    for arrow in block.outgoing_arrows:
-                        arrow.set_opacity(0.2)
+                    # Use block's method to fade outgoing arrows
+                block.fade_outgoing_arrows(opacity=0.2)
             else:
                 # Apply specific coloring based on GHOSTDAG data
                 if block_name in red_blocks:
@@ -1257,77 +1335,80 @@ class GHOSTDAG(LayerDAG):
                 if block_name in blue_blocks:
                     block.rect.set_color(PURE_BLUE, family=False)
 
-#                    # Set full opacity for highlighted blocks
-#                block.rect.set_opacity(1.0)
-#                if hasattr(block, 'label') and block.label:
-#                    block.label.set_opacity(1.0)
-#                if hasattr(block, 'outgoing_arrows'):
-#                    for arrow in block.outgoing_arrows:
-#                        if hasattr(arrow, 'target_block') and arrow.target_block.name in highlighted_blocks:
-#                            arrow.set_opacity(1.0)
+                    # Use block's method to set opacity for its outgoing arrows
+                block.fade_outgoing_arrows(opacity=1.0)  # Set full opacity for highlighted blocks
 
             for red_block_name in red_blocks:
                 if red_block_name in self.blocks and red_block_name in highlighted_blocks:
                     red_block = self.blocks[red_block_name]
-                    if hasattr(red_block, 'outgoing_arrows'):
-                        for arrow in red_block.outgoing_arrows:
-                            arrow.set_opacity(0.2)
-            # NEW: Handle arrows TO red blocks
+                    # Use block's method to fade outgoing arrows
+                    red_block.fade_outgoing_arrows(opacity=0.2)
+                    # NEW: Handle arrows TO red blocks
             for block_name, block in self.blocks.items():
                 if hasattr(block, 'outgoing_arrows'):
                     for arrow in block.outgoing_arrows:
                         if (hasattr(arrow, 'target_block') and
                                 arrow.target_block.name in red_blocks and
                                 arrow.target_block.name in highlighted_blocks):
-                            arrow.set_opacity(0.2)
+                            arrow.set_opacity(0.2)  # This line still directly manipulates the arrow.
+        print(f"Time for setting block/arrow properties: {time.time() - start_time_set_properties:.4f} seconds")
 
-        # Only animate the movement
+        start_time_movement_animations = time.time()
         movement_animations = []
         for block_name, new_pos in new_positions.items():
             if block_name in self.blocks:
                 current_block = self.blocks[block_name]
                 movement_animations.append(current_block.rect.animate.move_to(new_pos))
 
-        return AnimationGroup(*movement_animations, run_time=1.0)
+        if movement_animations:
+            animations.append(AnimationGroup(*movement_animations, run_time=1.0))
+        print(f"Time for creating movement animations: {time.time() - start_time_movement_animations:.4f} seconds")
+
+        print(f"--- Finished create_tree_animation_fast in {time.time() - start_time_total:.4f} seconds ---")
+        return AnimationGroup(*animations)
 
     def _calculate_chain_tree_positions_ordered(self, parent_chain, v_offset, h_offset):
-        """Calculate positions with parent chain at bottom and mergesets ordered by blue work"""
+        start_time_calc_positions = time.time()
         new_positions = {}
 
-        # Position parent chain blocks at the bottom
         chain_y = min(block.rect.get_center()[1] for block in self.blocks.values())
 
-        for i, block_name in enumerate(reversed(parent_chain)):  # Genesis first
+        for i, block_name in enumerate(reversed(parent_chain)):
             current_block = self.blocks[block_name]
-            current_x = current_block.rect.get_center()[0]  # Keep current x position
+            current_x = current_block.rect.get_center()[0]
             new_positions[block_name] = [current_x, chain_y, 0]
 
-            # Position mergeset blocks above, ordered by distance from parent chain
             if hasattr(current_block, 'mergeset') and current_block.mergeset:
-                # Sort mergeset blocks by blue_count (ascending = closest to parent chain first)
+                start_time_sort_mergeset = time.time()
                 mergeset_blocks = list(current_block.mergeset)
                 ordered_mergeset = self._sort_mergeset_by_distance_to_chain(mergeset_blocks, current_block)
+                print(
+                    f"  Time for _sort_mergeset_by_distance_to_chain for block {block_name}: {time.time() - start_time_sort_mergeset:.4f} seconds")
 
                 for j, mergeset_block_name in enumerate(ordered_mergeset):
                     if mergeset_block_name in self.blocks:
                         mergeset_x = current_x - h_offset
-                        # Position closer blocks (lower blue_count) closer to chain
                         mergeset_y = chain_y + v_offset + (j * 0.5)
                         new_positions[mergeset_block_name] = [mergeset_x, mergeset_y, 0]
 
+        print(
+            f"Time for _calculate_chain_tree_positions_ordered (internal): {time.time() - start_time_calc_positions:.4f} seconds")
         return new_positions
 
     def _sort_mergeset_by_distance_to_chain(self, mergeset_blocks, chain_block):
+        start_time_sort = time.time()
         """Sort mergeset blocks by their distance from the parent chain (blue_count ascending)"""
 
         def get_distance_key(block_name):
             block = self.blocks[block_name]
             blue_count = getattr(block, 'blue_count', 0)
             block_hash = getattr(block, 'hash', block_name)
-            # Lower blue_count = closer to parent chain = should be positioned first
             return (blue_count, block_hash)
 
-        return sorted(mergeset_blocks, key=get_distance_key)
+        sorted_blocks = sorted(mergeset_blocks, key=get_distance_key)
+        print(
+            f"    Sorting mergeset blocks ({len(mergeset_blocks)} items) took: {time.time() - start_time_sort:.4f} seconds")
+        return sorted_blocks
 
     def _find_best_tip(self):
         """Find tip block with most blue work (blue blocks in past)"""
@@ -1383,13 +1464,14 @@ class GHOSTDAG(LayerDAG):
 
         return new_positions
 
-    def add(self, parent_names, selected_parent=None, random_sp=False, name= None, *args, **kwargs):
+    def add(self, parent_names, selected_parent=None, random_sp=False, name=None, *args, **kwargs):
+
         if isinstance(parent_names, str):
             parent_names = [parent_names]
+
         name = self._generate_semantic_name(block_type=self.block_type, parents=parent_names, layer=selected_parent)
-        print(name)
-            # Force random_sp=False and maintain GhostDAGBlock behavior
-        return super().add(name, parent_names, selected_parent=None, random_sp=False, *args, **kwargs)
+
+        return super().add(name, parent_names, selected_parent=selected_parent, random_sp=False, *args, **kwargs)
 
     def highlight_random_block_and_past(self, scene):
         """
@@ -1413,51 +1495,45 @@ class GHOSTDAG(LayerDAG):
         highlighted_blocks = past_blocks.copy()
         highlighted_blocks.add(random_block_name)
 
-        # No animations list needed, as we're setting properties directly
         for block_name, block in self.blocks.items():
             if block_name not in highlighted_blocks:
                 block.rect.set_opacity(0.2)
                 if hasattr(block, 'label') and block.label:
                     block.label.set_opacity(0.2)
-                if hasattr(block, 'outgoing_arrows'):
-                    for arrow in block.outgoing_arrows:
-                        arrow.set_opacity(0.2)
+                    # Assuming Block has a method to fade its outgoing arrows
+                # This would need to be implemented in the Block class
+                block.fade_outgoing_arrows(opacity=0.2)
             else:
                 block.rect.set_opacity(1.0)
                 if hasattr(block, 'label') and block.label:
                     block.label.set_opacity(1.0)
-                if hasattr(block, 'outgoing_arrows'):
-                    for arrow in block.outgoing_arrows:
-                        if hasattr(arrow, 'target_block') and arrow.target_block.name in highlighted_blocks:
-                            arrow.set_opacity(1.0)
+                    # Assuming Block has a method to restore opacity of its outgoing arrows
+                # This would need to be implemented in the Block class
+                block.fade_outgoing_arrows(opacity=1.0)
 
-                            # Return an empty AnimationGroup or None if no animations are desired
         return AnimationGroup(Wait(0.1))
 
     def fade_except_parent_arrows(self, scene):
         """
         Set opacity to fade everything except the selected parent arrows (blue arrows)
         """
-        # No animations list needed, as we're setting properties directly
         for block_name, block in self.blocks.items():
             # Fade block rectangles to low opacity
             block.rect.set_opacity(0.2)
-
-            # Fade block labels to low opacity
             if hasattr(block, 'label') and block.label:
                 block.label.set_opacity(0.2)
 
                 # Handle arrows - fade all arrows first, then restore selected parent arrows
-            if hasattr(block, 'outgoing_arrows'):
-                for arrow in block.outgoing_arrows:
-                    arrow.set_opacity(0.2)
+            # Assuming Block has a method to fade its outgoing arrows
+            # This would need to be implemented in the Block class
+            block.fade_outgoing_arrows(opacity=0.2)
 
-                    # Keep selected parent arrows at full opacity
-                    if (hasattr(arrow, 'target_block') and
-                            arrow.target_block == block.selected_parent):
-                        arrow.set_opacity(1.0)
+            # Keep selected parent arrows at full opacity
+            if hasattr(block, 'selected_parent') and block.selected_parent:
+                # Assuming Block has a method to highlight specific outgoing arrows
+                # This would need to be implemented in the Block class
+                block.highlight_outgoing_arrows_to_parent(block.selected_parent, opacity=1.0)
 
-                        # Return an empty AnimationGroup or None if no animations are desired
         return AnimationGroup(Wait(0.1))
 
     def _get_past_blocks_recursive(self, block, visited=None):
@@ -1474,7 +1550,6 @@ class GHOSTDAG(LayerDAG):
 
     def reset_all_opacity(self, scene):
         """Reset all blocks and pointers to full opacity instantly."""
-        # No animations list needed, as we're setting properties directly
         for block_name, block in self.blocks.items():
             block.rect.set_opacity(1.0)
             if hasattr(block, 'label') and block.label:
@@ -1482,11 +1557,10 @@ class GHOSTDAG(LayerDAG):
                 # Assuming 'pointer' refers to the incoming arrow, and 'outgoing_arrows' are also tracked
             if hasattr(block, 'pointer') and block.pointer:
                 block.pointer.set_opacity(1.0)
-            if hasattr(block, 'outgoing_arrows'):
-                for arrow in block.outgoing_arrows:
-                    arrow.set_opacity(1.0)
+                # Assuming Block has a method to reset opacity of its outgoing arrows
+            # This would need to be implemented in the Block class
+            block.fade_outgoing_arrows(opacity=1.0)
 
-                    # Return an empty AnimationGroup or None if no animations are desired
         return AnimationGroup(Wait(0.1))
 
     def get_tips(self, missed_blocks=0):
@@ -2315,6 +2389,279 @@ class Bitcoin:
         all_blocks_at_this_round = list(set(all_blocks_at_this_round))
         return all_blocks_at_this_round
 
+class SelfishMining:
+    # Class for animating each state and transition in Selfish Mining (Eyal and Sirer)
+    # For simplicity (and manim limitations) we keep forks <= 4 blocks
+    def __init__(self):
+
+        self.genesis_position = (-4, 0, 0) # when using default space, this centers the blocks.
+        self.selfish_block_offset = DOWN * 1.2
+
+        self.wait_time = 1.0
+        self.fade_in_time = 1.0
+        self.fade_out_time = 1.0
+
+        self.selfish_miner_block_opacity = 0.5
+
+        # Capture current state here for transitions
+        self.current_state = "init"
+
+        # Attempting to change narration text during compile time
+        self.narration_text = MathTex(r"\text{Default}", color=WHITE)
+        self.narration_text.to_edge(UP)
+
+        # Prebuilt Narration Text
+        self.selfish_mining = MathTex(r"\text{Selfish Mining in Bitcoin}", color=WHITE)
+        self.selfish_mining.to_edge(UP)
+        self.state0 = MathTex(r"\text{State 0}", color=WHITE)
+        self.state0.to_edge(UP)
+        self.state0prime = MathTex(r"\text{State 0'}", color=WHITE)
+        self.state0prime.to_edge(UP)
+        self.state1 = MathTex(r"\text{State 1}", color=WHITE)
+        self.state1.to_edge(UP)
+        self.state2 = MathTex(r"\text{State 2}", color=WHITE)
+        self.state2.to_edge(UP)
+        self.state3 = MathTex(r"\text{State 3}", color=WHITE)
+        self.state3.to_edge(UP)
+        self.state4 = MathTex(r"\text{State 4}", color=WHITE)
+        self.state4.to_edge(UP)
+        self.state_honest_wins = MathTex(r"\text{Honest miner finds a block}", color=WHITE)
+        self.state_honest_wins.to_edge(UP)
+        self.state_selfish_wins = MathTex(r"\text{Selfish miner finds a block}", color=WHITE)
+        self.state_selfish_wins.to_edge(UP)
+        self.state_reveal = MathTex(r"\text{Selfish miner reveals blocks}", color=WHITE)
+        self.state_reveal.to_edge(UP)
+
+        # Prebuilt Blocks, Pointers and Positioning
+        self.genesis = BlockMob(None, "Gen")
+        self.genesis.move_to(self.genesis_position)
+
+        # Create blocks with pointers - start in lower position
+
+        self.selfish_block1 = BlockMob(self.genesis, "s1")
+        self.selfish_block1.shift(self.selfish_block_offset)
+        self.selfish_block1.set_red()
+        self.selfish_block1.set_opacity(self.selfish_miner_block_opacity)
+        self.selfish_pointer1 = Pointer(self.selfish_block1, self.genesis)
+
+        self.selfish_block2 = BlockMob(self.selfish_block1, "s2")
+        self.selfish_block2.set_red()
+        self.selfish_block2.set_opacity(self.selfish_miner_block_opacity)
+        self.selfish_pointer2 = Pointer(self.selfish_block2, self.selfish_block1)
+
+        self.selfish_block3 = BlockMob(self.selfish_block2, "s3")
+        self.selfish_block3.set_red()
+        self.selfish_block3.set_opacity(self.selfish_miner_block_opacity)
+        self.selfish_pointer3 = Pointer(self.selfish_block3, self.selfish_block2)
+
+        self.selfish_block4 = BlockMob(self.selfish_block3, "s4")
+        self.selfish_block4.set_red()
+        self.selfish_block4.set_opacity(self.selfish_miner_block_opacity)
+        self.selfish_pointer4 = Pointer(self.selfish_block4, self.selfish_block3)
+
+        # Create honest blocks from genesis
+
+        self.honest_block1 = BlockMob(self.genesis, "h1")
+        self.honest_pointer1 = Pointer(self.honest_block1, self.genesis)
+        # TODO check if this is required, or if BlockMob already positions blocks
+        #honest_block1.move_to([selfish_block1.get_center()[0], genesis.get_center()[1], 0])
+
+        self.honest_block2 = BlockMob(self.honest_block1, "h2")
+        self.honest_pointer2 = Pointer(self.honest_block2, self.genesis)
+
+        self.honest_block3 = BlockMob(self.honest_block2, "h3")
+        self.honest_pointer3 = Pointer(self.honest_block3, self.genesis)
+
+        self.honest_block4 = BlockMob(self.honest_block3, "h4")
+        self.honest_pointer4 = Pointer(self.honest_block4, self.genesis)
+
+    def intro_anim(self):
+        """
+        Returns an Animation Group that displays blocks in a race similar to the state space
+        """
+        self.current_state = "intro"
+
+        intro_animation = (Succession(
+            AnimationGroup(
+                self._fade_in(self.selfish_mining),
+                self._fade_in(self.genesis),
+                self._fade_in(self.selfish_block1),
+                self._fade_in(self.selfish_pointer1),
+                self._fade_in(self.selfish_block2),
+                self._fade_in(self.selfish_pointer2),
+                self._fade_in(self.selfish_block3),
+                self._fade_in(self.selfish_pointer3),
+                self._fade_in(self.selfish_block4),
+                self._fade_in(self.selfish_pointer4),
+                self._fade_in(self.honest_block1),
+                self._fade_in(self.honest_pointer1)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_out(self.selfish_mining),
+                self._fade_out(self.selfish_block1),
+                self._fade_out(self.selfish_pointer1),
+                self._fade_out(self.selfish_block2),
+                self._fade_out(self.selfish_pointer2),
+                self._fade_out(self.selfish_block3),
+                self._fade_out(self.selfish_pointer3),
+                self._fade_out(self.selfish_block4),
+                self._fade_out(self.selfish_pointer4),
+                self._fade_out(self.honest_block1),
+                self._fade_out(self.honest_pointer1),
+                self._fade_in(self.state0)
+            )
+        ))
+        return intro_animation
+
+    ####################
+    # Internal Functions
+    ####################
+
+    def _fade_in(self, mobject_to_fade_in):
+        mobject_to_fade_in.is_visible = True
+#        return FadeIn(mobject_to_fade_in, run_time = self.fade_in_time)
+        return mobject_to_fade_in.animate(run_time = self.fade_in_time).set_opacity(1.0)
+    def _fade_out(self, mobject_to_fade_out):
+        mobject_to_fade_out.is_visible = False
+#        return FadeOut(mobject_to_fade_out, run_time = self.fade_out_time)
+        return mobject_to_fade_out.animate(run_time = self.fade_out_time).set_opacity(0.1)
+
+    # TODO figure out the best way to transition from any state to zero
+    def state_zero(self):
+        self.current_state = "zero"
+
+    ####################
+    # Selfish Miner Transitions
+    ####################
+
+    def zero_to_one(self):
+        self.current_state = "one"
+
+        zero_to_one_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.selfish_mining)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state1),
+                self._fade_in(self.selfish_block1),
+                self._fade_in(self.selfish_pointer1),
+            )
+        )
+
+        return zero_to_one_anim
+
+    def one_to_two(self):
+        self.current_state = "two"
+
+        one_to_two_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state1)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state2),
+                self._fade_in(self.selfish_block2),
+                self._fade_in(self.selfish_pointer2),
+            )
+        )
+
+        return one_to_two_anim
+
+    def two_to_three(self):
+        self.current_state = "three"
+
+        two_to_three_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state2)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state3),
+                self._fade_in(self.selfish_block3),
+                self._fade_in(self.selfish_pointer3),
+            )
+        )
+
+        return two_to_three_anim
+
+    def three_to_four(self):
+        self.current_state = "four"
+
+        three_to_four_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state3)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state4),
+                self._fade_in(self.selfish_block4),
+                self._fade_in(self.selfish_pointer4),
+            )
+        )
+
+        return three_to_four_anim
+
+    ####################
+    # Honest Miner Transitions
+    ####################
+
+    # TODO add animation to add an honest block, move to zero position while fading gen block, then set to not visible,
+    #       reset moved honest block to original position
+
+    # TODO manim removes a mobject on fadeout, then problems start when fading back in.
+    def zero_to_zero(self):
+        self.current_state = "zero"
+
+        zero_to_zero_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state0)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.honest_block1),
+                self._fade_in(self.honest_pointer1),
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self.genesis.animate.move_to((-6,0,0)),
+                self.honest_block1.animate.move_to((-4,0,0))
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_out(self.genesis),
+                self._fade_out(self.honest_pointer1),
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self.genesis.animate(run_time = 0.01).move_to(self.genesis_position)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.genesis),
+                self._fade_out(self.honest_block1),
+            )
+        )
+
+        return zero_to_zero_anim
+
+    def one_to_zero_prime(self):
+        self.current_state = "zero_prime"
+
+        one_to_zero_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state1)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state0prime),
+                self._fade_in(self.honest_block1),
+                self._fade_in(self.honest_pointer1),
+            )
+        )
+
+        return one_to_zero_anim
 
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
@@ -2358,11 +2705,12 @@ class BlockMob(Square):
         if self.name != "Gen":
             self.name = self.rounds_from_genesis
 
-        # changed label to text mobject, will attempt to create a latex mobject at a later date
-        if self.name:
-            self.label = Text(str(self.weight), font_size=24, color=WHITE, weight=BOLD)
-            self.label.move_to(self.get_center())
-            self.add(self.label)
+        # TODO testing to use with selfish mining
+#        # changed label to text mobject, will attempt to create a latex mobject at a later date
+#        if self.name:
+#            self.label = Text(str(self.weight), font_size=24, color=WHITE, weight=BOLD)
+#            self.label.move_to(self.get_center())
+#            self.add(self.label)
 
 
     # Setters and getters
