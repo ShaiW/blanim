@@ -2663,6 +2663,321 @@ class SelfishMining:
 
         return one_to_zero_anim
 
+
+class SelfishMiningSquares:
+    # Class for animating each state and transition in Selfish Mining (Eyal and Sirer)
+    # For simplicity (and manim limitations) we keep forks <= 4 blocks
+    def __init__(self):
+        self.genesis_position = (-4, 0, 0)  # when using default space, this centers the blocks.
+        self.selfish_block_offset = DOWN * 1.2
+
+        self.wait_time = 1.0
+        self.fade_in_time = 1.0
+        self.fade_out_time = 1.0
+
+        self.selfish_miner_block_opacity = 0.5
+
+        # Capture current state here for transitions
+        self.current_state = "init"
+
+        # Attempting to change narration text during compile time
+        self.narration_text = MathTex(r"\text{Default}", color=WHITE)
+        self.narration_text.to_edge(UP)
+
+        # Prebuilt Narration Text
+        self.selfish_mining = MathTex(r"\text{Selfish Mining in Bitcoin}", color=WHITE)
+        self.selfish_mining.to_edge(UP)
+        self.state0 = MathTex(r"\text{State 0}", color=WHITE)
+        self.state0.to_edge(UP)
+        self.state0prime = MathTex(r"\text{State 0'}", color=WHITE)
+        self.state0prime.to_edge(UP)
+        self.state1 = MathTex(r"\text{State 1}", color=WHITE)
+        self.state1.to_edge(UP)
+        self.state2 = MathTex(r"\text{State 2}", color=WHITE)
+        self.state2.to_edge(UP)
+        self.state3 = MathTex(r"\text{State 3}", color=WHITE)
+        self.state3.to_edge(UP)
+        self.state4 = MathTex(r"\text{State 4}", color=WHITE)
+        self.state4.to_edge(UP)
+        self.state_honest_wins = MathTex(r"\text{Honest miner finds a block}", color=WHITE)
+        self.state_honest_wins.to_edge(UP)
+        self.state_selfish_wins = MathTex(r"\text{Selfish miner finds a block}", color=WHITE)
+        self.state_selfish_wins.to_edge(UP)
+        self.state_reveal = MathTex(r"\text{Selfish miner reveals blocks}", color=WHITE)
+        self.state_reveal.to_edge(UP)
+
+        # Prebuilt Blocks and Lines using pure Manim
+        self.genesis = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
+        self.genesis.move_to(self.genesis_position)
+        self.genesis_label = Text("Gen", font_size=24, color=WHITE)
+        self.genesis_label.move_to(self.genesis.get_center())
+
+        # Create selfish blocks with lines - start in lower position
+        self.selfish_block1 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block1.move_to([-2, -1.2, 0])  # Manual positioning with offset
+        self.selfish_block1_label = Text("s1", font_size=24, color=WHITE)
+        self.selfish_block1_label.move_to(self.selfish_block1.get_center())
+        self.selfish_line1 = Line(start=self.selfish_block1.get_left(), end=self.genesis.get_right(),
+                                  buff=0.1, color=WHITE, stroke_width=2)
+
+        self.selfish_block2 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block2.move_to([0, -1.2, 0])
+        self.selfish_block2_label = Text("s2", font_size=24, color=WHITE)
+        self.selfish_block2_label.move_to(self.selfish_block2.get_center())
+        self.selfish_line2 = Line(start=self.selfish_block2.get_left(), end=self.selfish_block1.get_right(),
+                                  buff=0.1, color=WHITE, stroke_width=2)
+
+        self.selfish_block3 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block3.move_to([2, -1.2, 0])
+        self.selfish_block3_label = Text("s3", font_size=24, color=WHITE)
+        self.selfish_block3_label.move_to(self.selfish_block3.get_center())
+        self.selfish_line3 = Line(start=self.selfish_block3.get_left(), end=self.selfish_block2.get_right(),
+                                  buff=0.1, color=WHITE, stroke_width=2)
+
+        self.selfish_block4 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block4.move_to([4, -1.2, 0])
+        self.selfish_block4_label = Text("s4", font_size=24, color=WHITE)
+        self.selfish_block4_label.move_to(self.selfish_block4.get_center())
+        self.selfish_line4 = Line(start=self.selfish_block4.get_left(), end=self.selfish_block3.get_right(),
+                                  buff=0.1, color=WHITE, stroke_width=2)
+
+        # Create honest blocks from genesis - same horizontal plane as genesis
+        self.honest_block1 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
+        self.honest_block1.move_to([-2, 0, 0])  # Same y as genesis
+        self.honest_block1_label = Text("h1", font_size=24, color=WHITE)
+        self.honest_block1_label.move_to(self.honest_block1.get_center())
+        self.honest_line1 = Line(start=self.honest_block1.get_left(), end=self.genesis.get_right(),
+                                 buff=0.1, color=WHITE, stroke_width=2)
+
+        self.honest_block2 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
+        self.honest_block2.move_to([0, 0, 0])
+        self.honest_block2_label = Text("h2", font_size=24, color=WHITE)
+        self.honest_block2_label.move_to(self.honest_block2.get_center())
+        self.honest_line2 = Line(start=self.honest_block2.get_left(), end=self.honest_block1.get_right(),
+                                 buff=0.1, color=WHITE, stroke_width=2)
+
+        self.honest_block3 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
+        self.honest_block3.move_to([2, 0, 0])
+        self.honest_block3_label = Text("h3", font_size=24, color=WHITE)
+        self.honest_block3_label.move_to(self.honest_block3.get_center())
+        self.honest_line3 = Line(start=self.honest_block3.get_left(), end=self.honest_block2.get_right(),
+                                 buff=0.1, color=WHITE, stroke_width=2)
+
+        self.honest_block4 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
+        self.honest_block4.move_to([4, 0, 0])
+        self.honest_block4_label = Text("h4", font_size=24, color=WHITE)
+        self.honest_block4_label.move_to(self.honest_block4.get_center())
+        self.honest_line4 = Line(start=self.honest_block4.get_left(), end=self.honest_block3.get_right(),
+                                 buff=0.1, color=WHITE, stroke_width=2)
+
+    def intro_anim(self):
+        """
+        Returns an Animation Group that displays blocks in a race similar to the state space
+        """
+        self.current_state = "intro"
+
+        intro_animation = (Succession(
+            AnimationGroup(
+                self._fade_in(self.selfish_mining),
+                self._fade_in(self.genesis),
+                self._fade_in(self.genesis_label),
+                self._fade_in(self.selfish_block1),
+                self._fade_in(self.selfish_block1_label),
+                Create(self.selfish_line1, run_time=self.fade_in_time),
+                self._fade_in(self.selfish_block2),
+                self._fade_in(self.selfish_block2_label),
+                Create(self.selfish_line2, run_time=self.fade_in_time),
+                self._fade_in(self.selfish_block3),
+                self._fade_in(self.selfish_block3_label),
+                Create(self.selfish_line3, run_time=self.fade_in_time),
+                self._fade_in(self.selfish_block4),
+                self._fade_in(self.selfish_block4_label),
+                Create(self.selfish_line4, run_time=self.fade_in_time),
+                self._fade_in(self.honest_block1),
+                self._fade_in(self.honest_block1_label),
+                Create(self.honest_line1, run_time=self.fade_in_time)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_out(self.selfish_mining),
+                self._fade_out(self.selfish_block1),
+                self._fade_out(self.selfish_block1_label),
+                self._fade_out(self.selfish_line1),
+                self._fade_out(self.selfish_block2),
+                self._fade_out(self.selfish_block2_label),
+                self._fade_out(self.selfish_line2),
+                self._fade_out(self.selfish_block3),
+                self._fade_out(self.selfish_block3_label),
+                self._fade_out(self.selfish_line3),
+                self._fade_out(self.selfish_block4),
+                self._fade_out(self.selfish_block4_label),
+                self._fade_out(self.selfish_line4),
+                self._fade_out(self.honest_block1),
+                self._fade_out(self.honest_block1_label),
+                self._fade_out(self.honest_line1),
+                self._fade_in(self.state0)
+            )
+        ))
+        return intro_animation
+
+    #####################
+    # Internal Functions
+    #####################
+
+    def _fade_in(self, mobject_to_fade_in):
+        mobject_to_fade_in.is_visible = True
+        return mobject_to_fade_in.animate(run_time=self.fade_in_time).set_opacity(1.0)
+
+    def _fade_out(self, mobject_to_fade_out):
+        mobject_to_fade_out.is_visible = False
+        return mobject_to_fade_out.animate(run_time=self.fade_out_time).set_opacity(0.1)
+
+        # TODO figure out the best way to transition from any state to zero
+
+    def state_zero(self):
+        self.current_state = "zero"
+
+    #####################
+    # Selfish Miner Transitions
+    #####################
+
+    def zero_to_one(self):
+        self.current_state = "one"
+
+        zero_to_one_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.selfish_mining)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state1),
+                self._fade_in(self.selfish_block1),
+                self._fade_in(self.selfish_block1_label),
+                Create(self.selfish_line1, run_time=self.fade_in_time),
+            )
+        )
+
+        return zero_to_one_anim
+
+    def one_to_two(self):
+        self.current_state = "two"
+
+        one_to_two_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state1)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state2),
+                self._fade_in(self.selfish_block2),
+                self._fade_in(self.selfish_block2_label),
+                Create(self.selfish_line2, run_time=self.fade_in_time),
+            )
+        )
+
+        return one_to_two_anim
+
+    def two_to_three(self):
+        self.current_state = "three"
+
+        two_to_three_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state2)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state3),
+                self._fade_in(self.selfish_block3),
+                self._fade_in(self.selfish_block3_label),
+                Create(self.selfish_line3, run_time=self.fade_in_time),
+            )
+        )
+
+        return two_to_three_anim
+
+    def three_to_four(self):
+        self.current_state = "four"
+
+        three_to_four_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state3)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state4),
+                self._fade_in(self.selfish_block4),
+                self._fade_in(self.selfish_block4_label),
+                Create(self.selfish_line4, run_time=self.fade_in_time),
+            )
+        )
+
+        return three_to_four_anim
+
+    #####################
+    # Honest Miner Transitions
+    #####################
+
+    def zero_to_zero(self):
+        self.current_state = "zero"
+
+        zero_to_zero_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state0)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.honest_block1),
+                self._fade_in(self.honest_block1_label),
+                Create(self.honest_line1, run_time=self.fade_in_time),
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self.genesis.animate.move_to((-6, 0, 0)),
+                self.genesis_label.animate.move_to((-6, 0, 0)),
+                self.honest_block1.animate.move_to((-4, 0, 0)),
+                self.honest_block1_label.animate.move_to((-4, 0, 0))
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_out(self.genesis),
+                self._fade_out(self.genesis_label),
+                self._fade_out(self.honest_line1),
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self.genesis.animate(run_time=0.01).move_to(self.genesis_position),
+                self.genesis_label.animate(run_time=0.01).move_to(self.genesis_position)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.genesis),
+                self._fade_in(self.genesis_label),
+                self._fade_out(self.honest_block1),
+                self._fade_out(self.honest_block1_label),
+            )
+        )
+
+        return zero_to_zero_anim
+
+    def one_to_zero_prime(self):
+        self.current_state = "zero_prime"
+
+        one_to_zero_anim = Succession(
+            AnimationGroup(
+                self._fade_out(self.state1)
+            ),
+            Wait(self.wait_time),
+            AnimationGroup(
+                self._fade_in(self.state0prime),
+                self._fade_in(self.honest_block1),
+                self._fade_in(self.honest_block1_label),
+                Create(self.honest_line1, run_time=self.fade_in_time),
+            )
+        )
+
+        return one_to_zero_anim
+
+
 # Succession returns animations to be played one by one
 # AnimationGroup plays all animations together
 
