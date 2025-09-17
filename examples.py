@@ -1,7 +1,10 @@
 from blanim import *
-from random import randint
+
 from numpy.random import poisson as poi
 
+import random
+
+#TODO everything using mobs in blanim is prohibitivly slow
 class BlockDAGDemo(Scene):
     ##terrible demo
     def construct(self):
@@ -403,11 +406,12 @@ class SMBitcoin(MovingCameraFixedLayerScene):
         self.wait(1)
 
 
-class SelfishMiningExample(MovingCameraFixedLayerScene):
+class SelfishMiningExample(SequentialPlayScene):
     def construct(self):
         # Create the SelfishMining instance
-        sm = SelfishMiningSquares()
+        sm = SelfishMiningSquares(self)
 
+        self.wait(2)
         # Start with the intro animation
         self.play(sm.intro_anim())
 
@@ -434,45 +438,52 @@ class SelfishMiningExample(MovingCameraFixedLayerScene):
 
         # Now show what happens when honest miner finds a block in state 1
         # First, let's go back to state 1 by fading out the higher state blocks
-        self.play(
+        self.play(Succession(
+
             AnimationGroup(
-                sm._fade_out(sm.state4),
+                sm._fade_out_and_remove(sm.state4),
                 sm._fade_out(sm.selfish_block2),
                 sm._fade_out(sm.selfish_block2_label),
-                sm._fade_out(sm.selfish_line2),
+                sm._fade_out_and_remove(sm.selfish_line2),
                 sm._fade_out(sm.selfish_block3),
                 sm._fade_out(sm.selfish_block3_label),
-                sm._fade_out(sm.selfish_line3),
+                sm._fade_out_and_remove(sm.selfish_line3),
                 sm._fade_out(sm.selfish_block4),
                 sm._fade_out(sm.selfish_block4_label),
-                sm._fade_out(sm.selfish_line4),
-                sm._fade_in(sm.state1)
+                sm._fade_out_and_remove(sm.selfish_line4),
+            ),
+            Wait(1),
+            AnimationGroup(
+                sm._fade_in_and_create(sm.state1),
             )
-        )
+        ))
         self.wait(1)
 
         # Show transition from state 1 to state 0' (honest miner finds a block)
         self.play(sm.one_to_zero_prime())
         self.wait(1)
-
         # Finally, demonstrate the zero_to_zero transition
         # First fade out state 0' elements and show state 0
-        self.play(
+        self.play(Succession(
             AnimationGroup(
                 sm._fade_out(sm.state0prime),
                 sm._fade_out(sm.honest_block1),
                 sm._fade_out(sm.honest_block1_label),
-                sm._fade_out(sm.honest_line1),
+                sm._fade_out_and_remove(sm.honest_line1),
                 sm._fade_out(sm.selfish_block1),
                 sm._fade_out(sm.selfish_block1_label),
-                sm._fade_out(sm.selfish_line1),
-                sm._fade_in(sm.state0)
+                sm._fade_out_and_remove(sm.selfish_line1),
+            ),
+            Wait(1),
+            AnimationGroup(
+                sm._fade_in_and_create(sm.state0)
             )
-        )
-        self.wait(1)
+        ))
+        self.wait(2)
 
         # Show the zero_to_zero transition (honest miner finds a block in state 0)
-        self.play(sm.zero_to_zero())
+        sm.zero_to_zero()
+
         self.wait(2)
 
 class SMBitcoinWithoutBlock(MovingCameraFixedLayerScene):
@@ -797,6 +808,7 @@ class SMBitcoinWithoutBlock(MovingCameraFixedLayerScene):
 
         self.wait(3)
 
+#TODO Remove and remove SelfishMining (runaway ram)
 class SMBTC_testing(MovingCameraFixedLayerScene):
     def construct(self):
         sm = SelfishMining()
@@ -1006,6 +1018,226 @@ class WideHeaderBodyBoxes(Scene):
         self.wait(8)
 
 
+class ScrollingBlocks(Scene):
+    def __init__(self):
+        super().__init__()
+        # Track which blocks are currently visible and next block number
+        self.visible_blocks = set()
+        self.next_block_number = 1  # Start from 1 since Genesis comes first
+
+        # Mini-chain tracking
+        self.mini_visible_blocks = set()
+        self.mini_blocks = []
+        self.mini_labels = []
+        self.total_blocks_created = 1  # Start with 1 for Genesis
+
+    def construct(self):
+        # Create narration text at the top
+        narration = Text("Kaspa Pruning (k=0)", font_size=36, color=WHITE)
+        narration.to_edge(UP)
+
+        # Create even smaller mini-chain container that clips blocks
+        mini_chain_frame = Rectangle(
+            width=1.0,  # Much smaller - clips parts of blocks
+            height=0.6,  # Even smaller height
+            color=YELLOW,
+            stroke_width=2,
+            fill_opacity=0
+        )
+        mini_chain_frame.next_to(narration, DOWN, buff=0.3)
+
+        # Create 20 mini blocks for the chain (more buffer for 15-block rule)
+        for i in range(20):
+            # Create tiny block
+            mini_block = Square(
+                side_length=0.3,  # Keep same size as requested
+                color=WHITE,
+                fill_opacity=0,
+                stroke_width=1
+            )
+
+            # Position mini blocks horizontally, starting at center for Genesis
+            # Genesis (i=0) at center, then blocks to the right
+            mini_block.move_to(mini_chain_frame.get_center() + RIGHT * i * 0.4)
+
+            # Create tiny label
+            if i == 0:
+                mini_label = Text("G", font_size=6, color=WHITE)  # Genesis
+            else:
+                mini_label = Text(f"{i}", font_size=6, color=WHITE)
+            mini_label.move_to(mini_block.get_center())
+
+            self.mini_blocks.append(mini_block)
+            self.mini_labels.append(mini_label)
+
+            # Create 4 reusable block mobjects
+        blocks = []
+        block_labels = []
+
+        for i in range(4):
+            # Create block container
+            block = Square(
+                side_length=4,
+                color=WHITE,
+                fill_opacity=0,
+                stroke_width=3
+            )
+
+            # Position blocks: left, center, right
+            if i == 0:
+                block.shift(LEFT * 6 + DOWN * 0.75)
+            elif i == 1:
+                block.shift(DOWN * 0.75)
+            else:
+                block.shift(RIGHT * 6 + DOWN * 0.75)
+
+                # Add block content (header and body)
+            header = Rectangle(
+                width=3.5,
+                height=0.8,
+                color=WHITE,
+                fill_opacity=0,
+                stroke_width=2
+            )
+            header.move_to(block.get_center() + UP * 1.3)
+
+            body = Rectangle(
+                width=3.5,
+                height=2.1,
+                color=WHITE,
+                fill_opacity=0,
+                stroke_width=2
+            )
+            body.move_to(block.get_center() + DOWN * 0.6)
+
+            # Create block group
+            block_group = VGroup(block, header, body)
+            blocks.append(block_group)
+
+            # Add labels - keep them separate but positioned relative to blocks
+            if i == 1:  # The initially visible block
+                label = Text("Genesis", font_size=24)
+            else:
+                label = Text(f"Block {i + 1}", font_size=24)  # Placeholder
+            label.move_to(block.get_top() + UP * 0.3)
+            block_labels.append(label)
+
+            # Start with narration and mini-chain frame
+        self.play(Write(narration))
+        self.play(Create(mini_chain_frame))
+        self.wait(1)
+
+        # Show initial block (Genesis) and its mini counterpart
+        self.play(
+            Create(blocks[1]),
+            Write(block_labels[1]),
+            Create(self.mini_blocks[0]),
+            Write(self.mini_labels[0])
+        )
+        self.visible_blocks.add(1)
+        self.mini_visible_blocks.add(0)
+
+        def scroll_left():
+            # Find next available block
+            rightmost_block_idx = None
+            for i in range(4):
+                if i not in self.visible_blocks:
+                    rightmost_block_idx = i
+                    break
+
+                    # Find next available mini block
+            rightmost_mini_idx = None
+            for i in range(20):
+                if i not in self.mini_visible_blocks:
+                    rightmost_mini_idx = i
+                    break
+
+            if rightmost_block_idx is None or rightmost_mini_idx is None:
+                return
+
+                # Position the new block directly in its final position (next to rightmost visible block)
+            rightmost_visible_pos = max([blocks[i].get_center()[0] for i in self.visible_blocks])
+            final_position = np.array([rightmost_visible_pos + 6, -0.75, 0])  # 6 units to the right
+
+            blocks[rightmost_block_idx].move_to(final_position)
+
+            # Update label with proper numbering (Block 1, Block 2, etc.)
+            block_labels[rightmost_block_idx].become(Text(f"Block {self.next_block_number}", font_size=24))
+            block_labels[rightmost_block_idx].move_to(blocks[rightmost_block_idx].get_top() + UP * 0.3)
+
+            # Position mini block next to rightmost visible mini block
+            rightmost_mini_pos = max([self.mini_blocks[i].get_center()[0] for i in self.mini_visible_blocks])
+            mini_final_position = np.array([rightmost_mini_pos + 0.4, mini_chain_frame.get_center()[1], 0])
+
+            self.mini_blocks[rightmost_mini_idx].move_to(mini_final_position)
+
+            # Update mini label
+            self.mini_labels[rightmost_mini_idx].become(Text(f"{self.next_block_number}", font_size=6))
+            self.mini_labels[rightmost_mini_idx].move_to(self.mini_blocks[rightmost_mini_idx].get_center())
+
+            # Find leftmost block before adding new one
+            leftmost_idx = min(self.visible_blocks, key=lambda i: blocks[i].get_center()[0])
+
+            # Add to scene and draw the new block while simultaneously fading the leftmost block
+            self.add(blocks[rightmost_block_idx], block_labels[rightmost_block_idx])
+            self.add(self.mini_blocks[rightmost_mini_idx], self.mini_labels[rightmost_mini_idx])
+
+            # Create animations list for simultaneous execution
+            create_animations = [
+                Create(blocks[rightmost_block_idx]),
+                Write(block_labels[rightmost_block_idx]),
+                Create(self.mini_blocks[rightmost_mini_idx]),
+                Write(self.mini_labels[rightmost_mini_idx])
+            ]
+
+            # If there's a leftmost block that will be off-screen after shift, fade it during creation
+            if len(self.visible_blocks) >= 3:  # Only fade when we have 3+ blocks
+                create_animations.extend([
+                    FadeOut(blocks[leftmost_idx]),
+                    FadeOut(block_labels[leftmost_idx])
+                ])
+                self.visible_blocks.remove(leftmost_idx)  # Remove from tracking immediately
+
+            # Handle mini block fading with 15-block rule
+            if self.total_blocks_created >= 16:  # Only fade when we have 16+ total blocks (15 blocks away from Genesis)
+                leftmost_mini_idx = min(self.mini_visible_blocks, key=lambda i: self.mini_blocks[i].get_center()[0])
+                create_animations.extend([
+                    FadeOut(self.mini_blocks[leftmost_mini_idx]),
+                    FadeOut(self.mini_labels[leftmost_mini_idx])
+                ])
+                self.mini_visible_blocks.remove(leftmost_mini_idx)  # Remove from tracking immediately
+
+            self.play(*create_animations, run_time=1)
+
+            self.visible_blocks.add(rightmost_block_idx)
+            self.mini_visible_blocks.add(rightmost_mini_idx)
+            self.next_block_number += 1
+            self.total_blocks_created += 1  # Critical fix: increment the counter
+
+            # Now shift all remaining visible blocks left simultaneously
+            shift_animations = []
+            for i in self.visible_blocks:
+                shift_animations.extend([
+                    blocks[i].animate.shift(LEFT * 6),
+                    block_labels[i].animate.shift(LEFT * 6)
+                ])
+
+            for i in self.mini_visible_blocks:
+                shift_animations.extend([
+                    self.mini_blocks[i].animate.shift(LEFT * 0.4),  # Proportional to main blocks
+                    self.mini_labels[i].animate.shift(LEFT * 0.4)
+                ])
+
+            self.play(*shift_animations, run_time=1)
+
+            # Perform scrolling animation
+
+        for _ in range(20):  # More iterations to test the 15-block rule
+            scroll_left()
+            self.wait(1)
+
+        self.wait(2)
+
 class UTXOCommitment(Scene):
     def construct(self):
         # Create narration text at the top
@@ -1162,6 +1394,181 @@ class UTXOCommitment(Scene):
 
         self.wait(8)
 
+
+class TransactionSelection(Scene):
+    def construct(self):
+        # Create narration text at the top
+        narration = Text("Kaspa Transaction Selection", font_size=36, color=WHITE)
+        narration.to_edge(UP)
+
+        # Create Round container (left side)
+        round_container = Square(
+            side_length=4,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=3
+        )
+        round_container.shift(LEFT * 3 + DOWN * 0.75)
+
+        # Create Transaction Pool container (right side)
+        tx_pool_container = Square(
+            side_length=4,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=3
+        )
+        tx_pool_container.shift(RIGHT * 3 + DOWN * 0.75)
+
+        # Create individual transaction containers inside the pool
+        tx1_container = Rectangle(
+            width=3.0,
+            height=1.2,
+            color="#B6B6B6",
+            fill_opacity=0.1,
+            stroke_width=2
+        )
+        tx1_container.move_to(tx_pool_container.get_center() + UP * 0.8)
+
+        tx2_container = Rectangle(
+            width=3.0,
+            height=1.2,
+            color="#70C7BA",
+            fill_opacity=0.1,
+            stroke_width=2
+        )
+        tx2_container.move_to(tx_pool_container.get_center() + DOWN * 0.8)
+
+        # Create labels
+        round_label = Text("Round", font_size=24).move_to(round_container.get_top() + UP * 0.3)
+        tx_pool_label = Text("Transaction Pool", font_size=24).move_to(tx_pool_container.get_top() + UP * 0.3)
+
+        tx1_label = Text("tx1 1 KAS", font_size=18, color=WHITE).move_to(tx1_container.get_center())
+        tx2_label = Text("tx2 1.1 KAS", font_size=18, color=WHITE).move_to(tx2_container.get_center())
+
+        self.wait(3)
+        # Start with narration
+        self.play(Write(narration))
+        self.wait(1)
+
+        # Animate creation of containers
+        self.play(
+            Create(round_container),
+            Create(tx_pool_container)
+        )
+        self.play(
+            Write(round_label),
+            Write(tx_pool_label)
+        )
+
+        # Animate transaction containers appearing
+        self.play(
+            Create(tx1_container),
+            Create(tx2_container)
+        )
+        self.play(
+            Write(tx1_label),
+            Write(tx2_label)
+        )
+        self.wait(2)
+
+        # Create sub-narration text - positioned below the main title
+        sub_narration = Text("When selecting highest paying", font_size=24, color=WHITE)
+        sub_narration.next_to(narration, DOWN, buff=0.5)
+
+        # Show sub-narration and highlight tx2 container
+        self.play(Write(sub_narration))
+        self.play(Indicate(tx2_container))
+        self.wait(0.5)
+
+        # Create two square blocks in the round container
+        block1 = Square(
+            side_length=1.5,
+            color="#70C7BA",
+            fill_opacity=0.2,
+            stroke_width=2
+        )
+        block1.move_to(round_container.get_center() + UP * 0.90)
+
+        block2 = Square(
+            side_length=1.5,
+            color="#70C7BA",
+            fill_opacity=0.2,
+            stroke_width=2
+        )
+        block2.move_to(round_container.get_center() + DOWN * 0.90)
+
+        # Add tx2 labels to both blocks
+        block1_label = Text("tx2", font_size=16, color=WHITE).move_to(block1.get_center())
+        block2_label = Text("tx2", font_size=16, color=WHITE).move_to(block2.get_center())
+
+        # Animate creation of blocks
+        self.play(
+            Create(block1),
+            Create(block2)
+        )
+        self.play(
+            Write(block1_label),
+            Write(block2_label)
+        )
+        self.wait(1)
+
+        # Transform sub-narration to "only 1 miner is paid"
+        new_sub_narration = Text("only 1 miner is paid", font_size=24, color=WHITE)
+        new_sub_narration.next_to(narration, DOWN, buff=0.5)
+        self.play(Transform(sub_narration, new_sub_narration))
+        self.wait(1)
+
+        # Fade out everything in the round container and sub-narration
+        self.play(
+            FadeOut(block1),
+            FadeOut(block2),
+            FadeOut(block1_label),
+            FadeOut(block2_label),
+            FadeOut(sub_narration)
+        )
+        self.wait(0.5)
+
+        # Create new sub-narration for random selection
+        random_sub_narration = Text("When random selecting", font_size=24, color=WHITE)
+        random_sub_narration.next_to(narration, DOWN, buff=0.5)
+
+        # Create new squares with tx1 and tx2 - equally spaced
+        new_block1 = Square(
+            side_length=1.5,
+            color="#B6B6B6",
+            fill_opacity=0.2,
+            stroke_width=2
+        )
+        new_block1.move_to(round_container.get_center() + UP * 0.90)
+
+        new_block2 = Square(
+            side_length=1.5,
+            color="#70C7BA",
+            fill_opacity=0.2,
+            stroke_width=2
+        )
+        new_block2.move_to(round_container.get_center() + DOWN * 0.90)
+
+        new_block1_label = Text("tx1", font_size=16, color=WHITE).move_to(new_block1.get_center())
+        new_block2_label = Text("tx2", font_size=16, color=WHITE).move_to(new_block2.get_center())
+
+        # Show random selection sub-narration and animate creation of new blocks
+        self.play(Write(random_sub_narration))
+        self.play(
+            Create(new_block1),
+            Create(new_block2)
+        )
+        self.play(
+            Write(new_block1_label),
+            Write(new_block2_label)
+        )
+        self.wait(1)
+
+        # Transform to final sub-narration
+        final_sub_narration = Text("50% chance of both miners getting paid", font_size=24, color=WHITE)
+        final_sub_narration.next_to(narration, DOWN, buff=0.5)
+        self.play(Transform(random_sub_narration, final_sub_narration))
+        self.wait(8)
 
 class Transaction(Scene):
     def construct(self):
@@ -1593,4 +2000,426 @@ class BitcoinBlockchainWithSquares(Scene):
         self.play(FadeIn(block3_2), FadeIn(block3_2_label), Create(line3_2),
                   Create(block3ToOrphanLine))  # Added the new line here
         self.play(FadeIn(block4_2), FadeIn(block4_2_label), Create(line4_2))
+        self.wait(8)
+
+
+class WeightedLotteryBlocks(Scene):
+    def construct(self):
+        # Define fee rates and total blocks
+        feerate_a = 4.1
+        feerate_b = 3.1
+        total_blocks = 20
+
+        # Calculate weights by cubing the fee rates
+        weight_a_raw = feerate_a ** 3
+        weight_b_raw = feerate_b ** 3
+        total_weight = weight_a_raw + weight_b_raw
+
+        # Normalize to get proportions
+        weight_a = weight_a_raw / total_weight
+        weight_b = weight_b_raw / total_weight
+
+        # Calculate number of each type
+        num_a = int(total_blocks * weight_a)
+        num_b = total_blocks - num_a
+
+        # Create individual blocks with their labels stored together
+        block_data = []
+        blocks = VGroup()
+
+        # Create A blocks
+        for i in range(num_a):
+            block = Square(side_length=0.5, fill_opacity=0.8, color=BLUE)
+            label = Text("A", font_size=24, color=WHITE)
+            labeled_block = VGroup(block, label)
+            blocks.add(labeled_block)
+            block_data.append("A")
+
+            # Create B blocks
+        for i in range(num_b):
+            block = Square(side_length=0.5, fill_opacity=0.8, color=RED)
+            label = Text("B", font_size=24, color=WHITE)
+            labeled_block = VGroup(block, label)
+            blocks.add(labeled_block)
+            block_data.append("B")
+
+            # Shuffle blocks and their corresponding labels together
+        combined = list(zip(blocks.submobjects, block_data))
+        random.shuffle(combined)
+        shuffled_blocks, shuffled_labels = zip(*combined)
+
+        # Recreate the VGroup with shuffled blocks
+        blocks = VGroup(*shuffled_blocks)
+        block_labels = list(shuffled_labels)
+
+        # Arrange blocks in a grid with more spacing
+        blocks.arrange_in_grid(rows=4, cols=5, buff=0.3)
+
+        # Move the blocks lower in the scene
+        blocks.shift(DOWN * 0.5)
+
+        # Create larger container
+        container_width = blocks.width + 2
+        container_height = blocks.height + 1.5
+        container = Rectangle(
+            width=container_width,
+            height=container_height,
+            color=WHITE,
+            stroke_width=4,
+            fill_opacity=0.1,
+            fill_color=GRAY
+        )
+        container.move_to(blocks.get_center())
+
+        # Add title
+        title = Text("Kaspa Transaction Selection", font_size=40)
+        title.to_edge(UP, buff=0.3)
+
+        # Add weight information showing fee rates and resulting percentages
+        weight_info = Text(
+            f"A: feerate {feerate_a}\n"
+            f"B: feerate {feerate_b}",
+            font_size=24
+        )
+        weight_info.next_to(title, DOWN, buff=0.2)
+
+        # Show the setup
+        self.play(Write(title))
+        self.play(Write(weight_info))
+        self.play(Create(container))
+        self.play(LaggedStart(*[FadeIn(block) for block in blocks], lag_ratio=0.1))
+        self.wait(2)
+
+
+class StaticWeightedLotteryBlocks(Scene):
+    def show_fee_rate_scenario(self, feerate_a, feerate_b, title_suffix=""):
+        """Create and display blocks for given fee rates"""
+        total_blocks = 20
+
+        # Calculate weights by cubing the fee rates
+        weight_a_raw = feerate_a ** 3
+        weight_b_raw = feerate_b ** 3
+        total_weight = weight_a_raw + weight_b_raw
+
+        # Normalize to get proportions
+        weight_a = weight_a_raw / total_weight
+        weight_b = weight_b_raw / total_weight
+
+        # Calculate number of each type
+        num_a = int(total_blocks * weight_a)
+        num_b = total_blocks - num_a
+
+        # Create individual blocks
+        blocks = VGroup()
+
+        # Create A blocks
+        for i in range(num_a):
+            block = Square(side_length=0.5, fill_opacity=0.8, color=BLUE)
+            label = Text("A", font_size=24, color=WHITE)
+            labeled_block = VGroup(block, label)
+            blocks.add(labeled_block)
+
+            # Create B blocks
+        for i in range(num_b):
+            block = Square(side_length=0.5, fill_opacity=0.8, color=RED)
+            label = Text("B", font_size=24, color=WHITE)
+            labeled_block = VGroup(block, label)
+            blocks.add(labeled_block)
+
+            # Shuffle blocks for random arrangement
+        random.shuffle(blocks.submobjects)
+
+        # Arrange blocks in a grid
+        blocks.arrange_in_grid(rows=4, cols=5, buff=0.3)
+        blocks.shift(DOWN * 0.5)
+
+        # Create container
+        container_width = blocks.width + 2
+        container_height = blocks.height + 1.5
+        container = Rectangle(
+            width=container_width,
+            height=container_height,
+            color=WHITE,
+            stroke_width=4,
+            fill_opacity=0.1,
+            fill_color=GRAY
+        )
+        container.move_to(blocks.get_center())
+
+        # Create title and info
+        title = Text(f"Fee Rate Scenario{title_suffix}", font_size=40)
+        title.to_edge(UP, buff=0.3)
+
+        weight_info = Text(
+            f"A: feerate {feerate_a} → weight {weight_a_raw:.1f} → {num_a} blocks ({weight_a * 100:.0f}%)\n"
+            f"B: feerate {feerate_b} → weight {weight_b_raw:.1f} → {num_b} blocks ({weight_b * 100:.0f}%)",
+            font_size=24
+        )
+        weight_info.next_to(title, DOWN, buff=0.2)
+
+        return VGroup(title, weight_info, container, blocks)
+
+    def construct(self):
+        # Show first scenario
+        scenario1 = self.show_fee_rate_scenario(4.1, 3.1, " 1")
+        self.play(FadeIn(scenario1))
+        self.wait(2)
+
+        # Clear and show second scenario
+        self.play(FadeOut(scenario1))
+        scenario2 = self.show_fee_rate_scenario(5.0, 2.5, " 2")
+        self.play(FadeIn(scenario2))
+        self.wait(2)
+
+        # Clear and show third scenario
+        self.play(FadeOut(scenario2))
+        scenario3 = self.show_fee_rate_scenario(3.5, 4.0, " 3")
+        self.play(FadeIn(scenario3))
+        self.wait(2)
+
+# TODO save this one and reuse for showing sliding comparison of feerates
+class DynamicWeightedLotteryBlocks(Scene):
+    def construct(self):
+        # Create ValueTrackers for fee rates
+        feerate_a_tracker = ValueTracker(4.1)
+        feerate_b_tracker = ValueTracker(3.1)
+        total_blocks = 20
+
+        # Function to create blocks based on current fee rates
+        def create_blocks():
+            feerate_a = feerate_a_tracker.get_value()
+            feerate_b = feerate_b_tracker.get_value()
+
+            # Calculate weights by cubing the fee rates
+            weight_a_raw = feerate_a ** 3
+            weight_b_raw = feerate_b ** 3
+            total_weight = weight_a_raw + weight_b_raw
+
+            # Normalize to get proportions
+            weight_a = weight_a_raw / total_weight
+            weight_b = weight_b_raw / total_weight
+
+            # Calculate number of each type
+            num_a = int(total_blocks * weight_a)
+            num_b = total_blocks - num_a
+
+            # Create individual blocks
+            block_data = []
+            blocks = VGroup()
+
+            # Create A blocks
+            for i in range(num_a):
+                block = Square(side_length=0.5, fill_opacity=0.8, color=BLUE)
+                label = Text("A", font_size=24, color=WHITE)
+                labeled_block = VGroup(block, label)
+                blocks.add(labeled_block)
+                block_data.append("A")
+
+                # Create B blocks
+            for i in range(num_b):
+                block = Square(side_length=0.5, fill_opacity=0.8, color=RED)
+                label = Text("B", font_size=24, color=WHITE)
+                labeled_block = VGroup(block, label)
+                blocks.add(labeled_block)
+                block_data.append("B")
+
+                # Shuffle blocks for random arrangement
+            combined = list(zip(blocks.submobjects, block_data))
+            random.shuffle(combined)
+            shuffled_blocks, shuffled_labels = zip(*combined)
+
+            # Recreate the VGroup with shuffled blocks
+            blocks = VGroup(*shuffled_blocks)
+
+            # Arrange blocks in a grid with spacing
+            blocks.arrange_in_grid(rows=4, cols=5, buff=0.3)
+            blocks.shift(DOWN * 0.5)
+
+            return blocks, weight_a, weight_b, weight_a_raw, weight_b_raw, num_a, num_b
+
+            # Create dynamic blocks using always_redraw
+
+        dynamic_blocks = always_redraw(lambda: create_blocks()[0])
+
+        # Create dynamic container
+        def create_container():
+            blocks, _, _, _, _, _, _ = create_blocks()
+            container_width = blocks.width + 2
+            container_height = blocks.height + 1.5
+            container = Rectangle(
+                width=container_width,
+                height=container_height,
+                color=WHITE,
+                stroke_width=4,
+                fill_opacity=0.1,
+                fill_color=GRAY
+            )
+            container.move_to(blocks.get_center())
+            return container
+
+        dynamic_container = always_redraw(create_container)
+
+        # Create dynamic weight information
+        def create_weight_info():
+            feerate_a = feerate_a_tracker.get_value()
+            feerate_b = feerate_b_tracker.get_value()
+            _, weight_a, weight_b, weight_a_raw, weight_b_raw, num_a, num_b = create_blocks()
+
+            weight_info = Text(
+                f"A: feerate {feerate_a:.1f} → weight {weight_a_raw:.1f} → {num_a} blocks ({weight_a * 100:.0f}%)\n"
+                f"B: feerate {feerate_b:.1f} → weight {weight_b_raw:.1f} → {num_b} blocks ({weight_b * 100:.0f}%)",
+                font_size=24
+            )
+            weight_info.to_edge(UP, buff=1.0)
+            return weight_info
+
+        dynamic_weight_info = always_redraw(create_weight_info)
+
+        # Add title
+        title = Text("Dynamic Kaspa Transaction Selection", font_size=40)
+        title.to_edge(UP, buff=0.3)
+
+        # Add everything to scene
+        self.add(feerate_a_tracker, feerate_b_tracker)  # Add trackers to scene
+        self.play(Write(title))
+        self.play(Write(dynamic_weight_info))
+        self.play(Create(dynamic_container))
+        self.play(FadeIn(dynamic_blocks))
+        self.wait(1)
+
+        # Demonstrate dynamic changes
+        self.play(feerate_a_tracker.animate.set_value(5.0), run_time=2)
+        self.wait(1)
+        self.play(feerate_b_tracker.animate.set_value(2.5), run_time=2)
+        self.wait(1)
+        self.play(
+            feerate_a_tracker.animate.set_value(3.5),
+            feerate_b_tracker.animate.set_value(4.0),
+            run_time=3
+        )
+        self.wait(2)
+
+
+class PersistentWeightedLotteryBlocks(Scene):
+    def show_scenario_blocks_only(self, feerate_a, feerate_b):
+        """Create only the blocks for given fee rates"""
+        total_blocks = 20
+
+        # Calculate weights by cubing the fee rates
+        weight_a_raw = feerate_a ** 3
+        weight_b_raw = feerate_b ** 3
+        total_weight = weight_a_raw + weight_b_raw
+
+        # Normalize to get proportions
+        weight_a = weight_a_raw / total_weight
+        weight_b = weight_b_raw / total_weight
+
+        # Calculate number of each type
+        num_a = int(total_blocks * weight_a)
+        num_b = total_blocks - num_a
+
+        # Create individual blocks
+        blocks = VGroup()
+
+        # Create A blocks
+        for i in range(num_a):
+            block = Square(side_length=0.5, fill_opacity=0.5, color="#70C7BA", stroke_color=WHITE, stroke_width=2)
+            label = Text("A", font_size=24, color=WHITE)
+            labeled_block = VGroup(block, label)
+            blocks.add(labeled_block)
+
+            # Create B blocks
+        for i in range(num_b):
+            block = Square(side_length=0.5, fill_opacity=0.5, color="#B6B6B6", stroke_color=WHITE, stroke_width=2)
+            label = Text("B", font_size=24, color=WHITE)
+            labeled_block = VGroup(block, label)
+            blocks.add(labeled_block)
+
+            # Shuffle blocks for random arrangement
+        random.shuffle(blocks.submobjects)
+
+        # Arrange blocks in a grid with spacing
+        blocks.arrange_in_grid(rows=4, cols=5, buff=0.3)
+        blocks.shift(DOWN * 0.5)
+
+        return blocks, num_a, num_b, weight_a, weight_b
+
+    def construct(self):
+        # Create persistent elements once
+        title = Text("Kaspa Transaction Selection", font_size=40)
+        title.to_edge(UP, buff=0.3)
+
+        # Create persistent container (sized for the grid)
+        container_width = 6  # Fixed size based on typical grid
+        container_height = 4
+        container = Rectangle(
+            width=container_width,
+            height=container_height,
+            color=WHITE,
+            stroke_width=4,
+            fill_opacity=0.1,
+            fill_color=GRAY
+        )
+        container.shift(DOWN * 0.5)
+
+        # Show persistent elements
+        self.wait(3)
+        self.play(Write(title))
+        self.play(Create(container))
+        self.wait(1)
+
+        # Scenario 1: Fee rates 4.1 and 3.1
+        feerate_a, feerate_b = 1, 1
+        blocks1, num_a1, num_b1, weight_a1, weight_b1 = self.show_scenario_blocks_only(feerate_a, feerate_b)
+
+        # Create weight info for scenario 1
+        weight_info = Text(
+            f"A: feerate {feerate_a} → {num_a1} blocks ({weight_a1 * 100:.0f}%)\n"
+            f"B: feerate {feerate_b} → {num_b1} blocks ({weight_b1 * 100:.0f}%)",
+            font_size=24
+        )
+        weight_info.next_to(title, DOWN, buff=0.2)
+
+        self.play(Write(weight_info, run_time=3.0))
+        self.play(LaggedStart(*[FadeIn(block) for block in blocks1], lag_ratio=0.1))
+        self.wait(2)
+
+        # Scenario 2: Fee rates 5.0 and 2.5
+        feerate_a, feerate_b = 1, 2
+        blocks2, num_a2, num_b2, weight_a2, weight_b2 = self.show_scenario_blocks_only(feerate_a, feerate_b)
+
+        # Update weight info for scenario 2
+        new_weight_info = Text(
+            f"A: feerate {feerate_a} → {num_a2} blocks ({weight_a2 * 100:.0f}%)\n"
+            f"B: feerate {feerate_b} → {num_b2} blocks ({weight_b2 * 100:.0f}%)",
+            font_size=24
+        )
+        new_weight_info.next_to(title, DOWN, buff=0.2)
+
+        # Transition: remove old blocks and weight info, add new ones
+        self.play(
+            FadeOut(blocks1),
+            Transform(weight_info, new_weight_info, run_time=3.0)
+        )
+        self.play(LaggedStart(*[FadeIn(block) for block in blocks2], lag_ratio=0.1))
+        self.wait(2)
+
+        # Scenario 3: Fee rates 3.5 and 4.0
+        feerate_a, feerate_b = 1, 0.5
+        blocks3, num_a3, num_b3, weight_a3, weight_b3 = self.show_scenario_blocks_only(feerate_a, feerate_b)
+
+        # Update weight info for scenario 3
+        new_weight_info2 = Text(
+            f"A: feerate {feerate_a} → {num_a3} blocks ({weight_a3 * 100:.0f}%)\n"
+            f"B: feerate {feerate_b} → {num_b3} blocks ({weight_b3 * 100:.0f}%)",
+            font_size=24
+        )
+        new_weight_info2.next_to(title, DOWN, buff=0.2)
+
+        # Transition: remove old blocks and update weight info
+        self.play(
+            FadeOut(blocks2),
+            Transform(weight_info, new_weight_info2, run_time=3.0)
+        )
+        self.play(LaggedStart(*[FadeIn(block) for block in blocks3], lag_ratio=0.1))
         self.wait(8)

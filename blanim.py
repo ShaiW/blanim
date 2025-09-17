@@ -2667,7 +2667,9 @@ class SelfishMining:
 class SelfishMiningSquares:
     # Class for animating each state and transition in Selfish Mining (Eyal and Sirer)
     # For simplicity (and manim limitations) we keep forks <= 4 blocks
-    def __init__(self):
+    def __init__(self, scene):
+        self.scene = scene
+
         self.genesis_position = (-4, 0, 0)  # when using default space, this centers the blocks.
         self.selfish_block_offset = DOWN * 1.2
 
@@ -2713,28 +2715,28 @@ class SelfishMiningSquares:
         self.genesis_label.move_to(self.genesis.get_center())
 
         # Create selfish blocks with lines - start in lower position
-        self.selfish_block1 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block1 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
         self.selfish_block1.move_to([-2, -1.2, 0])  # Manual positioning with offset
         self.selfish_block1_label = Text("s1", font_size=24, color=WHITE)
         self.selfish_block1_label.move_to(self.selfish_block1.get_center())
         self.selfish_line1 = Line(start=self.selfish_block1.get_left(), end=self.genesis.get_right(),
                                   buff=0.1, color=WHITE, stroke_width=2)
 
-        self.selfish_block2 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block2 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
         self.selfish_block2.move_to([0, -1.2, 0])
         self.selfish_block2_label = Text("s2", font_size=24, color=WHITE)
         self.selfish_block2_label.move_to(self.selfish_block2.get_center())
         self.selfish_line2 = Line(start=self.selfish_block2.get_left(), end=self.selfish_block1.get_right(),
                                   buff=0.1, color=WHITE, stroke_width=2)
 
-        self.selfish_block3 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block3 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
         self.selfish_block3.move_to([2, -1.2, 0])
         self.selfish_block3_label = Text("s3", font_size=24, color=WHITE)
         self.selfish_block3_label.move_to(self.selfish_block3.get_center())
         self.selfish_line3 = Line(start=self.selfish_block3.get_left(), end=self.selfish_block2.get_right(),
                                   buff=0.1, color=WHITE, stroke_width=2)
 
-        self.selfish_block4 = Square(side_length=0.8, color=PURE_RED, fill_opacity=self.selfish_miner_block_opacity)
+        self.selfish_block4 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
         self.selfish_block4.move_to([4, -1.2, 0])
         self.selfish_block4_label = Text("s4", font_size=24, color=WHITE)
         self.selfish_block4_label.move_to(self.selfish_block4.get_center())
@@ -2778,44 +2780,46 @@ class SelfishMiningSquares:
 
         intro_animation = (Succession(
             AnimationGroup(
-                self._fade_in(self.selfish_mining),
+                self._fade_in_and_create(self.selfish_mining),
                 self._fade_in(self.genesis),
                 self._fade_in(self.genesis_label),
                 self._fade_in(self.selfish_block1),
                 self._fade_in(self.selfish_block1_label),
-                Create(self.selfish_line1, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line1),
                 self._fade_in(self.selfish_block2),
                 self._fade_in(self.selfish_block2_label),
-                Create(self.selfish_line2, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line2),
                 self._fade_in(self.selfish_block3),
                 self._fade_in(self.selfish_block3_label),
-                Create(self.selfish_line3, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line3),
                 self._fade_in(self.selfish_block4),
                 self._fade_in(self.selfish_block4_label),
-                Create(self.selfish_line4, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line4),
                 self._fade_in(self.honest_block1),
                 self._fade_in(self.honest_block1_label),
-                Create(self.honest_line1, run_time=self.fade_in_time)
+                self._fade_in_and_create(self.honest_line1)
             ),
             Wait(self.wait_time),
             AnimationGroup(
                 self._fade_out(self.selfish_mining),
                 self._fade_out(self.selfish_block1),
                 self._fade_out(self.selfish_block1_label),
-                self._fade_out(self.selfish_line1),
+                self._fade_out_and_remove(self.selfish_line1),
                 self._fade_out(self.selfish_block2),
                 self._fade_out(self.selfish_block2_label),
-                self._fade_out(self.selfish_line2),
+                self._fade_out_and_remove(self.selfish_line2),
                 self._fade_out(self.selfish_block3),
                 self._fade_out(self.selfish_block3_label),
-                self._fade_out(self.selfish_line3),
+                self._fade_out_and_remove(self.selfish_line3),
                 self._fade_out(self.selfish_block4),
                 self._fade_out(self.selfish_block4_label),
-                self._fade_out(self.selfish_line4),
+                self._fade_out_and_remove(self.selfish_line4),
                 self._fade_out(self.honest_block1),
                 self._fade_out(self.honest_block1_label),
-                self._fade_out(self.honest_line1),
-                self._fade_in(self.state0)
+                self._fade_out_and_remove(self.honest_line1),
+            ),
+            AnimationGroup(
+                self._fade_in_and_create(self.state0)
             )
         ))
         return intro_animation
@@ -2825,14 +2829,34 @@ class SelfishMiningSquares:
     #####################
 
     def _fade_in(self, mobject_to_fade_in):
+        """
+        THIS KEEPS MOBJECTS AS PART OF THE SCENE
+        """
         mobject_to_fade_in.is_visible = True
         return mobject_to_fade_in.animate(run_time=self.fade_in_time).set_opacity(1.0)
 
     def _fade_out(self, mobject_to_fade_out):
+        """
+        THIS KEEPS MOBJECTS AS PART OF THE SCENE
+        """
         mobject_to_fade_out.is_visible = False
-        return mobject_to_fade_out.animate(run_time=self.fade_out_time).set_opacity(0.1)
+        return mobject_to_fade_out.animate(run_time=self.fade_out_time).set_opacity(0)
 
-        # TODO figure out the best way to transition from any state to zero
+    def _fade_in_and_create(self, mobject_to_fade_in):
+        """
+        WARNING: ONLY TO BE USED FOR MOBJECTS THAT HAVE BEEN REMOVED OR INIT CREATE, THIS ADDS THE MOBJECT FROM SCENE
+        """
+        mobject_to_fade_in.is_visible = True
+        return Create(mobject_to_fade_in, run_time=self.fade_in_time)
+
+    def _fade_out_and_remove(self, mobject_to_fade_out):
+        """
+        WARNING: ONLY TO BE USED FOR MOBJECTS THAT USE A REDRAW, THIS REMOVES THE MOBJECT FROM SCENE
+        """
+        mobject_to_fade_out.is_visible = False
+        return FadeOut(mobject_to_fade_out, run_time=self.fade_out_time)
+
+    # TODO figure out the best way to transition from any state to zero
 
     def state_zero(self):
         self.current_state = "zero"
@@ -2846,14 +2870,14 @@ class SelfishMiningSquares:
 
         zero_to_one_anim = Succession(
             AnimationGroup(
-                self._fade_out(self.selfish_mining)
+                self._fade_out_and_remove(self.state0)
             ),
             Wait(self.wait_time),
             AnimationGroup(
-                self._fade_in(self.state1),
+                self._fade_in_and_create(self.state1),
                 self._fade_in(self.selfish_block1),
                 self._fade_in(self.selfish_block1_label),
-                Create(self.selfish_line1, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line1),
             )
         )
 
@@ -2864,14 +2888,14 @@ class SelfishMiningSquares:
 
         one_to_two_anim = Succession(
             AnimationGroup(
-                self._fade_out(self.state1)
+                self._fade_out_and_remove(self.state1)
             ),
             Wait(self.wait_time),
             AnimationGroup(
-                self._fade_in(self.state2),
+                self._fade_in_and_create(self.state2),
                 self._fade_in(self.selfish_block2),
                 self._fade_in(self.selfish_block2_label),
-                Create(self.selfish_line2, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line2),
             )
         )
 
@@ -2882,14 +2906,14 @@ class SelfishMiningSquares:
 
         two_to_three_anim = Succession(
             AnimationGroup(
-                self._fade_out(self.state2)
+                self._fade_out_and_remove(self.state2)
             ),
             Wait(self.wait_time),
             AnimationGroup(
-                self._fade_in(self.state3),
+                self._fade_in_and_create(self.state3),
                 self._fade_in(self.selfish_block3),
                 self._fade_in(self.selfish_block3_label),
-                Create(self.selfish_line3, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line3),
             )
         )
 
@@ -2900,14 +2924,14 @@ class SelfishMiningSquares:
 
         three_to_four_anim = Succession(
             AnimationGroup(
-                self._fade_out(self.state3)
+                self._fade_out_and_remove(self.state3)
             ),
             Wait(self.wait_time),
             AnimationGroup(
-                self._fade_in(self.state4),
+                self._fade_in_and_create(self.state4),
                 self._fade_in(self.selfish_block4),
                 self._fade_in(self.selfish_block4_label),
-                Create(self.selfish_line4, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.selfish_line4),
             )
         )
 
@@ -2920,62 +2944,70 @@ class SelfishMiningSquares:
     def zero_to_zero(self):
         self.current_state = "zero"
 
-        zero_to_zero_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.state0)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
+        self.scene.play(AnimationGroup(
+                self._fade_out_and_remove(self.state0)
+            ))
+
+        self.scene.play(Wait(self.wait_time))
+
+        self.scene.play(AnimationGroup(
                 self._fade_in(self.honest_block1),
                 self._fade_in(self.honest_block1_label),
-                Create(self.honest_line1, run_time=self.fade_in_time),
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
+                self._fade_in_and_create(self.honest_line1),
+            ))
+
+        self.scene.play(Wait(self.wait_time))
+
+        self.scene.play(AnimationGroup(
                 self.genesis.animate.move_to((-6, 0, 0)),
                 self.genesis_label.animate.move_to((-6, 0, 0)),
                 self.honest_block1.animate.move_to((-4, 0, 0)),
-                self.honest_block1_label.animate.move_to((-4, 0, 0))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
+                self.honest_block1_label.animate.move_to((-4, 0, 0)),
+                self.honest_line1.animate.shift(LEFT * 2),
+            ))
+
+        self.scene.play(Wait(self.wait_time))
+
+        self.scene.play(AnimationGroup(
                 self._fade_out(self.genesis),
                 self._fade_out(self.genesis_label),
-                self._fade_out(self.honest_line1),
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.genesis.animate(run_time=0.01).move_to(self.genesis_position),
-                self.genesis_label.animate(run_time=0.01).move_to(self.genesis_position)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
+                self._fade_out(self.honest_block1_label),
+                self._fade_out_and_remove(self.honest_line1),
+            ))
+
+        self.scene.play(Wait(self.wait_time))
+
+        self.genesis.move_to(self.genesis_position),
+        self.genesis_label.move_to(self.genesis_position)
+
+        self.scene.play(AnimationGroup(
                 self._fade_in(self.genesis),
-                self._fade_in(self.genesis_label),
                 self._fade_out(self.honest_block1),
                 self._fade_out(self.honest_block1_label),
-            )
-        )
+            ))
 
-        return zero_to_zero_anim
+        self.scene.bring_to_front(self.genesis_label)
+        self.scene.play(self._fade_in(self.genesis_label))
+
+        return
 
     def one_to_zero_prime(self):
         self.current_state = "zero_prime"
 
-        one_to_zero_anim = Succession(
+        one_to_zero_prime_anim = Succession(
             AnimationGroup(
-                self._fade_out(self.state1)
+                self._fade_out_and_remove(self.state1)
             ),
             Wait(self.wait_time),
             AnimationGroup(
-                self._fade_in(self.state0prime),
+                self._fade_in_and_create(self.state0prime),
                 self._fade_in(self.honest_block1),
                 self._fade_in(self.honest_block1_label),
-                Create(self.honest_line1, run_time=self.fade_in_time),
+                self._fade_in_and_create(self.honest_line1),
             )
         )
 
-        return one_to_zero_anim
+        return one_to_zero_prime_anim
 
 
 # Succession returns animations to be played one by one
