@@ -1019,224 +1019,616 @@ class WideHeaderBodyBoxes(Scene):
 
 
 class ScrollingBlocks(Scene):
+    # Constants for better maintainability
+    BLOCK_SIZE = 4
+    MINI_BLOCK_SIZE = 0.3
+    BLOCK_SPACING = 6
+    MINI_BLOCK_SPACING = 0.4
+    MAX_VISIBLE_BLOCKS = 3
+    PRUNING_THRESHOLD = 16
+
     def __init__(self):
         super().__init__()
-        # Track which blocks are currently visible and next block number
         self.visible_blocks = set()
-        self.next_block_number = 1  # Start from 1 since Genesis comes first
-
-        # Mini-chain tracking
+        self.next_block_number = 1
         self.mini_visible_blocks = set()
         self.mini_blocks = []
         self.mini_labels = []
-        self.total_blocks_created = 1  # Start with 1 for Genesis
+        self.total_blocks_created = 1
+        self.blocks = []
+        self.block_labels = []
+        self.mini_chain_frame = None
 
     def construct(self):
-        # Create narration text at the top
+        """Main scene construction method."""
+        self._setup_scene_elements()
+        self._create_initial_display()
+        self._run_scrolling_animation()
+
+    def _setup_scene_elements(self):
+        """Create and position all scene elements."""
+        narration = self._create_narration()
+        self.mini_chain_frame = self._create_mini_chain_frame(narration)
+        self._create_mini_blocks()
+        self._create_main_blocks()
+
+        # Display initial elements
+        self.play(Write(narration))
+        self.play(Create(self.mini_chain_frame))
+        self.wait(1)
+
+    def _create_narration(self) -> Text:
+        """Create the title narration text."""
         narration = Text("Kaspa Pruning (k=0)", font_size=36, color=WHITE)
         narration.to_edge(UP)
+        return narration
 
-        # Create even smaller mini-chain container that clips blocks
-        mini_chain_frame = Rectangle(
-            width=1.0,  # Much smaller - clips parts of blocks
-            height=0.6,  # Even smaller height
+    def _create_mini_chain_frame(self, narration: Text) -> Rectangle:
+        """Create the mini-chain container frame."""
+        frame = Rectangle(
+            width=1.0,
+            height=0.6,
             color=YELLOW,
             stroke_width=2,
             fill_opacity=0
         )
-        mini_chain_frame.next_to(narration, DOWN, buff=0.3)
+        frame.next_to(narration, DOWN, buff=0.3)
+        return frame
 
-        # Create 20 mini blocks for the chain (more buffer for 15-block rule)
-        for i in range(20):
-            # Create tiny block
-            mini_block = Square(
-                side_length=0.3,  # Keep same size as requested
-                color=WHITE,
-                fill_opacity=0,
-                stroke_width=1
-            )
-
-            # Position mini blocks horizontally, starting at center for Genesis
-            # Genesis (i=0) at center, then blocks to the right
-            mini_block.move_to(mini_chain_frame.get_center() + RIGHT * i * 0.4)
-
-            # Create tiny label
-            if i == 0:
-                mini_label = Text("G", font_size=6, color=WHITE)  # Genesis
-            else:
-                mini_label = Text(f"{i}", font_size=6, color=WHITE)
-            mini_label.move_to(mini_block.get_center())
+    def _create_mini_blocks(self):
+        """Create all mini blocks for the chain visualization."""
+        for i in range(50):  # Increased from 20 to handle larger block numbers
+            mini_block = self._create_single_mini_block(i)
+            mini_label = self._create_mini_label(i, mini_block)
 
             self.mini_blocks.append(mini_block)
             self.mini_labels.append(mini_label)
 
-            # Create 4 reusable block mobjects
-        blocks = []
-        block_labels = []
+    def _create_single_mini_block(self, index: int) -> Square:
+        """Create a single mini block at the specified index."""
+        mini_block = Square(
+            side_length=self.MINI_BLOCK_SIZE,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=1
+        )
+        position = self.mini_chain_frame.get_center() + RIGHT * index * self.MINI_BLOCK_SPACING
+        mini_block.move_to(position)
+        return mini_block
 
+    def _create_mini_label(self, index: int, mini_block: Square) -> Text:
+        """Create label for a mini block."""
+        label_text = "G" if index == 0 else str(index)
+        mini_label = Text(label_text, font_size=6, color=WHITE)
+        mini_label.move_to(mini_block.get_center())
+        return mini_label
+
+    def _create_main_blocks(self):
+        """Create all main block objects."""
         for i in range(4):
-            # Create block container
-            block = Square(
-                side_length=4,
-                color=WHITE,
-                fill_opacity=0,
-                stroke_width=3
-            )
+            block_group = self._create_single_main_block(i)
+            label = self._create_main_block_label(i, block_group)
 
-            # Position blocks: left, center, right
-            if i == 0:
-                block.shift(LEFT * 6 + DOWN * 0.75)
-            elif i == 1:
-                block.shift(DOWN * 0.75)
-            else:
-                block.shift(RIGHT * 6 + DOWN * 0.75)
+            self.blocks.append(block_group)
+            self.block_labels.append(label)
 
-                # Add block content (header and body)
-            header = Rectangle(
-                width=3.5,
-                height=0.8,
-                color=WHITE,
-                fill_opacity=0,
-                stroke_width=2
-            )
-            header.move_to(block.get_center() + UP * 1.3)
+    def _create_single_main_block(self, index: int) -> VGroup:
+        """Create a single main block with header and body."""
+        # Create main container
+        block = Square(
+            side_length=self.BLOCK_SIZE,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=3
+        )
 
-            body = Rectangle(
-                width=3.5,
-                height=2.1,
-                color=WHITE,
-                fill_opacity=0,
-                stroke_width=2
-            )
-            body.move_to(block.get_center() + DOWN * 0.6)
+        # Position block based on index
+        position = self._get_block_position(index)
+        block.move_to(position)
 
-            # Create block group
-            block_group = VGroup(block, header, body)
-            blocks.append(block_group)
+        # Create header and body
+        header = self._create_block_header(block)
+        body = self._create_block_body(block)
 
-            # Add labels - keep them separate but positioned relative to blocks
-            if i == 1:  # The initially visible block
-                label = Text("Genesis", font_size=24)
-            else:
-                label = Text(f"Block {i + 1}", font_size=24)  # Placeholder
-            label.move_to(block.get_top() + UP * 0.3)
-            block_labels.append(label)
+        return VGroup(block, header, body)
 
-            # Start with narration and mini-chain frame
-        self.play(Write(narration))
-        self.play(Create(mini_chain_frame))
-        self.wait(1)
+    def _get_block_position(self, index: int) -> np.ndarray:
+        """Calculate position for a block based on its index."""
+        if index == 0:
+            return np.array([-6, -0.75, 0])  # Left
+        elif index == 1:
+            return np.array([0, -0.75, 0])  # Center
+        else:
+            return np.array([6, -0.75, 0])  # Right
 
-        # Show initial block (Genesis) and its mini counterpart
+    def _create_block_header(self, block: Square) -> Rectangle:
+        """Create header rectangle for a block."""
+        header = Rectangle(
+            width=3.5,
+            height=0.8,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=2
+        )
+        header.move_to(block.get_center() + UP * 1.3)
+        return header
+
+    def _create_block_body(self, block: Square) -> Rectangle:
+        """Create body rectangle for a block."""
+        body = Rectangle(
+            width=3.5,
+            height=2.1,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=2
+        )
+        body.move_to(block.get_center() + DOWN * 0.6)
+        return body
+
+    def _create_main_block_label(self, index: int, block_group: VGroup) -> Text:
+        """Create label for a main block."""
+        label_text = "Genesis" if index == 1 else f"Block {index + 1}"
+        label = Text(label_text, font_size=24)
+        label.move_to(block_group.get_top() + UP * 0.3)
+        return label
+
+    def _create_initial_display(self):
+        """Show the initial Genesis block and mini block."""
         self.play(
-            Create(blocks[1]),
-            Write(block_labels[1]),
+            Create(self.blocks[1]),
+            Write(self.block_labels[1]),
             Create(self.mini_blocks[0]),
             Write(self.mini_labels[0])
         )
         self.visible_blocks.add(1)
         self.mini_visible_blocks.add(0)
+        self.wait(1)  # Fixed: Removed Wait(1) from play() and added proper wait
 
-        def scroll_left():
-            # Find next available block
-            rightmost_block_idx = None
-            for i in range(4):
-                if i not in self.visible_blocks:
-                    rightmost_block_idx = i
-                    break
+    def _run_scrolling_animation(self):
+        """Execute the main scrolling animation loop."""
+        # Normal scrolling for first few blocks
+        for _ in range(5):
+            self._scroll_left()
+            self.wait(1)
 
-                    # Find next available mini block
-            rightmost_mini_idx = None
-            for i in range(20):
-                if i not in self.mini_visible_blocks:
-                    rightmost_mini_idx = i
-                    break
+            # Fast scroll to block 50
+        self.wait(1)
+        self._fast_scroll_to_block(50, scroll_duration=1.0)
+        self.wait(2)
 
-            if rightmost_block_idx is None or rightmost_mini_idx is None:
-                return
-
-                # Position the new block directly in its final position (next to rightmost visible block)
-            rightmost_visible_pos = max([blocks[i].get_center()[0] for i in self.visible_blocks])
-            final_position = np.array([rightmost_visible_pos + 6, -0.75, 0])  # 6 units to the right
-
-            blocks[rightmost_block_idx].move_to(final_position)
-
-            # Update label with proper numbering (Block 1, Block 2, etc.)
-            block_labels[rightmost_block_idx].become(Text(f"Block {self.next_block_number}", font_size=24))
-            block_labels[rightmost_block_idx].move_to(blocks[rightmost_block_idx].get_top() + UP * 0.3)
-
-            # Position mini block next to rightmost visible mini block
-            rightmost_mini_pos = max([self.mini_blocks[i].get_center()[0] for i in self.mini_visible_blocks])
-            mini_final_position = np.array([rightmost_mini_pos + 0.4, mini_chain_frame.get_center()[1], 0])
-
-            self.mini_blocks[rightmost_mini_idx].move_to(mini_final_position)
-
-            # Update mini label
-            self.mini_labels[rightmost_mini_idx].become(Text(f"{self.next_block_number}", font_size=6))
-            self.mini_labels[rightmost_mini_idx].move_to(self.mini_blocks[rightmost_mini_idx].get_center())
-
-            # Find leftmost block before adding new one
-            leftmost_idx = min(self.visible_blocks, key=lambda i: blocks[i].get_center()[0])
-
-            # Add to scene and draw the new block while simultaneously fading the leftmost block
-            self.add(blocks[rightmost_block_idx], block_labels[rightmost_block_idx])
-            self.add(self.mini_blocks[rightmost_mini_idx], self.mini_labels[rightmost_mini_idx])
-
-            # Create animations list for simultaneous execution
-            create_animations = [
-                Create(blocks[rightmost_block_idx]),
-                Write(block_labels[rightmost_block_idx]),
-                Create(self.mini_blocks[rightmost_mini_idx]),
-                Write(self.mini_labels[rightmost_mini_idx])
-            ]
-
-            # If there's a leftmost block that will be off-screen after shift, fade it during creation
-            if len(self.visible_blocks) >= 3:  # Only fade when we have 3+ blocks
-                create_animations.extend([
-                    FadeOut(blocks[leftmost_idx]),
-                    FadeOut(block_labels[leftmost_idx])
-                ])
-                self.visible_blocks.remove(leftmost_idx)  # Remove from tracking immediately
-
-            # Handle mini block fading with 15-block rule
-            if self.total_blocks_created >= 16:  # Only fade when we have 16+ total blocks (15 blocks away from Genesis)
-                leftmost_mini_idx = min(self.mini_visible_blocks, key=lambda i: self.mini_blocks[i].get_center()[0])
-                create_animations.extend([
-                    FadeOut(self.mini_blocks[leftmost_mini_idx]),
-                    FadeOut(self.mini_labels[leftmost_mini_idx])
-                ])
-                self.mini_visible_blocks.remove(leftmost_mini_idx)  # Remove from tracking immediately
-
-            self.play(*create_animations, run_time=1)
-
-            self.visible_blocks.add(rightmost_block_idx)
-            self.mini_visible_blocks.add(rightmost_mini_idx)
-            self.next_block_number += 1
-            self.total_blocks_created += 1  # Critical fix: increment the counter
-
-            # Now shift all remaining visible blocks left simultaneously
-            shift_animations = []
-            for i in self.visible_blocks:
-                shift_animations.extend([
-                    blocks[i].animate.shift(LEFT * 6),
-                    block_labels[i].animate.shift(LEFT * 6)
-                ])
-
-            for i in self.mini_visible_blocks:
-                shift_animations.extend([
-                    self.mini_blocks[i].animate.shift(LEFT * 0.4),  # Proportional to main blocks
-                    self.mini_labels[i].animate.shift(LEFT * 0.4)
-                ])
-
-            self.play(*shift_animations, run_time=1)
-
-            # Perform scrolling animation
-
-        for _ in range(20):  # More iterations to test the 15-block rule
-            scroll_left()
+        # Continue normal scrolling from there
+        for _ in range(5):
+            self._scroll_left()
             self.wait(1)
 
         self.wait(2)
+
+    def _fast_scroll_to_block(self, target_block_number: int, scroll_duration: float = 0.5):
+        """Perform fast scroll animation to target block number."""
+        # Phase 1: Create streaming blocks effect (keep existing blocks visible)
+        self._create_streaming_blocks_effect(scroll_duration * 0.7)
+
+        # Phase 2: Stop 1 block away and settle to final position
+        self._settle_blocks_to_final_position(target_block_number, scroll_duration * 0.3)
+
+        # Update tracking variables
+        self._update_tracking_for_target(target_block_number)
+
+    def _animate_existing_blocks_fast_scroll(self, target_block_number: int, duration: float):
+        """Move existing blocks very fast during scroll with intermediate frames."""
+        if not self.visible_blocks:
+            return
+
+            # Instead of moving existing blocks off-screen, create streaming effect
+        self._create_streaming_blocks_effect(duration)
+
+    def _create_streaming_blocks_effect(self, duration: float):
+        """Create streaming blocks effect during fast scroll."""
+        num_streaming_frames = 8
+        frame_duration = duration / num_streaming_frames
+
+        # Ensure minimum frame duration
+        min_frame_duration = 1 / config.frame_rate
+        frame_duration = max(frame_duration, min_frame_duration)
+
+        for frame in range(num_streaming_frames):
+            # Create temporary streaming blocks
+            streaming_blocks = []
+            streaming_labels = []
+            animations = []
+
+            # Create 3-4 blocks that stream across the screen
+            for i in range(4):
+                # Create streaming block
+                stream_block = Rectangle(
+                    width=self.BLOCK_SIZE * 0.8,
+                    height=self.BLOCK_SIZE * 0.8,
+                    fill_opacity=0.3,
+                    stroke_opacity=0.7,
+                    color=BLUE
+                )
+
+                # Create streaming label
+                block_num = self.next_block_number + frame * 4 + i
+                stream_label = Text(f"Block {block_num}", font_size=18, color=WHITE)
+
+                # Position blocks starting from right side
+                start_x = 8 + i * 3  # Start off-screen right
+                stream_block.move_to([start_x, -0.75, 0])
+                stream_label.move_to([start_x, -0.75 + self.BLOCK_SIZE / 2 + 0.3, 0])
+
+                # Add to scene
+                self.add(stream_block, stream_label)
+                streaming_blocks.append(stream_block)
+                streaming_labels.append(stream_label)
+
+                # Create animation to move left across screen
+                animations.extend([
+                    stream_block.animate.shift(LEFT * 16),  # Move across entire screen
+                    stream_label.animate.shift(LEFT * 16)
+                ])
+
+                # Play streaming animation
+            self.play(*animations, run_time=frame_duration, rate_func=linear)
+
+            # Remove streaming blocks
+            for block, label in zip(streaming_blocks, streaming_labels):
+                self.remove(block, label)
+
+    def _settle_blocks_to_final_position(self, target_block_number: int, duration: float):
+        """Move blocks from 1 block away to their final positions."""
+        # Clear current blocks and reposition to target
+        self._clear_current_blocks()
+
+        # Calculate which blocks should be visible around target
+        center_block = target_block_number
+        visible_range = range(
+            max(0, center_block - 1),
+            min(center_block + self.MAX_VISIBLE_BLOCKS - 1, target_block_number + 10)
+        )
+
+        # Position blocks 1 block away from final position
+        settle_animations = []
+
+        for i, block_num in enumerate(visible_range):
+            if i < len(self.blocks):
+                # Calculate final position
+                final_x = (i - 1) * self.BLOCK_SPACING  # Center the target block
+
+                # Start 1 block away (to the right)
+                start_x = final_x + self.BLOCK_SPACING
+
+                # Position block at start position
+                self.blocks[i].move_to(np.array([start_x, -0.75, 0]))
+
+                # Update label
+                label_text = "Genesis" if block_num == 0 else f"Block {block_num}"
+                self.block_labels[i].become(Text(label_text, font_size=24))
+                self.block_labels[i].move_to(self.blocks[i].get_top() + UP * 0.3)
+
+                # Add to scene
+                self.add(self.blocks[i], self.block_labels[i])
+                self.visible_blocks.add(i)
+
+                # Create settling animation
+                settle_animations.extend([
+                    self.blocks[i].animate.move_to(np.array([final_x, -0.75, 0])),
+                    self.block_labels[i].animate.move_to(
+                        np.array([final_x, -0.75 + self.BLOCK_SIZE / 2 + 0.3, 0])
+                    )
+                ])
+
+                # Reposition mini blocks similarly
+        self._reposition_mini_blocks_for_target(target_block_number)
+
+        # Play settling animation
+        if settle_animations:
+            self.play(*settle_animations, run_time=duration, rate_func=smooth)
+
+    def _create_scroll_blur_effect(self, duration: float):
+        """Create visual effect of fast scrolling with blocks moving."""
+        # Calculate the vertical range based on large block positions
+        block_top = -0.75 + self.BLOCK_SIZE / 2  # Top of blocks
+        block_bottom = -0.75 - self.BLOCK_SIZE / 2  # Bottom of blocks
+
+        # Create motion blur lines that span the full block height
+        blur_lines = VGroup()
+        num_lines = 15  # More lines for better coverage
+
+        for i in range(num_lines):
+            # Calculate y position for this line
+            y_pos = block_bottom + (i / (num_lines - 1)) * (block_top - block_bottom)
+
+            # Create lines that span the full vertical space of blocks
+            line = Line(
+                start=[-8, y_pos, 0],  # Use list instead of np.array with LEFT
+                end=[8, y_pos, 0],  # Use list instead of np.array with RIGHT
+                stroke_width=3,
+                stroke_opacity=0.4,
+                color=WHITE
+            )
+            blur_lines.add(line)
+
+            # Create block silhouettes that move with the blur
+        moving_blocks = VGroup()
+        for i in range(3):  # Create 3 moving block silhouettes
+            block_silhouette = Rectangle(
+                width=self.BLOCK_SIZE * 0.8,
+                height=self.BLOCK_SIZE * 0.8,
+                fill_opacity=0.3,
+                stroke_opacity=0.6,
+                color=BLUE
+            )
+            # Position them at different x positions
+            block_silhouette.move_to([i * 8 - 4, -0.75, 0])  # Use list instead of np.array
+            moving_blocks.add(block_silhouette)
+
+            # Animate the blur effect with moving blocks
+        self.play(
+            *[FadeIn(line) for line in blur_lines],
+            *[FadeIn(block) for block in moving_blocks],
+            run_time=duration * 0.2
+        )
+
+        # Move everything left together
+        self.play(
+            *[line.animate.shift(LEFT * 25) for line in blur_lines],
+            *[block.animate.shift(LEFT * 25) for block in moving_blocks],
+            run_time=duration * 0.6,
+            rate_func=rush_into
+        )
+
+        # Fade out
+        self.play(
+            *[FadeOut(line) for line in blur_lines],
+            *[FadeOut(block) for block in moving_blocks],
+            run_time=duration * 0.2
+        )
+
+    def _reposition_to_target_block(self, target_block_number: int):
+        """Instantly reposition blocks to show target block range."""
+        # Clear current visible blocks
+        self._clear_current_blocks()
+
+        # Calculate which blocks should be visible around target
+        center_block = target_block_number
+        visible_range = range(
+            max(0, center_block - 1),
+            min(center_block + self.MAX_VISIBLE_BLOCKS - 1, target_block_number + 10)
+        )
+
+        # Position new blocks
+        for i, block_num in enumerate(visible_range):
+            if i < len(self.blocks):
+                self._setup_block_for_position(i, block_num, i - 1)  # Center the target block
+                self.visible_blocks.add(i)
+
+                # Position mini blocks around target
+        self._reposition_mini_blocks_for_target(target_block_number)
+
+    def _clear_current_blocks(self):
+        """Remove all currently visible blocks from scene."""
+        for block_idx in list(self.visible_blocks):
+            self.remove(self.blocks[block_idx], self.block_labels[block_idx])
+
+        for mini_idx in list(self.mini_visible_blocks):
+            self.remove(self.mini_blocks[mini_idx], self.mini_labels[mini_idx])
+
+        self.visible_blocks.clear()
+        self.mini_visible_blocks.clear()
+
+    def _setup_block_for_position(self, block_idx: int, block_number: int, position_offset: int):
+        """Setup a block at a specific position with correct numbering."""
+        # Position block
+        x_position = position_offset * self.BLOCK_SPACING
+        self.blocks[block_idx].move_to(np.array([x_position, -0.75, 0]))
+
+        # Update label
+        label_text = "Genesis" if block_number == 0 else f"Block {block_number}"
+        self.block_labels[block_idx].become(Text(label_text, font_size=24))
+        self.block_labels[block_idx].move_to(
+            self.blocks[block_idx].get_top() + UP * 0.3
+        )
+
+        # Add to scene
+        self.add(self.blocks[block_idx], self.block_labels[block_idx])
+
+    def _reposition_mini_blocks_for_target(self, target_block_number: int):
+        """Reposition mini blocks to show range around target, maintaining visibility."""
+        # Clear current mini block tracking but don't remove from scene yet
+        old_visible = self.mini_visible_blocks.copy()
+        self.mini_visible_blocks.clear()
+
+        # Calculate the range of blocks to show (±15 around target)
+        start_block = max(0, target_block_number - 15)
+        end_block = min(target_block_number + 15, self.total_blocks_created)
+
+        # Position mini blocks for the visible range
+        for i, block_num in enumerate(range(start_block, end_block + 1)):
+            if i < len(self.mini_blocks):
+                # Position mini block relative to frame center
+                x_offset = (block_num - target_block_number) * self.MINI_BLOCK_SPACING
+                x_pos = self.mini_chain_frame.get_center()[0] + x_offset
+
+                self.mini_blocks[i].move_to(np.array([
+                    x_pos,
+                    self.mini_chain_frame.get_center()[1],
+                    0
+                ]))
+
+                # Update label based on block number
+                if block_num == 0:
+                    label_text = "G"  # Genesis
+                else:
+                    label_text = str(block_num)
+
+                self.mini_labels[i].become(Text(label_text, font_size=6, color=WHITE))
+                self.mini_labels[i].move_to(self.mini_blocks[i].get_center())
+
+                # Add to scene and tracking
+                self.add(self.mini_blocks[i], self.mini_labels[i])
+                self.mini_visible_blocks.add(i)
+
+                # Remove any old mini blocks that are no longer needed
+        for old_idx in old_visible:
+            if old_idx not in self.mini_visible_blocks and old_idx < len(self.mini_blocks):
+                self.remove(self.mini_blocks[old_idx], self.mini_labels[old_idx])
+
+    def _update_tracking_for_target(self, target_block_number: int):
+        """Update tracking variables after fast scroll."""
+        self.next_block_number = target_block_number + 1
+        # Don't reset total_blocks_created - it should reflect the maximum reached
+        self.total_blocks_created = max(self.total_blocks_created, target_block_number + 1)
+
+    def _scroll_left(self):
+        """Perform left scrolling animation."""
+        # Find available indices
+        rightmost_block_idx = self._find_next_available_block()
+        rightmost_mini_idx = self._find_next_available_mini_block()
+
+        if rightmost_block_idx is None or rightmost_mini_idx is None:
+            return
+
+            # Position new elements
+        self._position_new_block(rightmost_block_idx)
+        self._position_new_mini_block(rightmost_mini_idx)
+
+        # Create and play animations
+        create_animations = self._create_block_animations(rightmost_block_idx, rightmost_mini_idx)
+        fade_animations = self._create_fade_animations()
+
+        all_animations = create_animations + fade_animations
+        self.play(*all_animations, run_time=1)
+
+        # Update tracking
+        self._update_tracking(rightmost_block_idx, rightmost_mini_idx)
+
+        # Shift remaining blocks
+        self._shift_all_blocks_left()
+
+    def _find_next_available_block(self) -> int | None:
+        """Find the next available block index."""
+        for i in range(4):
+            if i not in self.visible_blocks:
+                return i
+        return None
+
+    def _find_next_available_mini_block(self) -> int | None:
+        """Find the next available mini block index."""
+        for i in range(len(self.mini_blocks)):  # Use actual length instead of hardcoded 20
+            if i not in self.mini_visible_blocks:
+                return i
+        return None
+
+    def _position_new_block(self, block_idx: int):
+        """Position a new block next to the rightmost visible block."""
+        if not self.visible_blocks:
+            # If no blocks are visible, start from center
+            rightmost_pos = 0
+        else:
+            rightmost_pos = max([self.blocks[i].get_center()[0] for i in self.visible_blocks])
+
+        final_position = np.array([rightmost_pos + self.BLOCK_SPACING, -0.75, 0])
+
+        self.blocks[block_idx].move_to(final_position)
+
+        # Update label
+        self.block_labels[block_idx].become(
+            Text(f"Block {self.next_block_number}", font_size=24)
+        )
+        self.block_labels[block_idx].move_to(
+            self.blocks[block_idx].get_top() + UP * 0.3
+        )
+
+    def _position_new_mini_block(self, mini_idx: int):
+        """Position a new mini block next to the rightmost visible mini block."""
+        if not self.mini_visible_blocks:
+            # If no mini blocks are visible, start from the frame center
+            rightmost_mini_pos = self.mini_chain_frame.get_center()[0]
+        else:
+            rightmost_mini_pos = max([
+                self.mini_blocks[i].get_center()[0] for i in self.mini_visible_blocks
+            ])
+
+        final_position = np.array([
+            rightmost_mini_pos + self.MINI_BLOCK_SPACING,
+            self.mini_chain_frame.get_center()[1],
+            0
+        ])
+
+        self.mini_blocks[mini_idx].move_to(final_position)
+
+        # Update label
+        self.mini_labels[mini_idx].become(
+            Text(f"{self.next_block_number}", font_size=6)
+        )
+        self.mini_labels[mini_idx].move_to(self.mini_blocks[mini_idx].get_center())
+
+    def _create_block_animations(self, block_idx: int, mini_idx: int) -> list:
+        """Create animations for new blocks appearing."""
+        self.add(self.blocks[block_idx], self.block_labels[block_idx])
+        self.add(self.mini_blocks[mini_idx], self.mini_labels[mini_idx])
+
+        return [
+            Create(self.blocks[block_idx]),
+            Write(self.block_labels[block_idx]),
+            Create(self.mini_blocks[mini_idx]),
+            Write(self.mini_labels[mini_idx])
+        ]
+
+    def _create_fade_animations(self) -> list:
+        """Create fade animations for blocks that should disappear."""
+        fade_animations = []
+
+        # Fade main blocks if too many visible
+        if len(self.visible_blocks) >= self.MAX_VISIBLE_BLOCKS:
+            leftmost_idx = min(self.visible_blocks, key=lambda i: self.blocks[i].get_center()[0])
+            fade_animations.extend([
+                FadeOut(self.blocks[leftmost_idx]),
+                FadeOut(self.block_labels[leftmost_idx])
+            ])
+            self.visible_blocks.remove(leftmost_idx)
+
+            # Fade mini blocks based on pruning rule - WITH SAFETY CHECK
+        if self.total_blocks_created >= self.PRUNING_THRESHOLD and self.mini_visible_blocks:
+            leftmost_mini_idx = min(
+                self.mini_visible_blocks,
+                key=lambda i: self.mini_blocks[i].get_center()[0]
+            )
+            fade_animations.extend([
+                FadeOut(self.mini_blocks[leftmost_mini_idx]),
+                FadeOut(self.mini_labels[leftmost_mini_idx])
+            ])
+            self.mini_visible_blocks.remove(leftmost_mini_idx)
+
+        return fade_animations
+
+    def _update_tracking(self, block_idx: int, mini_idx: int):
+        """Update tracking variables after adding new blocks."""
+        self.visible_blocks.add(block_idx)
+        self.mini_visible_blocks.add(mini_idx)
+        self.next_block_number += 1
+        self.total_blocks_created += 1
+
+    def _shift_all_blocks_left(self):
+        """Shift all visible blocks to the left."""
+        shift_animations = []
+
+        # Shift main blocks
+        for i in self.visible_blocks:
+            shift_animations.extend([
+                self.blocks[i].animate.shift(LEFT * self.BLOCK_SPACING),
+                self.block_labels[i].animate.shift(LEFT * self.BLOCK_SPACING)
+            ])
+
+            # Shift mini blocks
+        for i in self.mini_visible_blocks:
+            shift_animations.extend([
+                self.mini_blocks[i].animate.shift(LEFT * self.MINI_BLOCK_SPACING),
+                self.mini_labels[i].animate.shift(LEFT * self.MINI_BLOCK_SPACING)
+            ])
+
+        self.play(*shift_animations, run_time=1)
 
 class UTXOCommitment(Scene):
     def construct(self):
