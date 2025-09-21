@@ -316,86 +316,105 @@ class ScrollingBlocks(Scene):
 
         self.wait(2)
 
-    def _fast_scroll_to_block(self, target_block_number: int, scroll_duration: float = 0.5):
-        """Perform fast scroll animation to target block number."""
-        # Phase 1: Create streaming blocks effect (keep existing blocks visible)
-        self._create_streaming_blocks_effect(scroll_duration * 0.7)
+    def _fast_scroll_to_block(self, target_block_number: int, scroll_duration: float = 3.0):
+        """Perform fast scroll with existing blocks moving and identical visual appearance."""
+        # Phase 1: Speed up existing blocks while streaming identical filler blocks (70% of duration)
+        self._accelerate_existing_and_stream_identical_blocks(target_block_number, scroll_duration * 0.7)
 
-        # Phase 2: Stop 1 block away and settle to final position
-        self._settle_blocks_to_final_position(target_block_number, scroll_duration * 0.3)
+        # Phase 2: Position target blocks (30% of duration)
+        self._position_target_blocks(target_block_number, scroll_duration * 0.3)
 
-        # Update tracking variables
         self._update_tracking_for_target(target_block_number)
 
-    def _create_streaming_blocks_effect(self, duration: float):
-        """Create streaming blocks effect during fast scroll."""
-        num_streaming_frames = 8
-        frame_duration = duration / num_streaming_frames
+    def _accelerate_existing_and_stream_identical_blocks(self, target_block_number: int, duration: float):
+        """Move existing blocks faster while streaming identical-looking filler blocks."""
+        blocks_to_create = target_block_number - self.next_block_number - 3
 
-        # Ensure minimum frame duration
-        min_frame_duration = 1 / config.frame_rate
-        frame_duration = max(frame_duration, min_frame_duration)
+        if blocks_to_create <= 0:
+            return
 
-        for frame in range(num_streaming_frames):
-            streaming_blocks = []
-            streaming_labels = []
-            animations = []
+            # Create batches of streaming blocks using MainBlockFactory for identical appearance
+        batch_size = 4
+        num_batches = max(1, blocks_to_create // batch_size)
+        batch_duration = duration / num_batches
 
-            # Create 4 blocks that stream across the screen
-            for i in range(4):
-                block_num = self.next_block_number + frame * 4 + i
-                start_x = 8 + i * 3  # Start off-screen right
-                position = np.array([start_x, -0.75, 0])
+        for batch in range(num_batches):
+            batch_animations = []
+            batch_blocks = []
+            batch_labels = []
 
-                stream_block, stream_label = self.streaming_factory.create_streaming_block(
-                    block_num, position
+            # Animate existing blocks moving faster to the left
+            for block_idx in self.main_block_manager.get_visible_indices():
+                block, label = self.main_block_manager.get_block(block_idx)
+                batch_animations.extend([
+                    block.animate.shift(LEFT * self.BLOCK_SPACING * 2),  # Move existing blocks faster
+                    label.animate.shift(LEFT * self.BLOCK_SPACING * 2)
+                ])
+
+            for mini_idx in self.mini_block_manager.get_visible_indices():
+                mini_block, mini_label = self.mini_block_manager.get_block(mini_idx)
+                batch_animations.extend([
+                    mini_block.animate.shift(LEFT * self.MINI_BLOCK_SPACING * 8),  # Move existing mini blocks faster
+                    mini_label.animate.shift(LEFT * self.MINI_BLOCK_SPACING * 8)
+                ])
+
+                # Create identical-looking filler blocks using MainBlockFactory
+            for i in range(batch_size):
+                block_num = self.next_block_number + batch * batch_size + i
+                if block_num >= target_block_number - 3:
+                    break
+
+                    # Use MainBlockFactory to create identical-looking blocks
+                start_pos = np.array([12, -0.75, 0])  # Start off-screen right
+                block, label = self.main_block_manager.factory.create_block(
+                    0, block_num, start_pos
                 )
 
                 # Add to scene
-                self.add(stream_block, stream_label)
-                streaming_blocks.append(stream_block)
-                streaming_labels.append(stream_label)
+                self.add(block, label)
+                batch_blocks.append(block)
+                batch_labels.append(label)
 
-                # Create animation to move left across screen
-                animations.extend([
-                    stream_block.animate.shift(LEFT * 16),
-                    stream_label.animate.shift(LEFT * 16)
+                # Create animation to move left across screen at same speed as existing blocks
+                batch_animations.extend([
+                    block.animate.shift(LEFT * 20),
+                    label.animate.shift(LEFT * 20)
                 ])
 
-                # Play streaming animation
-            self.play(*animations, run_time=frame_duration, rate_func=linear)
+            if batch_animations:
+                # Use rush_into rate function for acceleration effect
+                self.play(*batch_animations, run_time=batch_duration, rate_func=rush_into)
 
-            # Remove streaming blocks
-            for block, label in zip(streaming_blocks, streaming_labels):
-                self.remove(block, label)
+                # Remove filler blocks after they pass
+                for block, label in zip(batch_blocks, batch_labels):
+                    self.remove(block, label)
 
-    def _settle_blocks_to_final_position(self, target_block_number: int, duration: float):
-        """Move blocks from 1 block away to their final positions."""
-        # Clear current blocks
-        self._clear_current_blocks()
+    def _position_target_blocks(self, target_block_number: int, duration: float):
+        """Position target blocks after existing blocks have moved off-screen."""
+        # Clear existing blocks that have moved off-screen
+        self._hide_current_blocks()
 
         # Calculate which blocks should be visible around target
-        center_block = target_block_number
+        center_idx = 1  # Center position
         visible_range = range(
-            max(0, center_block - 1),
-            min(center_block + self.MAX_VISIBLE_BLOCKS - 1, target_block_number + 10)
+            max(0, target_block_number - center_idx),
+            min(target_block_number + self.MAX_VISIBLE_BLOCKS - center_idx, target_block_number + 10)
         )
 
-        # Position blocks 1 block away from final position
-        settle_animations = []
+        # Position new target blocks
+        new_block_animations = []
 
         for i, block_num in enumerate(visible_range):
-            if i < 4:  # We have 4 main blocks available
+            available_idx = self.main_block_manager.find_available_index()
+            if available_idx is not None:
                 # Calculate final position
-                final_x = (i - 1) * self.BLOCK_SPACING  # Center the target block
+                final_x = (i - center_idx) * self.BLOCK_SPACING
 
-                # Start 1 block away (to the right)
-                start_x = final_x + self.BLOCK_SPACING
+                # Start position (off-screen right)
+                start_x = final_x + self.BLOCK_SPACING * 2
 
-                # Get block from manager
-                block, label = self.main_block_manager.get_block(i)
-
-                # Position block at start position
+                # Get and position block
+                block, label = self.main_block_manager.get_block(available_idx)
                 block.move_to(np.array([start_x, -0.75, 0]))
 
                 # Update label
@@ -405,34 +424,48 @@ class ScrollingBlocks(Scene):
 
                 # Add to scene
                 self.add(block, label)
-                self.main_block_manager.add_visible(i)
+                self.main_block_manager.add_visible(available_idx)
 
-                # Create settling animation
-                settle_animations.extend([
+                # Create deceleration animation using rush_from
+                new_block_animations.extend([
                     block.animate.move_to(np.array([final_x, -0.75, 0])),
                     label.animate.move_to(np.array([final_x, -0.75 + self.BLOCK_SIZE / 2 + 0.3, 0]))
                 ])
 
-                # Reposition mini blocks similarly
+                # Reposition mini blocks
         self._reposition_mini_blocks_for_target(target_block_number)
 
-        # Play settling animation
-        if settle_animations:
-            self.play(*settle_animations, run_time=duration, rate_func=smooth)
+        # Play settling animation with deceleration
+        if new_block_animations:
+            self.play(*new_block_animations, run_time=duration, rate_func=rush_from)
 
-    def _clear_current_blocks(self):
-        """Clear all currently visible blocks from scene."""
-        # Remove main blocks
+    def _hide_current_blocks(self):
+        """Hide blocks from scene but keep them in memory."""
+        # Remove from scene but don't clear from managers
         for block_idx in self.main_block_manager.get_visible_indices():
             block, label = self.main_block_manager.get_block(block_idx)
             self.remove(block, label)
 
-            # Remove mini blocks
         for mini_idx in self.mini_block_manager.get_visible_indices():
             mini_block, mini_label = self.mini_block_manager.get_block(mini_idx)
             self.remove(mini_block, mini_label)
 
-            # Clear visibility tracking
+            # Clear visibility tracking but blocks remain in memory
+        self.main_block_manager.clear_visible()
+        self.mini_block_manager.clear_visible()
+
+    def _hide_current_blocks(self):
+        """Hide blocks from scene but keep them in memory."""
+        # Remove from scene but don't clear from managers
+        for block_idx in self.main_block_manager.get_visible_indices():
+            block, label = self.main_block_manager.get_block(block_idx)
+            self.remove(block, label)
+
+        for mini_idx in self.mini_block_manager.get_visible_indices():
+            mini_block, mini_label = self.mini_block_manager.get_block(mini_idx)
+            self.remove(mini_block, mini_label)
+
+            # Clear visibility tracking but blocks remain in memory
         self.main_block_manager.clear_visible()
         self.mini_block_manager.clear_visible()
 

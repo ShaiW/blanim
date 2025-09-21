@@ -6,8 +6,6 @@ from typing import Dict, List
 from itertools import chain
 from abc import ABC, abstractmethod
 
-from blockanimator.animation import SequentialAnimations
-
 from common import *
 import string
 

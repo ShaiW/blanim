@@ -1017,6 +1017,94 @@ class WideHeaderBodyBoxes(Scene):
 
         self.wait(8)
 
+# tx selection single box
+class TXRandomWeighted(Scene):
+    def construct(self):
+        # Create Transaction Pool Block (positioned lower on screen)
+        pool_container = Square(
+            side_length=4,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=3
+        )
+        # Shift the container down to avoid text obstruction
+        pool_container.shift(DOWN * 0.75)
+
+        # Add label - changed to "Transaction Pool"
+        pool_label = Text("Transaction Pool", font_size=24).move_to(pool_container.get_top() + UP * 0.3)
+
+        # Animate creation of container
+        self.wait(2.0)
+
+        # Create narration for transaction selection
+        selection_narration = Text("Random Transaction Selection", font_size=36, color=WHITE)
+        selection_narration.to_edge(UP)
+        self.play(Write(selection_narration))
+
+        self.play(Create(pool_container))
+        self.play(Write(pool_label))
+        self.wait(1)
+
+        # Create individual transaction containers inside the pool
+        tx1_container = Rectangle(
+            width=3.0,
+            height=1.2,
+            color="#B6B6B6",
+            fill_opacity=0.1,
+            stroke_width=2
+        )
+        tx1_container.move_to(pool_container.get_center() + UP * 0.8)
+
+        tx2_container = Rectangle(
+            width=3.0,
+            height=1.2,
+            color="#70C7BA",
+            fill_opacity=0.1,
+            stroke_width=2
+        )
+        tx2_container.move_to(pool_container.get_center() + DOWN * 0.8)
+
+        # Transaction labels - START WITH EQUAL FEES
+        tx1_label = Text("tx1 1 KAS", font_size=18, color=WHITE).move_to(tx1_container.get_center())
+        tx2_label = Text("tx2 1 KAS", font_size=18, color=WHITE).move_to(tx2_container.get_center())
+
+        # Animate transaction containers appearing
+        self.play(
+            Create(tx1_container),
+            Create(tx2_container)
+        )
+        self.play(
+            Write(tx1_label),
+            Write(tx2_label)
+        )
+        self.wait(1)
+
+        # FIRST SCENARIO: Random selection with equal fees
+        random_sub_narration = Text("Equal fees - 50% chance each", font_size=20, color=WHITE)
+        random_sub_narration.next_to(selection_narration, DOWN, buff=0.3)
+        self.play(Write(random_sub_narration))
+        self.wait(2)
+
+        # TRANSITION: Change tx2 fee AND narration simultaneously
+        new_tx2_label = Text("tx2 1.5 KAS", font_size=18, color=WHITE).move_to(tx2_container.get_center())
+        fee_sub_narration = Text("Different fees - tx1: 40%, tx2: 60%", font_size=20, color=WHITE)
+        fee_sub_narration.next_to(selection_narration, DOWN, buff=0.3)
+
+        self.play(
+            Transform(tx2_label, new_tx2_label),
+            Transform(random_sub_narration, fee_sub_narration)
+        )
+        self.wait(1)
+
+        # Highlight the higher-fee transaction
+        self.play(Indicate(tx2_container))
+        self.wait(1)
+
+        # Final message
+        final_message = Text("Higher fees increase selection probability", font_size=20, color=WHITE)
+        final_message.next_to(selection_narration, DOWN, buff=0.3)
+        self.play(Transform(random_sub_narration, final_message))
+        self.wait(8)
 
 class ScrollingBlocks(Scene):
     # Constants for better maintainability
@@ -1961,6 +2049,157 @@ class TransactionSelection(Scene):
         final_sub_narration.next_to(narration, DOWN, buff=0.5)
         self.play(Transform(random_sub_narration, final_sub_narration))
         self.wait(8)
+
+# tx weighting
+class TransactionWeighting(Scene):
+    def construct(self):
+        # Create narration text at the top
+        narration = Text("Kaspa Transaction Weighting", font_size=36, color=WHITE)
+        narration.to_edge(UP)
+
+        # Create Round container (left side)
+        round_container = Square(
+            side_length=4,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=3
+        )
+        round_container.shift(LEFT * 3 + DOWN * 0.75)
+
+        # Create Transaction Pool container (right side)
+        tx_pool_container = Square(
+            side_length=4,
+            color=WHITE,
+            fill_opacity=0,
+            stroke_width=3
+        )
+        tx_pool_container.shift(RIGHT * 3 + DOWN * 0.75)
+
+        # Create individual transaction containers inside the pool
+        tx1_container = Rectangle(
+            width=3.0,
+            height=1.2,
+            color="#B6B6B6",
+            fill_opacity=0.1,
+            stroke_width=2
+        )
+        tx1_container.move_to(tx_pool_container.get_center() + UP * 0.8)
+
+        tx2_container = Rectangle(
+            width=3.0,
+            height=1.2,
+            color="#70C7BA",
+            fill_opacity=0.1,
+            stroke_width=2
+        )
+        tx2_container.move_to(tx_pool_container.get_center() + DOWN * 0.8)
+
+        # Create labels - START WITH EQUAL FEES
+        round_label = Text("Transaction", font_size=24).move_to(round_container.get_top() + UP * 0.3)
+        tx_pool_label = Text("Transaction Pool", font_size=24).move_to(tx_pool_container.get_top() + UP * 0.3)
+
+        tx1_label = Text("tx1 1 KAS", font_size=18, color=WHITE).move_to(tx1_container.get_center())
+        tx2_label = Text("tx2 1 KAS", font_size=18, color=WHITE).move_to(tx2_container.get_center())
+
+        self.wait(3)
+        # Start with narration
+        self.play(Write(narration))
+        self.wait(1)
+
+        # Animate creation of containers
+        self.play(
+            Create(round_container),
+            Create(tx_pool_container)
+        )
+        self.play(
+            Write(round_label),
+            Write(tx_pool_label)
+        )
+
+        # Animate transaction containers appearing
+        self.play(
+            Create(tx1_container),
+            Create(tx2_container)
+        )
+        self.play(
+            Write(tx1_label),
+            Write(tx2_label)
+        )
+        self.wait(2)
+
+        # FIRST SCENARIO: Random selection with equal fees
+        random_sub_narration = Text("When fees are equal - random selection", font_size=24, color=WHITE)
+        random_sub_narration.next_to(narration, DOWN, buff=0.5)
+
+        # Show random selection sub-narration
+        self.play(Write(random_sub_narration))
+        self.wait(0.5)
+
+        # Create blocks showing random selection (one of each transaction)
+        random_block1 = Square(
+            side_length=1.5,
+            color="#B6B6B6",
+            fill_opacity=0.2,
+            stroke_width=2
+        )
+        random_block1.move_to(round_container.get_center() + UP * 0.90)
+
+        random_block2 = Square(
+            side_length=1.5,
+            color="#70C7BA",
+            fill_opacity=0.2,
+            stroke_width=2
+        )
+        random_block2.move_to(round_container.get_center() + DOWN * 0.90)
+
+        random_block1_label = Text("tx1", font_size=16, color=WHITE).move_to(random_block1.get_center())
+        random_block2_label = Text("tx2", font_size=16, color=WHITE).move_to(random_block2.get_center())
+
+        # Animate creation of random selection blocks
+        self.play(
+            Create(random_block1),
+            Create(random_block2)
+        )
+        self.play(
+            Write(random_block1_label),
+            Write(random_block2_label)
+        )
+
+        # Show 50% probability text
+        probability_text = Text("50% chance each", font_size=20, color=YELLOW)
+        probability_text.next_to(random_sub_narration, DOWN, buff=0.3)
+        self.play(Write(probability_text))
+        self.wait(2)
+
+        # TRANSITION: Change tx2 fee to make it higher
+        new_tx2_label = Text("tx2 1.5 KAS", font_size=18, color=WHITE).move_to(tx2_container.get_center())
+        self.play(Transform(tx2_label, new_tx2_label))
+        self.wait(1)
+
+        # Update narration for fee-based selection
+        fee_sub_narration = Text("When fees differ - probability-based selection", font_size=24, color=WHITE)
+        fee_sub_narration.next_to(narration, DOWN, buff=0.5)
+        self.play(Transform(random_sub_narration, fee_sub_narration))
+
+        # Update probability text to show weighted selection
+        new_probability_text = Text("tx1: 40% chance, tx2: 60% chance", font_size=20, color=YELLOW)
+        new_probability_text.next_to(fee_sub_narration, DOWN, buff=0.3)
+        self.play(Transform(probability_text, new_probability_text))
+        self.wait(2)
+
+        # Highlight the higher-fee transaction
+        self.play(Indicate(tx2_container))
+        self.wait(1)
+
+        # Transform to final sub-narration
+        final_sub_narration = Text("Higher fees increase selection probability", font_size=24, color=WHITE)
+        final_sub_narration.next_to(narration, DOWN, buff=0.5)
+        self.play(Transform(random_sub_narration, final_sub_narration))
+        self.wait(3)
+
+        # Fade out probability text for cleaner ending
+        self.play(FadeOut(probability_text))
+        self.wait(2)
 
 class Transaction(Scene):
     def construct(self):

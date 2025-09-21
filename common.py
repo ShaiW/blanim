@@ -44,6 +44,37 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
     def toggle_fix(self, mob):
         mob.fixedLayer = (not mob.fixedLayer) if hasattr(mob, "fixedLayer") else True
 
+# TODO test if wrapped play scene with decomposed properly plays animations without overriding earlier animations in the same play call
+class DecomposedPlay:
+    """Wrapper that signals to play() to decompose animations into separate calls."""
+
+    def __init__(self, *animations):
+        self.animations = animations
+
+    def __iter__(self):
+        """Make it iterable so play() can process it."""
+        return iter(self.animations)
+
+
+class WrappedPlayScene(Scene):
+    def play(self, *args, **kwargs):
+        """Override play to handle DecomposedPlay wrappers."""
+        processed_args = []
+
+        for arg in args:
+            if isinstance(arg, DecomposedPlay):
+                # Decompose the wrapper into individual play calls
+                for anim in arg.animations:
+                    super().play(anim, **kwargs)
+                    # Don't add to processed_args since we already played them
+            else:
+                processed_args.append(arg)
+
+                # Play any remaining non-wrapped animations normally
+        if processed_args:
+            super().play(*processed_args, **kwargs)
+
+# TODO nothing from here down works as intended
 
 class SequentialPlayScene(Scene):
     """
