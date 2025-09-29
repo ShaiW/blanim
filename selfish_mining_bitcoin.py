@@ -200,28 +200,45 @@ class Blockchain:
 class StateTextManager:
     def __init__(self):
         self.states = {}
-        self._create_all_states()
+#        self._create_all_states()
 
-    def _create_all_states(self):
-        state_texts = {
-            "selfish_mining": "Selfish Mining in Bitcoin",
-            "state0": "State 0",
-            "state0prime": "State 0'",
-            "state1": "State 1",
-            "state2": "State 2",
-            "state3": "State 3",
-            "state4": "State 4",
-            "honest_wins": "Honest miner finds a block",
-            "selfish_wins": "Selfish miner finds a block",
-            "reveal": "Selfish miner reveals blocks"
-        }
-
-        for key, text in state_texts.items():
-            state = MathTex(rf"\text{{{text}}}", color=WHITE)
-            state.to_edge(UP)
-            self.states[key] = state
+    # def _create_all_states(self):
+    #     state_texts = {
+    #         "selfish_mining": "Selfish Mining in Bitcoin",
+    #         "state0": "State 0",
+    #         "state0prime": "State 0'",
+    #         "state1": "State 1",
+    #         "state2": "State 2",
+    #         "state3": "State 3",
+    #         "state4": "State 4",
+    #         "honest_wins": "Honest miner finds a block",
+    #         "selfish_wins": "Selfish miner finds a block",
+    #         "reveal": "Selfish miner reveals blocks"
+    #     }
+    #
+    #     for key, text in state_texts.items():
+    #         state = MathTex(rf"\text{{{text}}}", color=WHITE)
+    #         state.to_edge(UP)
+    #         self.states[key] = state
 
     def get_state(self, state_name: str):
+        if state_name not in self.states:
+            state_texts = {
+                "selfish_mining": "Selfish Mining in Bitcoin",
+                "state0": "State 0",
+                "state0prime": "State 0'",
+                "state1": "State 1",
+                "state2": "State 2",
+                "state3": "State 3",
+                "state4": "State 4",
+                "honest_wins": "Honest miner finds a block",
+                "selfish_wins": "Selfish miner finds a block",
+                "reveal": "Selfish miner reveals blocks"
+            }
+            text = state_texts.get(state_name, state_name)
+            state = MathTex(rf"\text{{{text}}}", color=WHITE)
+            state.to_edge(UP)
+            self.states[state_name] = state
         return self.states[state_name]
 
 class ChainStateManager:
@@ -534,8 +551,8 @@ class SelfishMiningSquares:
         self.genesis = Block("Gen", self.genesis_position, "#0000FF")
 
         # Pre-create blocks and lines
-        self._setup_blocks()
-        self._setup_lines()
+#        self._setup_blocks()
+#        self._setup_lines()
 
         self.race_history_manager = RaceHistoryManager()
 
@@ -543,7 +560,7 @@ class SelfishMiningSquares:
         self.race_history_manager.start_new_race()
 
     def advance_selfish_chain(self):
-        """Create next selfish block and record in race history"""
+        """Create next selfish block with animated fade-in and record in race history"""
         self.selfish_blocks_created += 1
         label = f"s{self.selfish_blocks_created}"
 
@@ -557,25 +574,26 @@ class SelfishMiningSquares:
         position = (-2 + (self.selfish_blocks_created - 1) * 2, -1.2, 0)
         block = self.selfish_chain.add_block(label, position[0], parent_block=parent)
 
-        # Add to scene dynamically
-        self.scene.add(*block.get_mobjects())
-
         # Create connecting line
         if self.selfish_blocks_created == 1:
             line = self.selfish_chain.create_line_to_genesis(self.genesis, 0)
         else:
             line = self.selfish_chain.create_line_to_previous(self.selfish_blocks_created - 1)
 
+            # Animate the block and line creation with proper fade-in timing
+        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
         if line:
-            self.scene.add(line)
+            animations.append(self.animation_factory.fade_in_and_create(line))
 
-            # Record in race history
+        self.scene.play(*animations)
+
+        # Record in race history
         self.race_history_manager.record_block_creation("selfish")
 
         return block, line
 
     def advance_honest_chain(self):
-        """Create next honest block and record in race history"""
+        """Create next honest block with animated fade-in and record in race history"""
         self.honest_blocks_created += 1
         label = f"h{self.honest_blocks_created}"
 
@@ -589,19 +607,20 @@ class SelfishMiningSquares:
         position = (-2 + (self.honest_blocks_created - 1) * 2, 0, 0)
         block = self.honest_chain.add_block(label, position[0], parent_block=parent)
 
-        # Add to scene dynamically
-        self.scene.add(*block.get_mobjects())
-
         # Create connecting line
         if self.honest_blocks_created == 1:
             line = self.honest_chain.create_line_to_genesis(self.genesis, 0)
         else:
             line = self.honest_chain.create_line_to_previous(self.honest_blocks_created - 1)
 
+            # Animate the block and line creation with proper fade-in timing
+        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
         if line:
-            self.scene.add(line)
+            animations.append(self.animation_factory.fade_in_and_create(line))
 
-            # Record in race history
+        self.scene.play(*animations)
+
+        # Record in race history
         self.race_history_manager.record_block_creation("honest")
 
         return block, line
@@ -680,194 +699,194 @@ class SelfishMiningSquares:
         else:
             return "tie"  # Would need tiebreak resolution
 
-    def _setup_blocks(self):
-        # First selfish block parents to genesis
-        self.selfish_chain.add_block("s1", -2, parent_block=self.genesis)
+#    def _setup_blocks(self):
+#        # First selfish block parents to genesis
+#        self.selfish_chain.add_block("s1", -2, parent_block=self.genesis)
+#
+#        # Subsequent selfish blocks parent to previous block
+#        for i in range(2, 5):
+#            parent = self.selfish_chain.blocks[-1]
+#            self.selfish_chain.add_block(f"s{i}", -2 + (i - 1) * 2, parent_block=parent)
+#
+#        # Same pattern for honest chain
+#        self.honest_chain.add_block("h1", -2, parent_block=self.genesis)
+#        for i in range(2, 5):
+#            parent = self.honest_chain.blocks[-1]
+#            self.honest_chain.add_block(f"h{i}", -2 + (i - 1) * 2, parent_block=parent)
+#
+#    def _setup_lines(self):
+#        # Create lines for selfish chain
+#        self.selfish_chain.create_line_to_genesis(self.genesis, 0)
+#        for i in range(1, 4):
+#            self.selfish_chain.create_line_to_previous(i)
+#
+#            # Create lines for honest chain
+#        self.honest_chain.create_line_to_genesis(self.genesis, 0)
+#        for i in range(1, 4):
+#            self.honest_chain.create_line_to_previous(i)
 
-        # Subsequent selfish blocks parent to previous block
-        for i in range(2, 5):
-            parent = self.selfish_chain.blocks[-1]
-            self.selfish_chain.add_block(f"s{i}", -2 + (i - 1) * 2, parent_block=parent)
-
-        # Same pattern for honest chain
-        self.honest_chain.add_block("h1", -2, parent_block=self.genesis)
-        for i in range(2, 5):
-            parent = self.honest_chain.blocks[-1]
-            self.honest_chain.add_block(f"h{i}", -2 + (i - 1) * 2, parent_block=parent)
-
-    def _setup_lines(self):
-        # Create lines for selfish chain
-        self.selfish_chain.create_line_to_genesis(self.genesis, 0)
-        for i in range(1, 4):
-            self.selfish_chain.create_line_to_previous(i)
-
-            # Create lines for honest chain
-        self.honest_chain.create_line_to_genesis(self.genesis, 0)
-        for i in range(1, 4):
-            self.honest_chain.create_line_to_previous(i)
-
-    def intro_anim(self):
-        self.current_state = "intro"
-
-        intro_animation = Succession(
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("selfish_mining")),
-                *[self.animation_factory.fade_in(mob) for mob in self.genesis.get_mobjects()],
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[0].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[0]),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[1].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[1]),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[2].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[2]),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[3].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[3]),
-                *[self.animation_factory.fade_in(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.honest_chain.lines[0])
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.animation_factory.fade_out_and_remove(self.state_manager.get_state("selfish_mining")),
-                *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[0].get_mobjects()],
-                self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[0]),
-                *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[1].get_mobjects()],
-                self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[1]),
-                *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[2].get_mobjects()],
-                self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[2]),
-                *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[3].get_mobjects()],
-                self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[3]),
-                *[self.animation_factory.fade_out(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
-                self.animation_factory.fade_out_and_remove(self.honest_chain.lines[0])
-            ),
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("state0"))
-            )
-        )
-        return intro_animation
-
-    def state_zero(self):
-        self.current_state = "zero"
-
-        # All selfish miner transitions
-
-    def zero_to_one(self):
-        self.current_state = "one"
-        return Succession(
-            AnimationGroup(
-                self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state0"))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("state1")),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[0].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[0])
-            )
-        )
-
-    def one_to_two(self):
-        self.current_state = "two"
-        return Succession(
-            AnimationGroup(
-                self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state1"))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("state2")),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[1].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[1])
-            )
-        )
-
-    def two_to_three(self):
-        self.current_state = "three"
-        return Succession(
-            AnimationGroup(
-                self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state2"))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("state3")),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[2].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[2])
-            )
-        )
-
-    def three_to_four(self):
-        self.current_state = "four"
-        return Succession(
-            AnimationGroup(
-                self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state3"))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("state4")),
-                *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[3].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.selfish_chain.lines[3])
-            )
-        )
-
-    def one_to_zero_prime(self):
-        self.current_state = "zero_prime"
-        return Succession(
-            AnimationGroup(
-                self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state1"))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.animation_factory.fade_in_and_create(self.state_manager.get_state("state0prime")),
-                *[self.animation_factory.fade_in(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
-                self.animation_factory.fade_in_and_create(self.honest_chain.lines[0])
-            )
-        )
-
-    def zero_to_zero(self):
-        """Complete implementation of the complex zero_to_zero transition"""
-        self.current_state = "zero"
-
-        self.scene.play(AnimationGroup(
-            self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state0"))
-        ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        self.scene.play(AnimationGroup(
-            *[self.animation_factory.fade_in(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
-            self.animation_factory.fade_in_and_create(self.honest_chain.lines[0])
-        ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        # Move genesis and honest block
-        self.scene.play(AnimationGroup(
-            *[mob.animate.move_to((-6, 0, 0)) for mob in self.genesis.get_mobjects()],
-            *[mob.animate.move_to((-4, 0, 0)) for mob in self.honest_chain.blocks[0].get_mobjects()],
-            self.honest_chain.lines[0].animate.shift(LEFT * 2)
-        ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        # CORRECTED: Fade out line, genesis AND honest block label, keep only honest block square
-        self.scene.play(AnimationGroup(
-            *[self.animation_factory.fade_out(mob) for mob in self.genesis.get_mobjects()],
-            self.animation_factory.fade_out(self.honest_chain.blocks[0].label),  # Fade out label
-            self.animation_factory.fade_out_and_remove(self.honest_chain.lines[0])
-            # Note: only honest block square stays visible here
-        ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        # Reset genesis position while it's invisible
-        for mob in self.genesis.get_mobjects():
-            mob.move_to(self.genesis_position)
-
-            # CORRECTED: Fade in genesis while fading out honest block square
-        self.scene.play(AnimationGroup(
-            *[self.animation_factory.fade_in(mob) for mob in self.genesis.get_mobjects()],
-            self.animation_factory.fade_out(self.honest_chain.blocks[0].square)  # Only fade out square
-        ))
-
-        self.scene.bring_to_front(*self.genesis.get_mobjects())
-
-        return
+    # def intro_anim(self):
+    #     self.current_state = "intro"
+    #
+    #     intro_animation = Succession(
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("selfish_mining")),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.genesis.get_mobjects()],
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[0].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[0]),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[1].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[1]),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[2].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[2]),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[3].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[3]),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.honest_chain.lines[0])
+    #         ),
+    #         Wait(self.wait_time),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_out_and_remove(self.state_manager.get_state("selfish_mining")),
+    #             *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[0].get_mobjects()],
+    #             self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[0]),
+    #             *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[1].get_mobjects()],
+    #             self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[1]),
+    #             *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[2].get_mobjects()],
+    #             self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[2]),
+    #             *[self.animation_factory.fade_out(mob) for mob in self.selfish_chain.blocks[3].get_mobjects()],
+    #             self.animation_factory.fade_out_and_remove(self.selfish_chain.lines[3]),
+    #             *[self.animation_factory.fade_out(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
+    #             self.animation_factory.fade_out_and_remove(self.honest_chain.lines[0])
+    #         ),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("state0"))
+    #         )
+    #     )
+    #     return intro_animation
+    #
+    # def state_zero(self):
+    #     self.current_state = "zero"
+    #
+    #     # All selfish miner transitions
+    #
+    # def zero_to_one(self):
+    #     self.current_state = "one"
+    #     return Succession(
+    #         AnimationGroup(
+    #             self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state0"))
+    #         ),
+    #         Wait(self.wait_time),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("state1")),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[0].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[0])
+    #         )
+    #     )
+    #
+    # def one_to_two(self):
+    #     self.current_state = "two"
+    #     return Succession(
+    #         AnimationGroup(
+    #             self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state1"))
+    #         ),
+    #         Wait(self.wait_time),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("state2")),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[1].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[1])
+    #         )
+    #     )
+    #
+    # def two_to_three(self):
+    #     self.current_state = "three"
+    #     return Succession(
+    #         AnimationGroup(
+    #             self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state2"))
+    #         ),
+    #         Wait(self.wait_time),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("state3")),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[2].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[2])
+    #         )
+    #     )
+    #
+    # def three_to_four(self):
+    #     self.current_state = "four"
+    #     return Succession(
+    #         AnimationGroup(
+    #             self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state3"))
+    #         ),
+    #         Wait(self.wait_time),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("state4")),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.selfish_chain.blocks[3].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.selfish_chain.lines[3])
+    #         )
+    #     )
+    #
+    # def one_to_zero_prime(self):
+    #     self.current_state = "zero_prime"
+    #     return Succession(
+    #         AnimationGroup(
+    #             self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state1"))
+    #         ),
+    #         Wait(self.wait_time),
+    #         AnimationGroup(
+    #             self.animation_factory.fade_in_and_create(self.state_manager.get_state("state0prime")),
+    #             *[self.animation_factory.fade_in(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
+    #             self.animation_factory.fade_in_and_create(self.honest_chain.lines[0])
+    #         )
+    #     )
+    #
+    # def zero_to_zero(self):
+    #     """Complete implementation of the complex zero_to_zero transition"""
+    #     self.current_state = "zero"
+    #
+    #     self.scene.play(AnimationGroup(
+    #         self.animation_factory.fade_out_and_remove(self.state_manager.get_state("state0"))
+    #     ))
+    #
+    #     self.scene.play(Wait(self.wait_time))
+    #
+    #     self.scene.play(AnimationGroup(
+    #         *[self.animation_factory.fade_in(mob) for mob in self.honest_chain.blocks[0].get_mobjects()],
+    #         self.animation_factory.fade_in_and_create(self.honest_chain.lines[0])
+    #     ))
+    #
+    #     self.scene.play(Wait(self.wait_time))
+    #
+    #     # Move genesis and honest block
+    #     self.scene.play(AnimationGroup(
+    #         *[mob.animate.move_to((-6, 0, 0)) for mob in self.genesis.get_mobjects()],
+    #         *[mob.animate.move_to((-4, 0, 0)) for mob in self.honest_chain.blocks[0].get_mobjects()],
+    #         self.honest_chain.lines[0].animate.shift(LEFT * 2)
+    #     ))
+    #
+    #     self.scene.play(Wait(self.wait_time))
+    #
+    #     # CORRECTED: Fade out line, genesis AND honest block label, keep only honest block square
+    #     self.scene.play(AnimationGroup(
+    #         *[self.animation_factory.fade_out(mob) for mob in self.genesis.get_mobjects()],
+    #         self.animation_factory.fade_out(self.honest_chain.blocks[0].label),  # Fade out label
+    #         self.animation_factory.fade_out_and_remove(self.honest_chain.lines[0])
+    #         # Note: only honest block square stays visible here
+    #     ))
+    #
+    #     self.scene.play(Wait(self.wait_time))
+    #
+    #     # Reset genesis position while it's invisible
+    #     for mob in self.genesis.get_mobjects():
+    #         mob.move_to(self.genesis_position)
+    #
+    #         # CORRECTED: Fade in genesis while fading out honest block square
+    #     self.scene.play(AnimationGroup(
+    #         *[self.animation_factory.fade_in(mob) for mob in self.genesis.get_mobjects()],
+    #         self.animation_factory.fade_out(self.honest_chain.blocks[0].square)  # Only fade out square
+    #     ))
+    #
+    #     self.scene.bring_to_front(*self.genesis.get_mobjects())
+    #
+    #     return
 
     def get_current_state(self):
         """Get the current state of the animation"""
@@ -915,8 +934,169 @@ class SelfishMiningSquares:
 
         return visible_blocks
 
+    ####################
+    # handle chain resolution
+    ####################
+    def resolve_selfish_chain_wins(self):
+        """Handle resolution when selfish chain is revealed and wins"""
+
+        # Get the winning selfish block (most recent)
+        winning_block = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
+        if not winning_block:
+            return
+
+            # First: Move selfish chain to honest chain position, honest chain moves up
+        selfish_shift = UP * 1.2  # Move selfish chain up to honest position (y=0)
+        honest_shift = UP * 1.2  # Move honest chain up by same amount
+
+        selfish_mobjects = []
+        for block in self.selfish_chain.blocks:
+            selfish_mobjects.extend(block.get_mobjects())
+        selfish_mobjects.extend(self.selfish_chain.lines)
+
+        honest_mobjects = []
+        for block in self.honest_chain.blocks:
+            honest_mobjects.extend(block.get_mobjects())
+        honest_mobjects.extend(self.honest_chain.lines)
+
+        # Animate the chain position swap
+        self.scene.play(AnimationGroup(
+            *[mob.animate.shift(selfish_shift) for mob in selfish_mobjects],
+            *[mob.animate.shift(honest_shift) for mob in honest_mobjects]
+        ))
+
+        # Second: Calculate shift to move winning block to genesis position
+        current_winning_pos = winning_block.get_center()
+        genesis_pos = np.array(self.genesis_position)
+        shift_to_genesis = genesis_pos - current_winning_pos
+
+        # Collect all mobjects for final positioning
+        all_mobjects = selfish_mobjects + honest_mobjects
+        all_mobjects.extend(self.genesis.get_mobjects())
+
+        # Move all blocks so winning block reaches genesis position
+        self.scene.play(AnimationGroup(
+            *[mob.animate.shift(shift_to_genesis) for mob in all_mobjects]
+        ))
+
+        # Third: Fade out all blocks except the winning block
+        fade_out_mobjects = []
+        for block in self.selfish_chain.blocks[:-1]:  # All but last selfish
+            fade_out_mobjects.extend(block.get_mobjects())
+        for block in self.honest_chain.blocks:  # All honest blocks
+            fade_out_mobjects.extend(block.get_mobjects())
+        fade_out_mobjects.extend(self.selfish_chain.lines)
+        fade_out_mobjects.extend(self.honest_chain.lines)
+        fade_out_mobjects.extend(self.genesis.get_mobjects())
+        fade_out_mobjects.append(winning_block.label)  # Keep square, fade label
+
+        self.scene.play(AnimationGroup(
+            *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
+        ))
+
+        # Fourth: Reset genesis position and fade in (like zero_to_zero)
+        for mob in self.genesis.get_mobjects():
+            mob.move_to(self.genesis_position)
+
+        self.scene.play(AnimationGroup(
+            *[self.animation_factory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()],
+            self.animation_factory.fade_out_and_remove(winning_block.square)
+        ))
+
+    def resolve_honest_chain_wins(self):
+        """Handle resolution when honest chain is ahead - all blocks move, fade out except winner"""
+
+        # Get the winning honest block (most recent)
+        winning_block = self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
+        if not winning_block:
+            return
+
+            # Calculate exact shift needed to move winning block to genesis position
+        current_winning_pos = winning_block.get_center()
+        genesis_pos = np.array(self.genesis_position)
+        shift_vector = genesis_pos - current_winning_pos
+
+        # Collect all mobjects that need to move
+        all_mobjects = []
+        for block in self.honest_chain.blocks:
+            all_mobjects.extend(block.get_mobjects())
+        for block in self.selfish_chain.blocks:
+            all_mobjects.extend(block.get_mobjects())
+        all_mobjects.extend(self.honest_chain.lines)
+        all_mobjects.extend(self.selfish_chain.lines)
+        all_mobjects.extend(self.genesis.get_mobjects())
+
+        # First: Move all blocks so winning block reaches genesis position
+        self.scene.play(AnimationGroup(
+            *[mob.animate.shift(shift_vector) for mob in all_mobjects]
+        ))
+
+        # Second: Fade out all blocks except the winning block
+        fade_out_mobjects = []
+        for block in self.honest_chain.blocks[:-1]:  # All but last (winning) block
+            fade_out_mobjects.extend(block.get_mobjects())
+        for block in self.selfish_chain.blocks:  # All selfish blocks
+            fade_out_mobjects.extend(block.get_mobjects())
+        fade_out_mobjects.extend(self.honest_chain.lines)
+        fade_out_mobjects.extend(self.selfish_chain.lines)
+        fade_out_mobjects.extend(self.genesis.get_mobjects())
+        fade_out_mobjects.append(winning_block.label)  # Keep square, fade label
+
+        self.scene.play(AnimationGroup(
+            *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
+        ))
+
+        # Third: Fade out winning block square and fade in genesis
+        for mob in self.genesis.get_mobjects():
+            mob.move_to(self.genesis_position)
+
+        self.scene.play(AnimationGroup(
+            *[self.animation_factory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()],
+            self.animation_factory.fade_out_and_remove(winning_block.square)
+        ))
+
+    def resolve_tie_situation(self):
+        """Handle resolution when chains are tied - both coexist temporarily"""
+
+        # Get the first blocks from both chains
+        # This is the only situation where a tiebreaker occurs
+        selfish_block = self.selfish_chain.blocks[0] if len(self.selfish_chain.blocks) > 0 else None
+        honest_block = self.honest_chain.blocks[0] if len(self.honest_chain.blocks) > 0 else None
+
+        if not selfish_block or not honest_block:
+            return
+
+        self.scene.wait(1)  # Show coexistence for a moment
+
+        return "tie_state"
+
 
 class SelfishMiningExample(Scene):
+    def construct(self):
+        # Initialize the mining system
+        sm = SelfishMiningSquares(self)
+        self.wait(1)
+
+        # Add genesis block to scene
+        self.play(*[sm.animation_factory.fade_in_and_create(mob) for mob in sm.genesis.get_mobjects()])
+        self.wait(1)
+
+        # These methods should handle their own play() calls internally
+        sm.advance_selfish_chain()  # Creates and animates selfish block
+        self.wait(1)
+        sm.advance_honest_chain()  # Creates and animates honest block
+        self.wait(3)
+
+        # Handle race resolution
+        sm.resolve_tie_situation()
+        self.wait(1)
+        sm.advance_selfish_chain()  # Break the tie
+        self.wait(1)
+        # TODO lines do not update since changing to dynamic handling
+        sm.resolve_selfish_chain_wins()
+        self.wait(1)
+
+class SelfishMiningExampleOld(Scene):
     def construct(self):
         # Create the SelfishMining instance
         sm = SelfishMiningSquares(self)
