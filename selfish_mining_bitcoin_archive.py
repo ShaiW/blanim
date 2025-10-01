@@ -1,4 +1,121 @@
 # Archive of replaced code for reference
+#old     def resolve_selfish_chain_wins(self):
+        # """Handle resolution when selfish chain is revealed and wins"""
+        #
+        # # Get the winning selfish block (most recent)
+        # winning_block = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
+        # if not winning_block:
+        #     return
+        #
+        #     # First: Move selfish chain to honest chain position, honest chain moves up
+        # selfish_shift = UP * 1.2  # Move selfish chain up to honest position (y=0)
+        # honest_shift = UP * 1.2  # Move honest chain up by same amount
+        #
+        # selfish_mobjects = []
+        # for block in self.selfish_chain.blocks:
+        #     selfish_mobjects.extend(block.get_mobjects())
+        # selfish_mobjects.extend(self.selfish_chain.lines)
+        #
+        # honest_mobjects = []
+        # for block in self.honest_chain.blocks:
+        #     honest_mobjects.extend(block.get_mobjects())
+        # honest_mobjects.extend(self.honest_chain.lines)
+        #
+        # # Animate the chain position swap
+        # self.scene.play(AnimationGroup(
+        #     *[mob.animate.shift(selfish_shift) for mob in selfish_mobjects],
+        #     *[mob.animate.shift(honest_shift) for mob in honest_mobjects]
+        # ))
+        #
+        # # Second: Calculate shift to move winning block to genesis position
+        # current_winning_pos = winning_block.get_center()
+        # genesis_pos = np.array(self.genesis_position)
+        # shift_to_genesis = genesis_pos - current_winning_pos
+        #
+        # # Collect all mobjects for final positioning
+        # all_mobjects = selfish_mobjects + honest_mobjects
+        # all_mobjects.extend(self.genesis.get_mobjects())
+        #
+        # # Move all blocks so winning block reaches genesis position
+        # self.scene.play(AnimationGroup(
+        #     *[mob.animate.shift(shift_to_genesis) for mob in all_mobjects]
+        # ))
+        #
+        # # Third: Fade out all blocks except the winning block
+        # fade_out_mobjects = []
+        # for block in self.selfish_chain.blocks[:-1]:  # All but last selfish
+        #     fade_out_mobjects.extend(block.get_mobjects())
+        # for block in self.honest_chain.blocks:  # All honest blocks
+        #     fade_out_mobjects.extend(block.get_mobjects())
+        # fade_out_mobjects.extend(self.selfish_chain.lines)
+        # fade_out_mobjects.extend(self.honest_chain.lines)
+        # fade_out_mobjects.extend(self.genesis.get_mobjects())
+        # fade_out_mobjects.append(winning_block.label)  # Keep square, fade label
+        #
+        # self.scene.play(AnimationGroup(
+        #     *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
+        # ))
+        #
+        # # Fourth: Reset genesis position and fade in (like zero_to_zero)
+        # for mob in self.genesis.get_mobjects():
+        #     mob.move_to(self.genesis_position)
+        #
+        # self.scene.play(AnimationGroup(
+        #     *[self.animation_factory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()],
+        #     self.animation_factory.fade_out_and_remove(winning_block.square)
+        # ))
+
+# def resolve_honest_chain_wins(self):
+#     """Handle resolution when honest chain is ahead - all blocks move, fade out except winner"""
+#
+#     # Get the winning honest block (most recent)
+#     winning_block = self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
+#     if not winning_block:
+#         return
+#
+#         # Calculate exact shift needed to move winning block to genesis position
+#     current_winning_pos = winning_block.get_center()
+#     genesis_pos = np.array(self.genesis_position)
+#     shift_vector = genesis_pos - current_winning_pos
+#
+#     # Collect all mobjects that need to move
+#     all_mobjects = []
+#     for block in self.honest_chain.blocks:
+#         all_mobjects.extend(block.get_mobjects())
+#     for block in self.selfish_chain.blocks:
+#         all_mobjects.extend(block.get_mobjects())
+#     all_mobjects.extend(self.honest_chain.lines)
+#     all_mobjects.extend(self.selfish_chain.lines)
+#     all_mobjects.extend(self.genesis.get_mobjects())
+#
+#     # First: Move all blocks so winning block reaches genesis position
+#     self.scene.play(AnimationGroup(
+#         *[mob.animate.shift(shift_vector) for mob in all_mobjects]
+#     ))
+#
+#     # Second: Fade out all blocks except the winning block
+#     fade_out_mobjects = []
+#     for block in self.honest_chain.blocks[:-1]:  # All but last (winning) block
+#         fade_out_mobjects.extend(block.get_mobjects())
+#     for block in self.selfish_chain.blocks:  # All selfish blocks
+#         fade_out_mobjects.extend(block.get_mobjects())
+#     fade_out_mobjects.extend(self.honest_chain.lines)
+#     fade_out_mobjects.extend(self.selfish_chain.lines)
+#     fade_out_mobjects.extend(self.genesis.get_mobjects())
+#     fade_out_mobjects.append(winning_block.label)  # Keep square, fade label
+#
+#     self.scene.play(AnimationGroup(
+#         *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
+#     ))
+#
+#     # Third: Fade out winning block square and fade in genesis
+#     for mob in self.genesis.get_mobjects():
+#         mob.move_to(self.genesis_position)
+#
+#     self.scene.play(AnimationGroup(
+#         *[self.animation_factory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()],
+#         self.animation_factory.fade_out_and_remove(winning_block.square)
+#     ))
 
 #    def _setup_blocks(self):
 #        # First selfish block parents to genesis
