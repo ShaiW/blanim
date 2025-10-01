@@ -9,19 +9,13 @@ class Block:
         self.label = Text(label, font_size=24, color=WHITE)
         self.label.move_to(self.square.get_center())
 
-        # Bidirectional tracking - parent and children relationships
-        self.parent_block = None
-        self.children = []  # Direct children list for O(1) access
+        self.children = []
         self.next_genesis = False
 
-        # Set parent relationship during initialization only
-        if parent_block:
-            self._set_parent(parent_block)
-
-    def _set_parent(self, parent_block: 'Block'):
-        """Internal method to set parent block - only called during initialization"""
         self.parent_block = parent_block
-        parent_block.children.append(self)
+        if parent_block:
+            parent_block.children.append(self)
+
 
     def get_mobjects(self):
         """Return list of Manim mobjects for rendering"""
@@ -47,12 +41,6 @@ class Block:
     def get_children(self) -> list['Block']:
         """Get children directly from stored list - O(1) access"""
         return self.children.copy()  # Return copy to prevent external modification
-
-    def add_child(self, child_block: 'Block'):
-        """Add a child block (automatically sets bidirectional relationship)"""
-        if child_block.parent_block is not None:
-            raise ValueError("Child block already has a parent - blocks cannot change parents")
-        child_block._set_parent(self)
 
     def set_as_next_genesis(self):
         """Mark this block as the next genesis block"""
@@ -124,20 +112,6 @@ class Block:
         children_labels = [child.label.text for child in self.children]
         return f"Block(label={self.label.text}, parent={parent_label}, children={children_labels}, next_genesis={self.next_genesis})"
 
-class BlockFactory:
-    def __init__(self):
-        self.created_blocks = {}  # Cache for reuse
-
-    def create_block(self, label: str, chain_type: str, position: tuple, parent_block: 'Block') -> Block:
-        """Create block on-demand with specified parent"""
-        if label in self.created_blocks:
-            return self.created_blocks[label]
-
-        color_type = RED if chain_type == "selfish" else GREEN
-        block = Block(label, position, color_type, parent_block=parent_block)  # Use provided parent
-        self.created_blocks[label] = block
-        return block
-
 class Blockchain:
     def __init__(self, chain_type: str, color: str, y_offset: float = 0):
         self.chain_type = chain_type
@@ -200,26 +174,6 @@ class Blockchain:
 class StateTextManager:
     def __init__(self):
         self.states = {}
-#        self._create_all_states()
-
-    # def _create_all_states(self):
-    #     state_texts = {
-    #         "selfish_mining": "Selfish Mining in Bitcoin",
-    #         "state0": "State 0",
-    #         "state0prime": "State 0'",
-    #         "state1": "State 1",
-    #         "state2": "State 2",
-    #         "state3": "State 3",
-    #         "state4": "State 4",
-    #         "honest_wins": "Honest miner finds a block",
-    #         "selfish_wins": "Selfish miner finds a block",
-    #         "reveal": "Selfish miner reveals blocks"
-    #     }
-    #
-    #     for key, text in state_texts.items():
-    #         state = MathTex(rf"\text{{{text}}}", color=WHITE)
-    #         state.to_edge(UP)
-    #         self.states[key] = state
 
     def get_state(self, state_name: str):
         if state_name not in self.states:
@@ -504,26 +458,68 @@ class RaceHistoryManager:
         """Get complete history of all races"""
         return [race.get_race_summary() for race in self.race_history]
 
+class AnimationConfig:
+    """Centralized animation timing configuration"""
+
+    # Scene timing
+    WAIT_TIME = 1.0
+
+    # Animation durations
+    FADE_IN_TIME = 1.0
+    FADE_OUT_TIME = 1.0
+    BLOCK_CREATION_TIME = 1.0
+    CHAIN_RESOLUTION_TIME = 2.0
+
+    @classmethod
+    def set_speed_multiplier(cls, multiplier: float):
+        """Scale all timings by a multiplier for faster/slower animations"""
+        cls.FADE_IN_TIME *= multiplier
+        cls.FADE_OUT_TIME *= multiplier
+        cls.BLOCK_CREATION_TIME *= multiplier
+        cls.CHAIN_RESOLUTION_TIME *= multiplier
+
+#TODO START HERE and implement positioning in SelfishMiningSquares
+#TODO doublecheck this AND make positioning dynamic so you can fit target number of blocks to screen based on expected block race length
+class LayoutConfig:
+    # Position constants
+    GENESIS_X_POSITION = -4
+    FIRST_BLOCK_X_POSITION = -2
+    BLOCK_HORIZONTAL_SPACING = 2.0
+#    CHAIN_VERTICAL_SPACING = 1.2
+
+    # Chain offsets
+    HONEST_Y_OFFSET = 0
+    SELFISH_Y_OFFSET = -1.2
+
+    @staticmethod
+    def calculate_block_position(chain_type: str, block_number: int, parent_block: 'Block' = None) -> tuple:
+        """Calculate position for a new block based on chain type and parent position"""
+
+        if parent_block:
+            # Position relative to parent
+            parent_pos = parent_block.get_center()
+            x_position = parent_pos[0] + LayoutConfig.BLOCK_HORIZONTAL_SPACING
+            y_position = parent_pos[1]  # Same y as parent for chain continuation
+        else:
+            # Default positioning for first block in chain
+            x_position = LayoutConfig.FIRST_BLOCK_X_POSITION + (block_number - 1) * LayoutConfig.BLOCK_HORIZONTAL_SPACING
+            y_position = LayoutConfig.SELFISH_Y_OFFSET if chain_type == "selfish" else LayoutConfig.HONEST_Y_OFFSET
+
+        return x_position, y_position, 0
+
 class AnimationFactory:
-    def __init__(self, fade_in_time: float, fade_out_time: float):
-        self.fade_in_time = fade_in_time
-        self.fade_out_time = fade_out_time
+    def __init__(self):
+        pass
 
-    def fade_in(self, mobject):
+    @staticmethod
+    def fade_in_and_create(mobject):
         mobject.is_visible = True
-        return mobject.animate(run_time=self.fade_in_time).set_opacity(1.0)
+        return Create(mobject, run_time=AnimationConfig.FADE_IN_TIME)
 
-    def fade_out(self, mobject):
+    @staticmethod
+    def fade_out_and_remove(mobject):
         mobject.is_visible = False
-        return mobject.animate(run_time=self.fade_out_time).set_opacity(0)
-
-    def fade_in_and_create(self, mobject):
-        mobject.is_visible = True
-        return Create(mobject, run_time=self.fade_in_time)
-
-    def fade_out_and_remove(self, mobject):
-        mobject.is_visible = False
-        return FadeOut(mobject, run_time=self.fade_out_time)
+        return FadeOut(mobject, run_time=AnimationConfig.FADE_OUT_TIME)
 
 # TODO change from pre-creating to only dynamic creation
 # passing scene to class to bypass limitations of a single play call (last animation on a mobject will override previous)
@@ -533,14 +529,10 @@ class SelfishMiningSquares:
 
         self.honest_y_offset = 0
         self.selfish_y_offset = -1.2
-        self.genesis_position = (-4, self.honest_y_offset, 0) # Selected to center chain visually on screen AND keep focus on individual races/states
-
-        self.wait_time = 1.0
-        self.fade_in_time = 1.0
-        self.fade_out_time = 1.0
+        self.genesis_position = (-4, self.honest_y_offset, 0) # (-4, 0, 0) Selected to center chain visually on screen AND keep focus on individual races/states (x block spacing is 2)
 
         self.selfish_miner_block_opacity = 0.5 #TODO ensure this is used for pre-reveal blocks
-        self.current_state = "init" #TODO remove and use auto state tracking
+        self.current_state = "init" #TODO remove/replace and use auto state tracking
 
         # TODO this might be able to replace state manager (or the other way around)
         self.selfish_blocks_created = 0
@@ -548,13 +540,13 @@ class SelfishMiningSquares:
 
         # Initialize managers
         self.state_manager = StateTextManager()
-        self.animation_factory = AnimationFactory(self.fade_in_time, self.fade_out_time)
+        self.animation_factory = AnimationFactory()
         # Race history for recreating full chain later, if desired
         self.race_history_manager = RaceHistoryManager()
 
         # Create blockchains
         self.selfish_chain = Blockchain("selfish", PURE_RED, self.selfish_y_offset)
-        self.honest_chain = Blockchain("honest", "#0000FF", 0)
+        self.honest_chain = Blockchain("honest", "#0000FF", self.honest_y_offset)
 
         # Create genesis block
         self.genesis = Block("Gen", self.genesis_position, "#0000FF")
@@ -923,80 +915,6 @@ class SelfishMiningExample(Scene):
 #        self.wait(1)
         # TODO lines do not follow Gen since changing to dynamic handling(only required updating is when selfish wins)
         # TODO need to automatically resolve on either tiebreaking or reveal(from honest catching up -1)
-        # TODO Gen needs to be the same color as the winning block
+        # TODO Gen needs to be the same color as the winning block(this is probably from moving gen back to gen pos, then replacing winning block with gen, this is not required, only label replace is required)
         sm.resolve_selfish_chain_wins()
         self.wait(1)
-
-#TODO remove old version AND old code
-class SelfishMiningExampleOld(Scene):
-    def construct(self):
-        # Create the SelfishMining instance
-        sm = SelfishMiningSquares(self)
-
-        self.wait(2)
-        # Start with the intro animation
-        self.play(sm.intro_anim())
-
-        # The intro_anim already ends with state0 showing and genesis visible
-        self.wait(1)
-
-        # Transition from state 0 to state 1 (selfish miner finds a block)
-        self.play(sm.zero_to_one())
-        self.wait(1)
-
-        # Transition from state 1 to state 2 (selfish miner finds another block)
-        self.play(sm.one_to_two())
-        self.wait(1)
-
-        # Transition from state 2 to state 3 (selfish miner finds another block)
-        self.play(sm.two_to_three())
-        self.wait(1)
-
-        # Transition from state 3 to state 4 (selfish miner finds another block)
-        self.play(sm.three_to_four())
-        self.wait(1)
-
-        # Now show what happens when honest miner finds a block in state 1
-        # First, let's go back to state 1 by fading out the higher state blocks
-        self.play(Succession(
-            AnimationGroup(
-                sm.animation_factory.fade_out_and_remove(sm.state_manager.get_state("state4")),
-                *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[1].get_mobjects()],
-                sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[1]),
-                *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[2].get_mobjects()],
-                sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[2]),
-                *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[3].get_mobjects()],
-                sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[3]),
-            ),
-            Wait(1),
-            AnimationGroup(
-                sm.animation_factory.fade_in_and_create(sm.state_manager.get_state("state1")),
-            )
-        ))
-        self.wait(1)
-
-        # Show transition from state 1 to state 0' (honest miner finds a block)
-        self.play(sm.one_to_zero_prime())
-        self.wait(1)
-
-        # Finally, demonstrate the zero_to_zero transition
-        # First fade out state 0' elements and show state 0
-        self.play(Succession(
-            AnimationGroup(
-                sm.animation_factory.fade_out_and_remove(sm.state_manager.get_state("state0prime")),
-                *[sm.animation_factory.fade_out(mob) for mob in sm.honest_chain.blocks[0].get_mobjects()],
-                sm.animation_factory.fade_out_and_remove(sm.honest_chain.lines[0]),
-                *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[0].get_mobjects()],
-                sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[0]),
-            ),
-            Wait(1),
-            AnimationGroup(
-                sm.animation_factory.fade_in_and_create(sm.state_manager.get_state("state0"))
-            )
-        ))
-        self.wait(2)
-
-        # Show the zero_to_zero transition (honest miner finds a block in state 0)
-        sm.zero_to_zero()
-
-        self.wait(2)

@@ -188,3 +188,76 @@
     #     self.scene.bring_to_front(*self.genesis.get_mobjects())
     #
     #     return
+
+# class SelfishMiningExampleOld(Scene):
+#     def construct(self):
+#         # Create the SelfishMining instance
+#         sm = SelfishMiningSquares(self)
+#
+#         self.wait(2)
+#         # Start with the intro animation
+#         self.play(sm.intro_anim())
+#
+#         # The intro_anim already ends with state0 showing and genesis visible
+#         self.wait(1)
+#
+#         # Transition from state 0 to state 1 (selfish miner finds a block)
+#         self.play(sm.zero_to_one())
+#         self.wait(1)
+#
+#         # Transition from state 1 to state 2 (selfish miner finds another block)
+#         self.play(sm.one_to_two())
+#         self.wait(1)
+#
+#         # Transition from state 2 to state 3 (selfish miner finds another block)
+#         self.play(sm.two_to_three())
+#         self.wait(1)
+#
+#         # Transition from state 3 to state 4 (selfish miner finds another block)
+#         self.play(sm.three_to_four())
+#         self.wait(1)
+#
+#         # Now show what happens when honest miner finds a block in state 1
+#         # First, let's go back to state 1 by fading out the higher state blocks
+#         self.play(Succession(
+#             AnimationGroup(
+#                 sm.animation_factory.fade_out_and_remove(sm.state_manager.get_state("state4")),
+#                 *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[1].get_mobjects()],
+#                 sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[1]),
+#                 *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[2].get_mobjects()],
+#                 sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[2]),
+#                 *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[3].get_mobjects()],
+#                 sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[3]),
+#             ),
+#             Wait(1),
+#             AnimationGroup(
+#                 sm.animation_factory.fade_in_and_create(sm.state_manager.get_state("state1")),
+#             )
+#         ))
+#         self.wait(1)
+#
+#         # Show transition from state 1 to state 0' (honest miner finds a block)
+#         self.play(sm.one_to_zero_prime())
+#         self.wait(1)
+#
+#         # Finally, demonstrate the zero_to_zero transition
+#         # First fade out state 0' elements and show state 0
+#         self.play(Succession(
+#             AnimationGroup(
+#                 sm.animation_factory.fade_out_and_remove(sm.state_manager.get_state("state0prime")),
+#                 *[sm.animation_factory.fade_out(mob) for mob in sm.honest_chain.blocks[0].get_mobjects()],
+#                 sm.animation_factory.fade_out_and_remove(sm.honest_chain.lines[0]),
+#                 *[sm.animation_factory.fade_out(mob) for mob in sm.selfish_chain.blocks[0].get_mobjects()],
+#                 sm.animation_factory.fade_out_and_remove(sm.selfish_chain.lines[0]),
+#             ),
+#             Wait(1),
+#             AnimationGroup(
+#                 sm.animation_factory.fade_in_and_create(sm.state_manager.get_state("state0"))
+#             )
+#         ))
+#         self.wait(2)
+#
+#         # Show the zero_to_zero transition (honest miner finds a block in state 0)
+#         sm.zero_to_zero()
+#
+#         self.wait(2)
