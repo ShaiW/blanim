@@ -123,7 +123,7 @@ class FollowLine(Line):
 
     def create_update_animation(self, run_time=None):
         """Create an UpdateFromFunc animation for this line"""
-        from manim.animation.updaters.update import UpdateFromFunc
+#        from manim.animation.updaters.update import UpdateFromFunc
         return UpdateFromFunc(
             self,
             update_function=self._update_position_and_size,
@@ -168,7 +168,6 @@ class Blockchain:
         self.lines.append(line)
         return line
 
-    #TODO need returns for blocks that require movement to differentiate from where updaters handle movement
     def get_all_mobjects(self):
         all_mobjects = []
         for block in self.blocks:
@@ -258,7 +257,7 @@ class RaceHistoryManager:
         """Get complete history of all races"""
         return [race.get_race_summary() for race in self.race_history]
 
-class AnimationConfig:
+class AnimationTimingConfig:
     """Centralized animation timing configuration"""
 
     # Scene timing
@@ -269,14 +268,25 @@ class AnimationConfig:
     FADE_OUT_TIME = 1.0
     BLOCK_CREATION_TIME = 1.0
     CHAIN_RESOLUTION_TIME = 2.0
+    SHIFT_TO_NEW_GENESIS_TIME = 3.0 #TODO make this dynamic up to 4 blocks(Shorter blockrace needs less time, blockrace max +4 to be moved)
+    INITIAL_SCENE_WAIT_TIME = 3.0
+    VERTICAL_SHIFT_TIME = 2.0
+    CHAIN_REVEAL_ANIMATION_TIME = 2.0
+    FOLLOW_LINE_UPDATE_TIME = 2.0
 
     @classmethod
     def set_speed_multiplier(cls, multiplier: float):
         """Scale all timings by a multiplier for faster/slower animations"""
+        cls.WAIT_TIME *= multiplier
         cls.FADE_IN_TIME *= multiplier
         cls.FADE_OUT_TIME *= multiplier
         cls.BLOCK_CREATION_TIME *= multiplier
         cls.CHAIN_RESOLUTION_TIME *= multiplier
+        cls.SHIFT_TO_NEW_GENESIS_TIME *= multiplier
+        cls.INITIAL_SCENE_WAIT_TIME *= multiplier
+        cls.VERTICAL_SHIFT_TIME *= multiplier
+        cls.CHAIN_REVEAL_ANIMATION_TIME *= multiplier
+        cls.FOLLOW_LINE_UPDATE_TIME *= multiplier
 
 #TODO START HERE and implement positioning in SelfishMiningSquares
 #TODO doublecheck this AND make positioning dynamic so you can fit target number of blocks to screen based on expected block race length
@@ -319,8 +329,6 @@ class RaceOutcome(Enum):
     SELFISH_WINS = "selfish"
     CONTINUE = "continue"
 
-#TODO when using create, must create the block first, then when the animation is finished, can create the line OR calculate
-#   the intended position of the block and pass that to followline
 class AnimationFactory:
     def __init__(self):
         pass
@@ -328,12 +336,12 @@ class AnimationFactory:
     @staticmethod
     def fade_in_and_create(mobject):
         mobject.is_visible = True
-        return Create(mobject, run_time=AnimationConfig.FADE_IN_TIME)
+        return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
 
     @staticmethod
     def fade_out_and_remove(mobject):
         mobject.is_visible = False
-        return FadeOut(mobject, run_time=AnimationConfig.FADE_OUT_TIME)
+        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
 
 # passing scene to class to bypass limitations of a single play call (last animation on a mobject will override previous)
 class SelfishMiningSquares:
@@ -365,8 +373,13 @@ class SelfishMiningSquares:
         self.genesis = Block("Gen", self.genesis_position, "#0000FF")
 
         # Start the first race
-        # TODO need to automate (start first race within RaceManager init?)
         self.race_history_manager.start_new_race()
+
+        self.scene.wait(3)
+
+        # Add genesis block to scene
+        self.scene.play(*[AnimationFactory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()])
+        self.scene.wait(1)
 
     def _check_and_resolve_race(self) -> None:
         """Evaluate race conditions and trigger resolution if needed."""
@@ -402,7 +415,7 @@ class SelfishMiningSquares:
             self._reveal_selfish_chain_for_tie()
             winner = self._resolve_tiebreak()
             winning_block = self._add_tiebreak_winning_block(winner)
-            self.scene.wait(1)
+            self.scene.wait(AnimationTimingConfig.WAIT_TIME)
             self._trigger_resolution(winner)
             return True
         return False
@@ -444,17 +457,19 @@ class SelfishMiningSquares:
         follow_line_animations = []
         for line in self.honest_chain.lines + self.selfish_chain.lines:
             if isinstance(line, FollowLine):
-                follow_line_animations.append(line.create_update_animation(run_time=2.0))
+                follow_line_animations.append(line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
 
-                # Animate both chains moving to their new positions
+        # Animate both chains moving to their new positions
+        # TODO for tie change timing to half normal vertical shift
         self.scene.play(AnimationGroup(
             *[mob.animate.shift(UP * honest_shift) for mob in honest_mobjects],
             *[mob.animate.shift(UP * selfish_shift) for mob in selfish_mobjects],
-            *follow_line_animations
+            *follow_line_animations,
+            run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
         ))
 
         # Wait to show the tie state
-        self.scene.wait(1)
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     def _was_previous_lead_2(self):
         """Check if previous selfish lead was 2"""
@@ -573,11 +588,9 @@ class SelfishMiningSquares:
         if line:
             animations.append(self.animation_factory.fade_in_and_create(line))
 
-            # Add UpdateFromFunc for FollowLine tracking during animation
-            if isinstance(line, FollowLine):
-                animations.append(line.create_update_animation(run_time=AnimationConfig.FADE_IN_TIME))
-
         self.scene.play(*animations)
+
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
         # Record in race history
         self.race_history_manager.record_block_creation("selfish")
@@ -617,11 +630,9 @@ class SelfishMiningSquares:
         if line:
             animations.append(self.animation_factory.fade_in_and_create(line))
 
-            # Add UpdateFromFunc for FollowLine tracking during animation
-            if isinstance(line, FollowLine):
-                animations.append(line.create_update_animation(run_time=AnimationConfig.FADE_IN_TIME))
-
         self.scene.play(*animations)
+
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
         # Record in race history
         self.race_history_manager.record_block_creation("honest")
@@ -655,7 +666,7 @@ class SelfishMiningSquares:
         if not winning_block:
             return
 
-            # Step 1: Calculate vertical shift to move winning chain to genesis y position
+        # Step 1: Calculate vertical shift to move winning chain to genesis y position
         genesis_y = self.genesis_position[1]
         vertical_shift = genesis_y - winning_y_offset
 
@@ -672,12 +683,13 @@ class SelfishMiningSquares:
         follow_line_animations = []
         for line in winning_chain.lines + losing_chain.lines:
             if isinstance(line, FollowLine):
-                follow_line_animations.append(line.create_update_animation(run_time=2.0))
+                follow_line_animations.append(line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
 
                 # Step 1: Move both chains up by the same amount
         self.scene.play(AnimationGroup(
             *[mob.animate.shift(UP * vertical_shift) for mob in all_mobjects],
-            *follow_line_animations
+            *follow_line_animations,
+            run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
         ))
 
         # Step 2: Calculate horizontal shift to move winning block to genesis x position
@@ -689,14 +701,16 @@ class SelfishMiningSquares:
         follow_line_animations = []
         for line in winning_chain.lines + losing_chain.lines:
             if isinstance(line, FollowLine):
-                follow_line_animations.append(line.create_update_animation(run_time=2.0))
+                follow_line_animations.append(line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
 
-                # Step 2: Move all mobjects left by the required amount
+        # Step 2: Move all mobjects left by the required amount
         # Note: Genesis block moves horizontally but never vertically
+        # TODO see if you can just move follow lines will all_mobjects instead of updating animation(if it matters for perf)
         self.scene.play(AnimationGroup(
             *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in all_mobjects],
             *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in self.genesis.get_mobjects()],
-            *follow_line_animations
+            *follow_line_animations,
+            run_time=AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME
         ))
 
         # Step 3: Fade out everything except winning block square
@@ -733,31 +747,14 @@ class SelfishMiningExample(Scene):
     def construct(self):
         # Initialize the mining system
         sm = SelfishMiningSquares(self)
-        self.wait(1)
-
-        # Add genesis block to scene
-        self.play(*[sm.animation_factory.fade_in_and_create(mob) for mob in sm.genesis.get_mobjects()])
-        self.wait(1)
 
         # TODO previous version limited to +4 from Gen, can change but any time selfish is +4 from gen and +1 added,
-        #       need to shift chains left 1 position
+        #       need to shift chains left 1 position after filling the screen
         # TODO need to set up mining simulation based on a (either as initialize or with its own func)
         sm.advance_selfish_chain()
-        self.wait(1)
         sm.advance_selfish_chain()
-        self.wait(1)
         sm.advance_selfish_chain()
-        self.wait(1)
         sm.advance_honest_chain()
-        self.wait(1)
         sm.advance_selfish_chain()
-        self.wait(1)
         sm.advance_honest_chain()
-        self.wait(1)
         sm.advance_honest_chain()
-        self.wait(1)
-
-        # TODO nothing currently happens, need to set up for tie breaking based on a and y
-        # TODO lines do not follow Gen since changing to dynamic handling(only required updating is when selfish wins)
-        # TODO need to automatically resolve on either tiebreaking or reveal(from honest catching up -1)
-        # TODO Gen needs to be the same color as the winning block(this is probably from moving gen back to gen pos, then replacing winning block with gen, this is not required, only label replace is required)
