@@ -16,7 +16,6 @@ class Block:
         if parent_block:
             parent_block.children.append(self)
 
-
     def get_mobjects(self):
         """Return list of Manim mobjects for rendering"""
         return [self.square, self.label]
@@ -139,9 +138,7 @@ class Blockchain:
         self.blocks = []
         self.lines = []
 
-    def add_block(self, label: str, x_position: float, parent_block: 'Block' = None, is_genesis: bool = False):
-        position = (x_position, self.y_offset, 0)
-
+    def add_block(self, label: str, position: tuple, parent_block: 'Block' = None, is_genesis: bool = False):
         # Strict validation: either genesis or must have parent
         if is_genesis and parent_block is not None:
             raise ValueError("Genesis block cannot have a parent")
@@ -156,7 +153,7 @@ class Blockchain:
     def create_line_to_target(self, source_block, target_block):
         """Create line connecting source block to target block - automatically chooses line type"""
         # Automatically detect if target is a genesis block
-        if target_block.is_genesis():
+        if target_block.is_genesis() or target_block.is_next_genesis():
             line = FollowLine(start_mobject=source_block, end_mobject=target_block)
         else:
             line = Line(
@@ -381,6 +378,116 @@ class SelfishMiningSquares:
         self.scene.play(*[AnimationFactory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()])
         self.scene.wait(1)
 
+    ####################
+    # Advance Race / Block Creation
+    # Public API
+    ####################
+
+    def advance_selfish_chain(self):
+        """Create next selfish block with animated fade-in and record in race history"""
+        # Store previous lead before making changes
+        current_race = self.race_history_manager.current_race
+        if current_race:
+            honest_blocks = current_race.final_honest_blocks
+            selfish_blocks = current_race.final_selfish_blocks
+            self.previous_selfish_lead = selfish_blocks - honest_blocks
+
+        self.selfish_blocks_created += 1
+        label = f"s{self.selfish_blocks_created}"
+
+        # Determine parent block
+        if self.selfish_blocks_created == 1:
+            parent = self.genesis
+        else:
+            parent = self.selfish_chain.blocks[-1]
+
+            # Calculate position
+        parent_pos = parent.get_center()
+        x_position = parent_pos[0] + LayoutConfig.BLOCK_HORIZONTAL_SPACING
+
+        # Use chain offset if parent is genesis, otherwise use parent's y-position
+        if parent == self.genesis:
+            y_position = LayoutConfig.SELFISH_Y_OFFSET
+        else:
+            y_position = parent_pos[1]
+
+        position = (x_position, y_position, 0)
+        block = self.selfish_chain.add_block(label, position, parent_block=parent)
+
+        # Create connecting line
+        line = self.selfish_chain.create_line_to_target(block, parent)
+
+        # Prepare animations
+        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
+        if line:
+            animations.append(self.animation_factory.fade_in_and_create(line))
+
+        self.scene.play(*animations)
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+        # Record in race history
+        self.race_history_manager.record_block_creation("selfish")
+
+        # Check for automatic resolution after state change
+        self._check_and_resolve_race()
+
+        return block, line
+
+    def advance_honest_chain(self):
+        """Create next honest block with animated fade-in and record in race history"""
+        # Store previous lead before making changes
+        current_race = self.race_history_manager.current_race
+        if current_race:
+            honest_blocks = current_race.final_honest_blocks
+            selfish_blocks = current_race.final_selfish_blocks
+            self.previous_selfish_lead = selfish_blocks - honest_blocks
+
+        self.honest_blocks_created += 1
+        label = f"h{self.honest_blocks_created}"
+
+        # Determine parent block
+        if self.honest_blocks_created == 1:
+            parent = self.genesis
+        else:
+            parent = self.honest_chain.blocks[-1]
+
+            # Calculate position
+        parent_pos = parent.get_center()
+        x_position = parent_pos[0] + LayoutConfig.BLOCK_HORIZONTAL_SPACING
+
+        # Use chain offset if parent is genesis, otherwise use parent's y-position
+        if parent == self.genesis:
+            y_position = LayoutConfig.HONEST_Y_OFFSET
+        else:
+            y_position = parent_pos[1]
+
+        position = (x_position, y_position, 0)
+        block = self.honest_chain.add_block(label, position, parent_block=parent)
+
+        # Create connecting line
+        line = self.honest_chain.create_line_to_target(block, parent)
+
+        # Prepare animations
+        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
+        if line:
+            animations.append(self.animation_factory.fade_in_and_create(line))
+
+        self.scene.play(*animations)
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+        # Record in race history
+        self.race_history_manager.record_block_creation("honest")
+
+        # Check for automatic resolution after state change
+        self._check_and_resolve_race()
+
+        return block, line
+
+    ####################
+    # Race Resolution Detection
+    # Private
+    ####################
+
     def _check_and_resolve_race(self) -> None:
         """Evaluate race conditions and trigger resolution if needed."""
         if not self.race_history_manager.current_race:
@@ -425,6 +532,148 @@ class SelfishMiningSquares:
             self._trigger_resolution("selfish")
             return True
         return False
+
+    ####################
+    # Race Resolution Execution
+    # Private
+    ####################
+
+    def _trigger_resolution(self, winner: str):
+        """Trigger resolution and update genesis reference"""
+
+        # Get winning block before resolution animations
+        if winner == "honest":
+            winning_block = self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
+        else:
+            winning_block = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
+
+        # Run resolution animation
+        self._animate_race_resolution(winner)
+
+        # Update genesis reference to winning block
+        if winning_block:
+            winning_block.set_as_next_genesis()
+            self._transition_to_next_race(winning_block)
+
+            # Reset for next race
+        self._finalize_race_and_start_next(winner)
+
+    def _animate_race_resolution(self, winner: str):
+        """Unified 4-step animation with proper updater management: move up, move left, fade out, fade in new label"""
+        print(f"_animate_race_resolution called with winner: {winner}")
+        print(f"selfish_chain.blocks: {len(self.selfish_chain.blocks)}")
+        print(f"honest_chain.blocks: {len(self.honest_chain.blocks)}")
+
+        # Determine winning chain and block
+        if winner == "honest":
+            winning_chain = self.honest_chain
+            losing_chain = self.selfish_chain
+        else:
+            winning_chain = self.selfish_chain
+            losing_chain = self.honest_chain
+
+        winning_block = winning_chain.blocks[-1] if winning_chain.blocks else None
+        if not winning_block:
+            return
+
+            # Step 1: Calculate vertical shift based on winning block's ACTUAL current position
+        genesis_y = self.genesis_position[1]
+        winning_block_current_y = winning_block.get_center()[1]  # Get actual y-position
+        vertical_shift = genesis_y - winning_block_current_y  # Calculate shift from current position
+
+        # Collect all mobjects for movement (blocks and lines)
+        all_mobjects = []
+        for block in winning_chain.blocks:
+            all_mobjects.extend(block.get_mobjects())
+        for block in losing_chain.blocks:
+            all_mobjects.extend(block.get_mobjects())
+        all_mobjects.extend(winning_chain.lines)
+        all_mobjects.extend(losing_chain.lines)
+
+        # Collect UpdateFromFunc animations for FollowLines during vertical movement
+        follow_line_animations = []
+        for line in winning_chain.lines + losing_chain.lines:
+            if isinstance(line, FollowLine):
+                follow_line_animations.append(
+                    line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
+
+                # Step 1: Move both chains up by the calculated amount
+        self.scene.play(AnimationGroup(
+            *[mob.animate.shift(UP * vertical_shift) for mob in all_mobjects],
+            *follow_line_animations,
+            run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
+        ))
+
+        # Step 2: Calculate horizontal shift to move winning block to genesis x position
+        winning_block_x = winning_block.get_center()[0]
+        genesis_x = self.genesis_position[0]
+        horizontal_shift = genesis_x - winning_block_x
+
+        # Collect UpdateFromFunc animations for FollowLines during horizontal movement
+        follow_line_animations = []
+        for line in winning_chain.lines + losing_chain.lines:
+            if isinstance(line, FollowLine):
+                follow_line_animations.append(
+                    line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
+
+                # Step 2: Move all mobjects left by the required amount
+        # Note: Genesis block moves horizontally but never vertically
+        self.scene.play(AnimationGroup(
+            *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in all_mobjects],
+            *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in self.genesis.get_mobjects()],
+            *follow_line_animations,
+            run_time=AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME
+        ))
+
+        # Step 3: Fade out everything except winning block square
+        fade_out_mobjects = []
+
+        # All winning chain blocks except winner square
+        for block in winning_chain.blocks[:-1]:
+            fade_out_mobjects.extend(block.get_mobjects())
+        fade_out_mobjects.append(winning_block.label)  # Fade out winner's label too
+
+        # All losing chain blocks
+        for block in losing_chain.blocks:
+            fade_out_mobjects.extend(block.get_mobjects())
+
+            # All lines and old genesis
+        fade_out_mobjects.extend(winning_chain.lines)
+        fade_out_mobjects.extend(losing_chain.lines)
+        fade_out_mobjects.extend(self.genesis.get_mobjects())
+
+        self.scene.play(AnimationGroup(
+            *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
+        ))
+
+        # Step 4: Create and fade in new "Gen" label for winning block
+        new_label = Text("Gen", font_size=24, color=WHITE)
+        new_label.move_to(winning_block.square.get_center())
+
+        self.scene.play(self.animation_factory.fade_in_and_create(new_label))
+
+        # Update the winning block's label reference
+        winning_block.label = new_label
+
+        # Add wait after genesis label is created
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+    def _finalize_race_and_start_next(self, winner: str):
+        """Resolve the current race and start a new one"""
+        self.race_history_manager.resolve_current_race(winner)
+
+        # Reset counters for next race
+        self.honest_blocks_created = 0
+        self.selfish_blocks_created = 0
+        self.previous_selfish_lead = 0
+
+        # Start new race for next sequence
+        self.race_history_manager.start_new_race()
+
+    ####################
+    # Tie Handling
+    # Private
+    ####################
 
     def _reveal_selfish_chain_for_tie(self):
         """Reveal selfish chain by moving both chains to equal y-positions from genesis"""
@@ -471,11 +720,30 @@ class SelfishMiningSquares:
         # Wait to show the tie state
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
+    def _resolve_tiebreak(self):
+        """Simple 50/50 random tiebreak"""
+        import random
+        return "honest" if random.random() < 0.5 else "selfish"
+
+    def _add_tiebreak_winning_block(self, winner: str):
+        """Add the decisive block that breaks the tie"""
+        if winner == "honest":
+            block, line = self.advance_honest_chain()
+        else:
+            block, line = self.advance_selfish_chain()
+
+        return block
+
+    ####################
+    # State Management
+    # Private
+    ####################
+
     def _was_previous_lead_2(self):
         """Check if previous selfish lead was 2"""
         return self.previous_selfish_lead == 2
 
-    def _update_genesis_reference(self, winning_block: 'Block'):
+    def _transition_to_next_race(self, winning_block: 'Block'):
         """Update genesis to point to the winning block and prepare for next race"""
         # Update our genesis reference to point to winning block
         self.genesis = winning_block
@@ -485,263 +753,6 @@ class SelfishMiningSquares:
         self.selfish_chain.lines.clear()
         self.honest_chain.blocks.clear()
         self.honest_chain.lines.clear()
-
-    def _resolve_tiebreak(self):
-        """Simple 50/50 random tiebreak"""
-        import random
-        return "honest" if random.random() < 0.5 else "selfish"
-
-    def _trigger_resolution(self, winner: str):
-        """Trigger resolution and update genesis reference"""
-        print(f"_trigger_resolution called with winner: {winner}")
-
-        # Get winning block before resolution animations
-        if winner == "honest":
-            winning_block = self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
-        else:
-            winning_block = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
-
-        print(f"winning_block found: {winning_block is not None}")
-
-        # Run resolution animation
-        self.resolve_race_winner(winner)
-
-        print("resolve_race_winner completed")
-
-        # Update genesis reference to winning block
-        if winning_block:
-            self._update_genesis_reference(winning_block)
-
-            # Reset for next race
-        self.resolve_race(winner)
-
-    def resolve_race(self, winner: str):
-        """Resolve the current race and start a new one"""
-        self.race_history_manager.resolve_current_race(winner)
-
-        # Reset counters for next race
-        self.honest_blocks_created = 0
-        self.selfish_blocks_created = 0
-        self.previous_selfish_lead = 0
-
-        # Start new race for next sequence
-        self.race_history_manager.start_new_race()
-
-    def _add_tiebreak_winning_block(self, winner: str):
-        """Add the decisive block that breaks the tie"""
-        if winner == "honest":
-            # Add new honest block
-            self.honest_blocks_created += 1
-            label = f"h{self.honest_blocks_created}"
-            parent = self.honest_chain.blocks[-1]
-            position = (-2 + (self.honest_blocks_created - 1) * 2, 0, 0)
-            block = self.honest_chain.add_block(label, position[0], parent_block=parent)
-            line = self.honest_chain.create_line_to_previous(self.honest_blocks_created - 1)
-        else:
-            # Add new selfish block
-            self.selfish_blocks_created += 1
-            label = f"s{self.selfish_blocks_created}"
-            parent = self.selfish_chain.blocks[-1]
-            position = (-2 + (self.selfish_blocks_created - 1) * 2, -1.2, 0)
-            block = self.selfish_chain.add_block(label, position[0], parent_block=parent)
-            line = self.selfish_chain.create_line_to_previous(self.selfish_blocks_created - 1)
-
-            # Animate the new block
-        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
-        if line:
-            animations.append(self.animation_factory.fade_in_and_create(line))
-        self.scene.play(*animations)
-
-        return block
-
-    ####################
-    # Advance Race
-    ####################
-
-    def advance_selfish_chain(self):
-        """Create next selfish block with animated fade-in and record in race history"""
-        # Store previous lead before making changes
-        current_race = self.race_history_manager.current_race
-        if current_race:
-            honest_blocks = current_race.final_honest_blocks
-            selfish_blocks = current_race.final_selfish_blocks
-            self.previous_selfish_lead = selfish_blocks - honest_blocks
-
-        self.selfish_blocks_created += 1
-        label = f"s{self.selfish_blocks_created}"
-
-        # Determine parent block
-        if self.selfish_blocks_created == 1:
-            parent = self.genesis
-        else:
-            parent = self.selfish_chain.blocks[-1]
-
-            # Create block using existing chain method
-        position = (-2 + (self.selfish_blocks_created - 1) * 2, -1.2, 0)
-        block = self.selfish_chain.add_block(label, position[0], parent_block=parent)
-
-        # Create connecting line
-        line = self.selfish_chain.create_line_to_target(block, parent)
-
-        # Prepare animations
-        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
-        if line:
-            animations.append(self.animation_factory.fade_in_and_create(line))
-
-        self.scene.play(*animations)
-
-        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
-
-        # Record in race history
-        self.race_history_manager.record_block_creation("selfish")
-
-        # Check for automatic resolution after state change
-        self._check_and_resolve_race()
-
-        return block, line
-
-    def advance_honest_chain(self):
-        """Create next honest block with animated fade-in and record in race history"""
-        # Store previous lead before making changes
-        current_race = self.race_history_manager.current_race
-        if current_race:
-            honest_blocks = current_race.final_honest_blocks
-            selfish_blocks = current_race.final_selfish_blocks
-            self.previous_selfish_lead = selfish_blocks - honest_blocks
-
-        self.honest_blocks_created += 1
-        label = f"h{self.honest_blocks_created}"
-
-        # Determine parent block
-        if self.honest_blocks_created == 1:
-            parent = self.genesis
-        else:
-            parent = self.honest_chain.blocks[-1]
-
-            # Create block using existing chain method
-        position = (-2 + (self.honest_blocks_created - 1) * 2, 0, 0)
-        block = self.honest_chain.add_block(label, position[0], parent_block=parent)
-
-        # Create connecting line
-        line = self.honest_chain.create_line_to_target(block, parent)
-
-        # Prepare animations
-        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
-        if line:
-            animations.append(self.animation_factory.fade_in_and_create(line))
-
-        self.scene.play(*animations)
-
-        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
-
-        # Record in race history
-        self.race_history_manager.record_block_creation("honest")
-
-        # Check for automatic resolution after state change
-        self._check_and_resolve_race()
-
-        return block, line
-
-    ####################
-    # Handle Chain Resolution
-    ####################
-
-    def resolve_race_winner(self, winner: str):
-        """Unified 4-step animation with proper updater management: move up, move left, fade out, fade in new label"""
-        print(f"resolve_race_winner called with winner: {winner}")
-        print(f"selfish_chain.blocks: {len(self.selfish_chain.blocks)}")
-        print(f"honest_chain.blocks: {len(self.honest_chain.blocks)}")
-
-        # Determine winning chain and block
-        if winner == "honest":
-            winning_chain = self.honest_chain
-            losing_chain = self.selfish_chain
-            winning_y_offset = self.honest_chain.y_offset
-        else:
-            winning_chain = self.selfish_chain
-            losing_chain = self.honest_chain
-            winning_y_offset = self.selfish_chain.y_offset
-
-        winning_block = winning_chain.blocks[-1] if winning_chain.blocks else None
-        if not winning_block:
-            return
-
-        # Step 1: Calculate vertical shift to move winning chain to genesis y position
-        genesis_y = self.genesis_position[1]
-        vertical_shift = genesis_y - winning_y_offset
-
-        # Collect all mobjects for movement (blocks and lines)
-        all_mobjects = []
-        for block in winning_chain.blocks:
-            all_mobjects.extend(block.get_mobjects())
-        for block in losing_chain.blocks:
-            all_mobjects.extend(block.get_mobjects())
-        all_mobjects.extend(winning_chain.lines)
-        all_mobjects.extend(losing_chain.lines)
-
-        # Collect UpdateFromFunc animations for FollowLines during vertical movement
-        follow_line_animations = []
-        for line in winning_chain.lines + losing_chain.lines:
-            if isinstance(line, FollowLine):
-                follow_line_animations.append(line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
-
-                # Step 1: Move both chains up by the same amount
-        self.scene.play(AnimationGroup(
-            *[mob.animate.shift(UP * vertical_shift) for mob in all_mobjects],
-            *follow_line_animations,
-            run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
-        ))
-
-        # Step 2: Calculate horizontal shift to move winning block to genesis x position
-        winning_block_x = winning_block.get_center()[0]
-        genesis_x = self.genesis_position[0]
-        horizontal_shift = genesis_x - winning_block_x
-
-        # Collect UpdateFromFunc animations for FollowLines during horizontal movement
-        follow_line_animations = []
-        for line in winning_chain.lines + losing_chain.lines:
-            if isinstance(line, FollowLine):
-                follow_line_animations.append(line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
-
-        # Step 2: Move all mobjects left by the required amount
-        # Note: Genesis block moves horizontally but never vertically
-        # TODO see if you can just move follow lines will all_mobjects instead of updating animation(if it matters for perf)
-        self.scene.play(AnimationGroup(
-            *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in all_mobjects],
-            *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in self.genesis.get_mobjects()],
-            *follow_line_animations,
-            run_time=AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME
-        ))
-
-        # Step 3: Fade out everything except winning block square
-        fade_out_mobjects = []
-
-        # All winning chain blocks except winner square
-        for block in winning_chain.blocks[:-1]:
-            fade_out_mobjects.extend(block.get_mobjects())
-        fade_out_mobjects.append(winning_block.label)  # Fade out winner's label too
-
-        # All losing chain blocks
-        for block in losing_chain.blocks:
-            fade_out_mobjects.extend(block.get_mobjects())
-
-            # All lines and old genesis
-        fade_out_mobjects.extend(winning_chain.lines)
-        fade_out_mobjects.extend(losing_chain.lines)
-        fade_out_mobjects.extend(self.genesis.get_mobjects())
-
-        self.scene.play(AnimationGroup(
-            *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
-        ))
-
-        # Step 4: Create and fade in new "Gen" label for winning block
-        new_label = Text("Gen", font_size=24, color=WHITE)
-        new_label.move_to(winning_block.square.get_center())
-
-        self.scene.play(self.animation_factory.fade_in_and_create(new_label))
-
-        # Update the winning block's label reference
-        winning_block.label = new_label
 
 class SelfishMiningExample(Scene):
     def construct(self):
@@ -758,3 +769,12 @@ class SelfishMiningExample(Scene):
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
         sm.advance_honest_chain()
+        # first block race over
+        sm.advance_honest_chain()
+        # next race over
+        sm.advance_honest_chain()
+        # next race over
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        # tiebreak over
+
