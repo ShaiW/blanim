@@ -1,12 +1,14 @@
+from manim.typing import Point3DLike
+
 from common import *
 from enum import Enum
 
 class Block:
-    def __init__(self, label: str, position: tuple, color: str, side_length: float = 0.8, parent_block: 'Block' = None):
+    def __init__(self, label: str, position: Point3DLike, block_color: str, parent_block: 'Block' = None) -> None:
         # Visual components (existing Manim objects)
-        self.square = Square(side_length=side_length, color=color, fill_opacity=0)
+        self.square = Square(side_length=LayoutConfig.BLOCK_SIDE_LENGTH, color=block_color, fill_opacity=LayoutConfig.BLOCK_FILL_OPACITY)
         self.square.move_to(position)
-        self.label = Text(label, font_size=24, color=WHITE)
+        self.label = Text(label, font_size=LayoutConfig.LABEL_FONT_SIZE, color=LayoutConfig.LABEL_COLOR)
         self.label.move_to(self.square.get_center())
 
         self.children = []
@@ -100,21 +102,20 @@ class Block:
 
 class FollowLine(Line):
     def __init__(self, start_mobject, end_mobject):
-        # Initialize with proper start/end points
         super().__init__(
             start=start_mobject.get_left(),
             end=end_mobject.get_right(),
-            buff=0.1,
-            color=WHITE,
-            stroke_width=2,
+            buff=LayoutConfig.LINE_BUFFER,
+            color=LayoutConfig.LINE_COLOR,
+            stroke_width=LayoutConfig.LINE_STROKE_WIDTH,
         )
 
         self.start_mobject = start_mobject
         self.end_mobject = end_mobject
-        self._fixed_stroke_width = 2
+        self._fixed_stroke_width = LayoutConfig.LINE_STROKE_WIDTH
 
     def _update_position_and_size(self, mobject):
-        # Same update logic as before
+
         new_start = self.start_mobject.get_left()
         new_end = self.end_mobject.get_right()
         self.set_stroke(width=self._fixed_stroke_width)
@@ -122,7 +123,7 @@ class FollowLine(Line):
 
     def create_update_animation(self, run_time=None):
         """Create an UpdateFromFunc animation for this line"""
-#        from manim.animation.updaters.update import UpdateFromFunc
+
         return UpdateFromFunc(
             self,
             update_function=self._update_position_and_size,
@@ -131,22 +132,21 @@ class FollowLine(Line):
         )
 
 class Blockchain:
-    def __init__(self, chain_type: str, color: str, y_offset: float = 0):
+    def __init__(self, chain_type: str):
         self.chain_type = chain_type
-        self.color = color
-        self.y_offset = y_offset
         self.blocks = []
         self.lines = []
 
-    def add_block(self, label: str, position: tuple, parent_block: 'Block' = None, is_genesis: bool = False):
-        # Strict validation: either genesis or must have parent
-        if is_genesis and parent_block is not None:
-            raise ValueError("Genesis block cannot have a parent")
+    def add_block(self, label: str, position: Point3DLike, parent_block: Block):
+        """Add a block to this chain. Parent block is required."""
+        # Determine color based on chain type
+        block_color = (
+            LayoutConfig.SELFISH_CHAIN_COLOR
+            if self.chain_type == "selfish"
+            else LayoutConfig.HONEST_CHAIN_COLOR
+        )
 
-        if not is_genesis and parent_block is None:
-            raise ValueError("Non-genesis block must have a parent - no default fallback allowed")
-
-        block = Block(label, position, self.color, parent_block=parent_block)
+        block = Block(label, position, block_color, parent_block=parent_block)
         self.blocks.append(block)
         return block
 
@@ -159,7 +159,9 @@ class Blockchain:
             line = Line(
                 start=source_block.get_left(),
                 end=target_block.get_right(),
-                buff=0.1, color=WHITE, stroke_width=2
+                buff=LayoutConfig.LINE_BUFFER,
+                color=LayoutConfig.LINE_COLOR,
+                stroke_width=LayoutConfig.LINE_STROKE_WIDTH
             )
 
         self.lines.append(line)
@@ -173,6 +175,7 @@ class Blockchain:
             all_mobjects.append(line)
         return all_mobjects
 
+# TODO implement an optional state text / narration, currently this is unused
 class StateTextManager:
     def __init__(self):
         self.states = {}
@@ -192,7 +195,7 @@ class StateTextManager:
                 "reveal": "Selfish miner reveals blocks"
             }
             text = state_texts.get(state_name, state_name)
-            state = MathTex(rf"\text{{{text}}}", color=WHITE)
+            state = MathTex(rf"\text{{{text}}}", color=LayoutConfig.STATE_TEXT_COLOR)
             state.to_edge(UP)
             self.states[state_name] = state
         return self.states[state_name]
@@ -266,7 +269,7 @@ class AnimationTimingConfig:
     BLOCK_CREATION_TIME = 1.0
     CHAIN_RESOLUTION_TIME = 2.0
     SHIFT_TO_NEW_GENESIS_TIME = 3.0 #TODO make this dynamic up to 4 blocks(Shorter blockrace needs less time, blockrace max +4 to be moved)
-    INITIAL_SCENE_WAIT_TIME = 3.0
+    INITIAL_SCENE_WAIT_TIME = 3.0 # pause at the beginning before any animations are added
     VERTICAL_SHIFT_TIME = 2.0
     CHAIN_REVEAL_ANIMATION_TIME = 2.0
     FOLLOW_LINE_UPDATE_TIME = 2.0
@@ -285,34 +288,43 @@ class AnimationTimingConfig:
         cls.CHAIN_REVEAL_ANIMATION_TIME *= multiplier
         cls.FOLLOW_LINE_UPDATE_TIME *= multiplier
 
-#TODO START HERE and implement positioning in SelfishMiningSquares
 #TODO doublecheck this AND make positioning dynamic so you can fit target number of blocks to screen based on expected block race length
 class LayoutConfig:
-    # Position constants
-    GENESIS_X_POSITION = -4
-    FIRST_BLOCK_X_POSITION = -2
-    BLOCK_HORIZONTAL_SPACING = 2.0
-#    CHAIN_VERTICAL_SPACING = 1.2
-
-    # Chain offsets
-    HONEST_Y_OFFSET = 0
+    GENESIS_X = -4
+    GENESIS_Y = 0
+    BLOCK_HORIZONTAL_SPACING = 2
+    HONEST_Y_OFFSET = 0 # leave this at 0
     SELFISH_Y_OFFSET = -1.2
 
+    LINE_BUFFER = 0.1
+    LINE_STROKE_WIDTH = 2
+    BLOCK_SIDE_LENGTH = 0.8
+    LABEL_FONT_SIZE = 24
+    BLOCK_FILL_OPACITY = 0
+
+    LABEL_COLOR = WHITE
+    LINE_COLOR = WHITE
+    SELFISH_CHAIN_COLOR = "#FF0000" # PURE_RED
+    HONEST_CHAIN_COLOR = "#0000FF" # PURE_BLUE
+    GENESIS_BLOCK_COLOR = "#0000FF" # PURE_BLUE
+    STATE_TEXT_COLOR = WHITE
+
+    SELFISH_BLOCK_OPACITY = 0.5
+
     @staticmethod
-    def calculate_block_position(chain_type: str, block_number: int, parent_block: 'Block' = None) -> tuple:
-        """Calculate position for a new block based on chain type and parent position"""
+    def get_tie_chain_spacing() -> float:
+        """Calculate tie chain spacing as half the distance between honest and selfish chains"""
+        return abs(LayoutConfig.SELFISH_Y_OFFSET - LayoutConfig.HONEST_Y_OFFSET) / 2
 
-        if parent_block:
-            # Position relative to parent
-            parent_pos = parent_block.get_center()
-            x_position = parent_pos[0] + LayoutConfig.BLOCK_HORIZONTAL_SPACING
-            y_position = parent_pos[1]  # Same y as parent for chain continuation
-        else:
-            # Default positioning for first block in chain
-            x_position = LayoutConfig.FIRST_BLOCK_X_POSITION + (block_number - 1) * LayoutConfig.BLOCK_HORIZONTAL_SPACING
-            y_position = LayoutConfig.SELFISH_Y_OFFSET if chain_type == "selfish" else LayoutConfig.HONEST_Y_OFFSET
+    @staticmethod
+    def get_tie_positions(genesis_y: float) -> tuple[float, float]:
+        """Calculate both honest and selfish tie positions
 
-        return x_position, y_position, 0
+        Returns:
+            tuple[float, float]: (honest_y, selfish_y) positions for tie state
+        """
+        spacing = LayoutConfig.get_tie_chain_spacing()
+        return (genesis_y + spacing, genesis_y - spacing)
 
 class SelfishMiningConfig:
     HONEST_AHEAD_THRESHOLD = -1
@@ -345,11 +357,9 @@ class SelfishMiningSquares:
     def __init__(self, scene):
         self.scene = scene
 
-        self.honest_y_offset = 0
-        self.selfish_y_offset = -1.2
-        self.genesis_position = (-4, self.honest_y_offset, 0) # (-4, 0, 0) Selected to center chain visually on screen AND keep focus on individual races/states (x block spacing is 2)
+        self.genesis_position = (LayoutConfig.GENESIS_X, LayoutConfig.GENESIS_Y, 0)
 
-        self.selfish_miner_block_opacity = 0.5 #TODO ensure this is used for pre-reveal blocks
+        self.selfish_miner_block_opacity = LayoutConfig.SELFISH_BLOCK_OPACITY #TODO ensure this is used for pre-reveal blocks
 
         # TODO this might be able to replace state manager (or the other way around)
         self.selfish_blocks_created = 0
@@ -363,20 +373,20 @@ class SelfishMiningSquares:
         self.race_history_manager = RaceHistoryManager()
 
         # Create blockchains
-        self.selfish_chain = Blockchain("selfish", PURE_RED, self.selfish_y_offset)
-        self.honest_chain = Blockchain("honest", "#0000FF", self.honest_y_offset)
+        self.selfish_chain = Blockchain("selfish")
+        self.honest_chain = Blockchain("honest")
 
-        # Create genesis block
-        self.genesis = Block("Gen", self.genesis_position, "#0000FF")
+        # Create Genesis block
+        self.genesis = Block("Gen", self.genesis_position, LayoutConfig.GENESIS_BLOCK_COLOR)
 
         # Start the first race
         self.race_history_manager.start_new_race()
 
-        self.scene.wait(3)
+        self.scene.wait(AnimationTimingConfig.INITIAL_SCENE_WAIT_TIME)
 
         # Add genesis block to scene
         self.scene.play(*[AnimationFactory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()])
-        self.scene.wait(1)
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     ####################
     # Advance Race / Block Creation
@@ -385,89 +395,81 @@ class SelfishMiningSquares:
 
     def advance_selfish_chain(self):
         """Create next selfish block with animated fade-in and record in race history"""
-        # Store previous lead before making changes
-        current_race = self.race_history_manager.current_race
-        if current_race:
-            honest_blocks = current_race.final_honest_blocks
-            selfish_blocks = current_race.final_selfish_blocks
-            self.previous_selfish_lead = selfish_blocks - honest_blocks
+        self._store_previous_lead()
 
         self.selfish_blocks_created += 1
         label = f"s{self.selfish_blocks_created}"
 
-        # Determine parent block
-        if self.selfish_blocks_created == 1:
-            parent = self.genesis
-        else:
-            parent = self.selfish_chain.blocks[-1]
+        parent = self._get_parent_block("selfish")
+        position = self._calculate_block_position(parent, "selfish")
 
-            # Calculate position
-        parent_pos = parent.get_center()
-        x_position = parent_pos[0] + LayoutConfig.BLOCK_HORIZONTAL_SPACING
-
-        # Use chain offset if parent is genesis, otherwise use parent's y-position
-        if parent == self.genesis:
-            y_position = LayoutConfig.SELFISH_Y_OFFSET
-        else:
-            y_position = parent_pos[1]
-
-        position = (x_position, y_position, 0)
         block = self.selfish_chain.add_block(label, position, parent_block=parent)
-
-        # Create connecting line
         line = self.selfish_chain.create_line_to_target(block, parent)
 
-        # Prepare animations
-        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
-        if line:
-            animations.append(self.animation_factory.fade_in_and_create(line))
+        self._animate_block_and_line(block, line)
 
-        self.scene.play(*animations)
-        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
-
-        # Record in race history
         self.race_history_manager.record_block_creation("selfish")
-
-        # Check for automatic resolution after state change
         self._check_and_resolve_race()
 
         return block, line
 
     def advance_honest_chain(self):
         """Create next honest block with animated fade-in and record in race history"""
-        # Store previous lead before making changes
+        self._store_previous_lead()
+
+        self.honest_blocks_created += 1
+        label = f"h{self.honest_blocks_created}"
+
+        parent = self._get_parent_block("honest")
+        position = self._calculate_block_position(parent, "honest")
+
+        block = self.honest_chain.add_block(label, position, parent_block=parent)
+        line = self.honest_chain.create_line_to_target(block, parent)
+
+        self._animate_block_and_line(block, line)
+
+        self.race_history_manager.record_block_creation("honest")
+        self._check_and_resolve_race()
+
+        return block, line
+
+    ####################
+    # Helper Methods
+    # Private
+    ####################
+
+    def _store_previous_lead(self) -> None:
+        """Store the previous selfish lead before making changes"""
         current_race = self.race_history_manager.current_race
         if current_race:
             honest_blocks = current_race.final_honest_blocks
             selfish_blocks = current_race.final_selfish_blocks
             self.previous_selfish_lead = selfish_blocks - honest_blocks
 
-        self.honest_blocks_created += 1
-        label = f"h{self.honest_blocks_created}"
+    def _get_parent_block(self, chain_type: str) -> Block:
+        """Get parent block for next block in chain"""
+        blocks_created = self.selfish_blocks_created if chain_type == "selfish" else self.honest_blocks_created
+        chain = self.selfish_chain if chain_type == "selfish" else self.honest_chain
 
-        # Determine parent block
-        if self.honest_blocks_created == 1:
-            parent = self.genesis
+        if blocks_created == 1:
+            return self.genesis
         else:
-            parent = self.honest_chain.blocks[-1]
+            return chain.blocks[-1]
 
-            # Calculate position
+    def _calculate_block_position(self, parent: Block, chain_type: str) -> tuple[float, float, float]:
+        """Calculate position for new block based on parent and chain type"""
         parent_pos = parent.get_center()
         x_position = parent_pos[0] + LayoutConfig.BLOCK_HORIZONTAL_SPACING
 
-        # Use chain offset if parent is genesis, otherwise use parent's y-position
         if parent == self.genesis:
-            y_position = LayoutConfig.HONEST_Y_OFFSET
+            y_position = LayoutConfig.SELFISH_Y_OFFSET if chain_type == "selfish" else LayoutConfig.HONEST_Y_OFFSET
         else:
             y_position = parent_pos[1]
 
-        position = (x_position, y_position, 0)
-        block = self.honest_chain.add_block(label, position, parent_block=parent)
+        return (x_position, y_position, 0)
 
-        # Create connecting line
-        line = self.honest_chain.create_line_to_target(block, parent)
-
-        # Prepare animations
+    def _animate_block_and_line(self, block: Block, line: Line | FollowLine) -> None:
+        """Animate block and line creation"""
         animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
         if line:
             animations.append(self.animation_factory.fade_in_and_create(line))
@@ -475,13 +477,35 @@ class SelfishMiningSquares:
         self.scene.play(*animations)
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
-        # Record in race history
-        self.race_history_manager.record_block_creation("honest")
+    def _collect_follow_line_animations(self, chains: list[Blockchain], run_time: float) -> list:
+        return [
+            line.create_update_animation(run_time=run_time)
+            for chain in chains
+            for line in chain.lines
+            if isinstance(line, FollowLine)
+        ]
 
-        # Check for automatic resolution after state change
-        self._check_and_resolve_race()
+    def _collect_chain_mobjects(self, chain: Blockchain) -> list:
+        """Collect all mobjects (blocks and lines) from a chain"""
+        mobjects = []
+        for block in chain.blocks:
+            mobjects.extend(block.get_mobjects())
+        mobjects.extend(chain.lines)
+        return mobjects
 
-        return block, line
+    def _get_winning_and_losing_chains(self, winner: str) -> tuple[Blockchain, Blockchain]:
+        """Get winning and losing chains based on winner"""
+        if winner == "honest":
+            return self.honest_chain, self.selfish_chain
+        else:
+            return self.selfish_chain, self.honest_chain
+
+    def _get_winning_block(self, winner: str) -> Block | None:
+        """Get the winning block based on winner"""
+        if winner == "honest":
+            return self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
+        else:
+            return self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
 
     ####################
     # Race Resolution Detection
@@ -528,7 +552,7 @@ class SelfishMiningSquares:
         return False
 
     def _check_selfish_strategy_trigger(self, selfish_lead: int, honest_blocks: int) -> bool:
-        if selfish_lead == 1 and self._was_previous_lead_2():
+        if selfish_lead == 1 and self._had_selfish_lead_of_exactly_two():
             self._trigger_resolution("selfish")
             return True
         return False
@@ -541,11 +565,8 @@ class SelfishMiningSquares:
     def _trigger_resolution(self, winner: str):
         """Trigger resolution and update genesis reference"""
 
-        # Get winning block before resolution animations
-        if winner == "honest":
-            winning_block = self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
-        else:
-            winning_block = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
+        # Use helper method instead of inline logic
+        winning_block = self._get_winning_block(winner)
 
         # Run resolution animation
         self._animate_race_resolution(winner)
@@ -560,44 +581,31 @@ class SelfishMiningSquares:
 
     def _animate_race_resolution(self, winner: str):
         """Unified 4-step animation with proper updater management: move up, move left, fade out, fade in new label"""
-        print(f"_animate_race_resolution called with winner: {winner}")
-        print(f"selfish_chain.blocks: {len(self.selfish_chain.blocks)}")
-        print(f"honest_chain.blocks: {len(self.honest_chain.blocks)}")
 
-        # Determine winning chain and block
-        if winner == "honest":
-            winning_chain = self.honest_chain
-            losing_chain = self.selfish_chain
-        else:
-            winning_chain = self.selfish_chain
-            losing_chain = self.honest_chain
-
+        # Use helper method instead of inline logic
+        winning_chain, losing_chain = self._get_winning_and_losing_chains(winner)
         winning_block = winning_chain.blocks[-1] if winning_chain.blocks else None
+
         if not winning_block:
             return
 
-            # Step 1: Calculate vertical shift based on winning block's ACTUAL current position
+        # Step 1: Calculate vertical shift based on winning block's ACTUAL current position
         genesis_y = self.genesis_position[1]
-        winning_block_current_y = winning_block.get_center()[1]  # Get actual y-position
-        vertical_shift = genesis_y - winning_block_current_y  # Calculate shift from current position
+        winning_block_current_y = winning_block.get_center()[1]
+        vertical_shift = genesis_y - winning_block_current_y
 
-        # Collect all mobjects for movement (blocks and lines)
+        # Use helper methods to collect mobjects
         all_mobjects = []
-        for block in winning_chain.blocks:
-            all_mobjects.extend(block.get_mobjects())
-        for block in losing_chain.blocks:
-            all_mobjects.extend(block.get_mobjects())
-        all_mobjects.extend(winning_chain.lines)
-        all_mobjects.extend(losing_chain.lines)
+        all_mobjects.extend(self._collect_chain_mobjects(winning_chain))
+        all_mobjects.extend(self._collect_chain_mobjects(losing_chain))
 
-        # Collect UpdateFromFunc animations for FollowLines during vertical movement
-        follow_line_animations = []
-        for line in winning_chain.lines + losing_chain.lines:
-            if isinstance(line, FollowLine):
-                follow_line_animations.append(
-                    line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
+        # Use helper method for FollowLine animations
+        follow_line_animations = self._collect_follow_line_animations(
+            [winning_chain, losing_chain],
+            AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME
+        )
 
-                # Step 1: Move both chains up by the calculated amount
+        # Step 1: Move both chains up by the calculated amount
         self.scene.play(AnimationGroup(
             *[mob.animate.shift(UP * vertical_shift) for mob in all_mobjects],
             *follow_line_animations,
@@ -609,15 +617,13 @@ class SelfishMiningSquares:
         genesis_x = self.genesis_position[0]
         horizontal_shift = genesis_x - winning_block_x
 
-        # Collect UpdateFromFunc animations for FollowLines during horizontal movement
-        follow_line_animations = []
-        for line in winning_chain.lines + losing_chain.lines:
-            if isinstance(line, FollowLine):
-                follow_line_animations.append(
-                    line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
+        # Collect FollowLine animations again for horizontal movement
+        follow_line_animations = self._collect_follow_line_animations(
+            [winning_chain, losing_chain],
+            AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME
+        )
 
-                # Step 2: Move all mobjects left by the required amount
-        # Note: Genesis block moves horizontally but never vertically
+        # Step 2: Move all mobjects left by the required amount
         self.scene.play(AnimationGroup(
             *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in all_mobjects],
             *[mob.animate.shift(LEFT * abs(horizontal_shift)) for mob in self.genesis.get_mobjects()],
@@ -631,7 +637,7 @@ class SelfishMiningSquares:
         # All winning chain blocks except winner square
         for block in winning_chain.blocks[:-1]:
             fade_out_mobjects.extend(block.get_mobjects())
-        fade_out_mobjects.append(winning_block.label)  # Fade out winner's label too
+        fade_out_mobjects.append(winning_block.label)
 
         # All losing chain blocks
         for block in losing_chain.blocks:
@@ -647,7 +653,7 @@ class SelfishMiningSquares:
         ))
 
         # Step 4: Create and fade in new "Gen" label for winning block
-        new_label = Text("Gen", font_size=24, color=WHITE)
+        new_label = Text("Gen", font_size=LayoutConfig.LABEL_FONT_SIZE, color=LayoutConfig.LABEL_COLOR)
         new_label.move_to(winning_block.square.get_center())
 
         self.scene.play(self.animation_factory.fade_in_and_create(new_label))
@@ -680,42 +686,34 @@ class SelfishMiningSquares:
         if not self.selfish_chain.blocks or not self.honest_chain.blocks:
             return
 
-            # Calculate target y-positions (equal distance from genesis)
+            # Calculate target y-positions using config - now returns both positions as a tuple
         genesis_y = self.genesis_position[1]
-        chain_spacing = 0.6  # Half the normal spacing for visual balance
+        honest_target_y, selfish_target_y = LayoutConfig.get_tie_positions(genesis_y)
 
-        honest_target_y = genesis_y + chain_spacing
-        selfish_target_y = genesis_y - chain_spacing
+        # Calculate shifts based on actual current block positions
+        honest_current_y = self.honest_chain.blocks[0].get_center()[1]
+        selfish_current_y = self.selfish_chain.blocks[0].get_center()[1]
 
-        # Calculate shifts needed
-        honest_shift = honest_target_y - self.honest_chain.y_offset
-        selfish_shift = selfish_target_y - self.selfish_chain.y_offset
+        honest_shift = honest_target_y - honest_current_y
+        selfish_shift = selfish_target_y - selfish_current_y
 
-        # Collect all mobjects for movement
-        honest_mobjects = []
-        for block in self.honest_chain.blocks:
-            honest_mobjects.extend(block.get_mobjects())
-        honest_mobjects.extend(self.honest_chain.lines)
+        # Collect all mobjects from both chains
+        honest_mobjects = self._collect_chain_mobjects(self.honest_chain)
+        selfish_mobjects = self._collect_chain_mobjects(self.selfish_chain)
 
-        selfish_mobjects = []
-        for block in self.selfish_chain.blocks:
-            selfish_mobjects.extend(block.get_mobjects())
-        selfish_mobjects.extend(self.selfish_chain.lines)
+        # Collect FollowLine animations
+        follow_line_animations = self._collect_follow_line_animations(
+            [self.honest_chain, self.selfish_chain],
+            AnimationTimingConfig.VERTICAL_SHIFT_TIME
+        )
 
-        # Collect UpdateFromFunc animations for FollowLines
-        follow_line_animations = []
-        for line in self.honest_chain.lines + self.selfish_chain.lines:
-            if isinstance(line, FollowLine):
-                follow_line_animations.append(line.create_update_animation(run_time=AnimationTimingConfig.FOLLOW_LINE_UPDATE_TIME))
-
-        # Animate both chains moving to their new positions
-        # TODO for tie change timing to half normal vertical shift
-        self.scene.play(AnimationGroup(
+        # Animate vertical shift for both chains simultaneously
+        self.scene.play(
             *[mob.animate.shift(UP * honest_shift) for mob in honest_mobjects],
             *[mob.animate.shift(UP * selfish_shift) for mob in selfish_mobjects],
             *follow_line_animations,
             run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
-        ))
+        )
 
         # Wait to show the tie state
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
@@ -739,7 +737,7 @@ class SelfishMiningSquares:
     # Private
     ####################
 
-    def _was_previous_lead_2(self):
+    def _had_selfish_lead_of_exactly_two(self) -> bool:
         """Check if previous selfish lead was 2"""
         return self.previous_selfish_lead == 2
 
@@ -777,4 +775,8 @@ class SelfishMiningExample(Scene):
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
         # tiebreak over
-
+        sm.advance_selfish_chain()
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        # too close, reveal
+        self.wait(1)
