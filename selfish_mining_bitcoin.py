@@ -1,5 +1,6 @@
 from manim.typing import Point3DLike
 from common import *
+import random
 
 # README: !!!Do NOT store lines in blocks!!! (slows animation creation down to a crawl) Creates circular references?
 
@@ -162,63 +163,6 @@ class StateTextManager:
             self.states[state_name] = state
         return self.states[state_name]
 
-class RaceState:
-    def __init__(self):
-        self.final_honest_blocks = 0
-        self.final_selfish_blocks = 0
-        self.winner = None  # "honest" or "selfish"
-        self.is_resolved = False
-
-    def record_block(self, miner_type: str):
-        """Record a block being created in the current race"""
-        if miner_type == "honest":
-            self.final_honest_blocks += 1
-        elif miner_type == "selfish":
-            self.final_selfish_blocks += 1
-
-    def resolve_race(self, winner: str):
-        """Mark the race as resolved with winner"""
-        self.winner = winner
-        self.is_resolved = True
-
-    def get_race_summary(self) -> dict:
-        """Get complete summary of the race state"""
-        return {
-            "final_state": {
-                "honest_blocks": self.final_honest_blocks,
-                "selfish_blocks": self.final_selfish_blocks
-            },
-            "winner": self.winner,
-            "is_resolved": self.is_resolved
-        }
-
-class RaceHistoryManager:
-    def __init__(self):
-        self.race_history = []
-        self.current_race = None
-
-    def start_new_race(self) -> RaceState:
-        """Start tracking a new race - always starts from genesis"""
-        race = RaceState()
-        self.current_race = race
-        self.race_history.append(race)
-        return race
-
-    def record_block_creation(self, miner_type: str):
-        """Record a block being created in the current race"""
-        if self.current_race and not self.current_race.is_resolved:
-            self.current_race.record_block(miner_type)
-
-    def resolve_current_race(self, winner: str):
-        """Resolve the current race"""
-        if self.current_race:
-            self.current_race.resolve_race(winner)
-            self.current_race = None
-
-    def get_all_race_history(self) -> list[dict]:
-        """Get complete history of all races"""
-        return [race.get_race_summary() for race in self.race_history]
-
 class AnimationTimingConfig:
     """Centralized animation timing configuration"""
 
@@ -304,14 +248,19 @@ class AnimationFactory:
 
 # passing scene to class to bypass limitations of a single play call (last animation on a mobject will override previous)
 class SelfishMiningSquares:
-    def __init__(self, scene):
+    def __init__(self, scene, alpha=0.3, gamma=0.5):
         self.scene = scene
+
+        self.alpha = alpha
+        self.gamma = gamma
+
+        self.current_race_number = 0
+        self.race_history = []  # List of dicts with race results
 
         self.genesis_position = (LayoutConfig.GENESIS_X, LayoutConfig.GENESIS_Y, 0)
 
-        self.selfish_miner_block_opacity = LayoutConfig.SELFISH_BLOCK_OPACITY #TODO ensure this is used for pre-reveal blocks
+        self.selfish_miner_block_opacity = LayoutConfig.SELFISH_BLOCK_OPACITY
 
-        # TODO this might be able to replace state manager (or the other way around)
         self.selfish_blocks_created = 0
         self.honest_blocks_created = 0
         self.previous_selfish_lead = 0
@@ -319,8 +268,6 @@ class SelfishMiningSquares:
         # Initialize managers
         self.state_manager = StateTextManager()
         self.animation_factory = AnimationFactory()
-        # Race history for recreating full chain later, if desired
-        self.race_history_manager = RaceHistoryManager()
 
         # Create blockchains
         self.selfish_chain = ChainBranch("selfish")
@@ -329,9 +276,6 @@ class SelfishMiningSquares:
         # Create Genesis block
         self.genesis = Block("Gen", self.genesis_position, LayoutConfig.GENESIS_BLOCK_COLOR)
 
-        # Start the first race
-        self.race_history_manager.start_new_race()
-
         self.scene.wait(AnimationTimingConfig.INITIAL_SCENE_WAIT_TIME)
 
         # Add genesis block to scene
@@ -339,12 +283,75 @@ class SelfishMiningSquares:
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     ####################
+    # Probabilistic Block Generation
+    # Public API
+    ####################
+
+    def generate_next_block_probabilistic(self):
+        """Generate next block based on alpha and gamma probabilities"""
+        honest_blocks, selfish_blocks, selfish_lead, is_tied = self._get_race_state()
+
+        if is_tied:
+            decision = self._decide_next_block_in_tie()
+
+            if decision == "selfish_on_selfish":
+                self.advance_selfish_chain()
+            elif decision == "honest_on_honest":
+                self.advance_honest_chain()
+            else:  # "honest_on_selfish"
+                self.advance_honest_on_selfish_chain()
+        else:
+            decision = self._decide_next_block_normal()
+
+            if decision == "selfish":
+                self.advance_selfish_chain()
+            else:
+                self.advance_honest_chain()
+
+    ####################
+    # Probabilistic Decision Helpers
+    # Private
+    ####################
+
+    def _get_race_state(self) -> tuple[int, int, int, bool]:
+        """Get current race state from chain lengths"""
+        honest_len = len(self.honest_chain.blocks)
+        selfish_len = len(self.selfish_chain.blocks)
+        selfish_lead = selfish_len - honest_len
+        is_tied = (selfish_lead == 0 and honest_len > 0)
+        return honest_len, selfish_len, selfish_lead, is_tied
+
+    def _decide_next_block_in_tie(self) -> str:
+        """Decide which type of block to create during tie state
+
+        Returns:
+            str: One of "selfish_on_selfish", "honest_on_honest", "honest_on_selfish"
+        """
+        rand = random.random()
+        h = 1 - self.alpha
+
+        if rand < self.alpha:
+            return "selfish_on_selfish"
+        elif rand < self.alpha + h * (1 - self.gamma):
+            return "honest_on_honest"
+        else:
+            return "honest_on_selfish"
+
+    def _decide_next_block_normal(self) -> str:
+        """Decide which type of block to create during normal (non-tie) state
+
+        Returns:
+            str: Either "selfish" or "honest"
+        """
+        return "selfish" if random.random() < self.alpha else "honest"
+
+    ####################
     # Advance Race / Block Creation
     # Public API
     ####################
 
     def advance_selfish_chain(self):
-        """Create next selfish block with animated fade-in and record in race history"""
+        """Create next selfish block with animated fade-in"""
         self._store_previous_lead()
 
         self.selfish_blocks_created += 1
@@ -358,11 +365,10 @@ class SelfishMiningSquares:
 
         self._animate_block_and_line(block, line)
 
-        self.race_history_manager.record_block_creation("selfish")
         self._check_if_race_continues()
 
     def advance_honest_chain(self):
-        """Create next honest block with animated fade-in and record in race history"""
+        """Create next honest block with animated fade-in"""
         self._store_previous_lead()
 
         self.honest_blocks_created += 1
@@ -376,8 +382,51 @@ class SelfishMiningSquares:
 
         self._animate_block_and_line(block, line)
 
-        self.race_history_manager.record_block_creation("honest")
         self._check_if_race_continues()
+
+    # TODO determine if this should be public or private (ties handled automatically, might have a use for manually breaking ties)
+    def advance_honest_on_selfish_chain(self):
+        """Create honest block on selfish chain (honest miner builds on selfish parent)"""
+        self._store_previous_lead()
+
+        self.honest_blocks_created += 1
+        label = f"h{self.honest_blocks_created}"
+
+        parent = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else self.genesis
+        position = self._calculate_block_position(parent, "selfish")
+
+        block_color = LayoutConfig.HONEST_CHAIN_COLOR
+        block = Block(label, position, block_color, parent_block=parent)
+        self.selfish_chain.blocks.append(block)
+
+        line = self.selfish_chain.create_line_to_target(block, parent)
+
+        self._animate_block_and_line(block, line)
+
+        self._check_if_race_continues()
+
+    ####################
+    # Block Race Tracking
+    # Private
+    ####################
+
+    def _get_current_chain_lengths(self) -> tuple[int, int, int]:
+        """Get current chain lengths directly from the chain objects"""
+        honest_len = len(self.honest_chain.blocks)
+        selfish_len = len(self.selfish_chain.blocks)
+        selfish_lead = selfish_len - honest_len
+        return honest_len, selfish_len, selfish_lead
+
+    def _record_race_result(self, winner: str):
+        """Record race result in simple dict format"""
+        honest_len, selfish_len, _ = self._get_current_chain_lengths()
+        self.race_history.append({
+            'race_number': self.current_race_number,
+            'winner': winner,
+            'honest_blocks': honest_len,
+            'selfish_blocks': selfish_len
+        })
+        self.current_race_number += 1
 
     ####################
     # Helper Methods
@@ -386,11 +435,7 @@ class SelfishMiningSquares:
 
     def _store_previous_lead(self) -> None:
         """Store the previous selfish lead before making changes"""
-        current_race = self.race_history_manager.current_race
-        if current_race:
-            honest_blocks = current_race.final_honest_blocks
-            selfish_blocks = current_race.final_selfish_blocks
-            self.previous_selfish_lead = selfish_blocks - honest_blocks
+        _, _, self.previous_selfish_lead = self._get_current_chain_lengths()
 
     def _get_parent_block(self, chain_type: str) -> Block:
         """Get parent block for next block in chain"""
@@ -453,13 +498,8 @@ class SelfishMiningSquares:
 
     def _check_if_race_continues(self) -> None:
         """Evaluate race conditions and trigger resolution if needed."""
-        if not self.race_history_manager.current_race:
-            return
 
-        current_race = self.race_history_manager.current_race
-        honest_blocks = current_race.final_honest_blocks
-        selfish_blocks = current_race.final_selfish_blocks
-        selfish_lead = selfish_blocks - honest_blocks
+        honest_len, selfish_len, selfish_lead = self._get_current_chain_lengths()
 
         # Define resolution strategies in priority order
         strategies = [
@@ -469,10 +509,8 @@ class SelfishMiningSquares:
         ]
 
         for strategy in strategies:
-            if strategy(selfish_lead, honest_blocks):
-                return  # Strategy handled the resolution
-
-        # If no strategy triggered, race continues
+            if strategy(selfish_lead, honest_len):
+                return
 
     def _check_does_honest_win(self, selfish_lead: int) -> bool:
         if selfish_lead == -1:
@@ -483,10 +521,26 @@ class SelfishMiningSquares:
     def _check_if_tied(self, selfish_lead: int, honest_blocks: int) -> bool:
         if selfish_lead == 0 and honest_blocks > 0:
             self._reveal_selfish_chain_for_tie()
-            winner = self._resolve_tiebreak()
-            self._add_tiebreak_winning_block(winner)
             self.scene.wait(AnimationTimingConfig.WAIT_TIME)
-            self._trigger_resolution(winner)
+
+            decision = self._decide_next_block_in_tie()
+
+            if decision == "selfish_on_selfish":
+                self.advance_selfish_chain()
+            elif decision == "honest_on_honest":
+                self.advance_honest_chain()
+            else:
+                self.advance_honest_on_selfish_chain()
+
+            self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+            _, _, new_lead = self._get_current_chain_lengths()
+
+            if new_lead > 0:
+                self._trigger_resolution("selfish")
+            elif new_lead < 0:
+                self._trigger_resolution("honest")
+
             return True
         return False
 
@@ -609,16 +663,13 @@ class SelfishMiningSquares:
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     def _finalize_race_and_start_next(self, winner: str):
-        """Resolve the current race and start a new one"""
-        self.race_history_manager.resolve_current_race(winner)
+        """Record result and reset for next race"""
+        self._record_race_result(winner)
 
-        # Reset counters for next race
+        # Reset counters
         self.honest_blocks_created = 0
         self.selfish_blocks_created = 0
         self.previous_selfish_lead = 0
-
-        # Start new race for next sequence
-        self.race_history_manager.start_new_race()
 
     ####################
     # Tie Handling
@@ -662,19 +713,6 @@ class SelfishMiningSquares:
         # Wait to show the tie state
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
-    @staticmethod
-    def _resolve_tiebreak():
-        """Simple 50/50 random tiebreak"""
-        import random
-        return "honest" if random.random() < 0.5 else "selfish"
-
-    def _add_tiebreak_winning_block(self, winner: str):
-        """Add the decisive block that breaks the tie"""
-        if winner == "honest":
-            self.advance_honest_chain()
-        else:
-            self.advance_selfish_chain()
-
     ####################
     # State Management
     # Private
@@ -694,14 +732,20 @@ class SelfishMiningSquares:
         self.honest_chain.blocks.clear()
         self.honest_chain.lines.clear()
 
-class SelfishMiningExample(Scene):
+class SelfishMiningAutomaticExample(Scene):
     def construct(self):
         # Initialize the mining system
-        sm = SelfishMiningSquares(self)
+        sm = SelfishMiningSquares(self, alpha=0.40, gamma=0.15)
+        for _ in range(20):  # Generate 30 blocks
+            sm.generate_next_block_probabilistic()
+
+class SelfishMiningManualExample(Scene):
+    def construct(self):
+        # Initialize the mining system
+        sm = SelfishMiningSquares(self, 0.30, 0.1)
 
         # TODO previous version limited to +4 from Gen, can change but any time selfish is +4 from gen and +1 added,
         #       need to shift chains left 1 position after filling the screen
-        # TODO need to set up mining simulation based on a (either as initialize or with its own func)
         sm.advance_selfish_chain()
         sm.advance_selfish_chain()
         sm.advance_selfish_chain()
@@ -716,9 +760,40 @@ class SelfishMiningExample(Scene):
         # next race over
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
-        # tiebreak over
+        # tiebreak handled automatically
         sm.advance_selfish_chain()
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
         # too close, reveal
         self.wait(1)
+
+class SelfishMiningManualTiesExample(Scene):
+    def construct(self):
+        # Ties handled automatically
+        sm = SelfishMiningSquares(self, 0.33, 0.5) # gives 1/3 chance to each outcome
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
