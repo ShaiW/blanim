@@ -138,30 +138,46 @@ class ChainBranch:
         mobjects.extend(self.lines)
         return mobjects
 
-# TODO implement an optional state text / narration, currently this is unused
+# TODO implement an optional state text / narration, currently this is broken
 class StateTextManager:
     def __init__(self):
         self.states = {}
+        self.transitions = {}
+
+        self.state_text_position = DOWN
+        self.caption_text_position = UP
 
     def get_state(self, state_name: str):
+        """Get or create state text dynamically based on state name"""
         if state_name not in self.states:
-            state_texts = {
-                "selfish_mining": "Selfish Mining in Bitcoin",
-                "state0": "State 0",
-                "state0prime": "State 0'",
-                "state1": "State 1",
-                "state2": "State 2",
-                "state3": "State 3",
-                "state4": "State 4",
-                "honest_wins": "Honest miner finds a block",
-                "selfish_wins": "Selfish miner finds a block",
-                "reveal": "Selfish miner reveals blocks"
-            }
-            text = state_texts.get(state_name, state_name)
+            # Parse the state name to generate appropriate text
+            if state_name == "0":
+                text = "State 0"
+            elif state_name == "0prime":
+                text = "State 0'"
+            elif state_name.isdigit():
+                # For any numeric state (1, 2, 3, ..., infinity)
+                text = f"State {state_name}"
+            else:
+                # Fallback for any other state names
+                text = state_name
+
             state = MathTex(rf"\text{{{text}}}", color=LayoutConfig.STATE_TEXT_COLOR)
-            state.to_edge(UP)
+            state.to_edge(self.state_text_position)
             self.states[state_name] = state
         return self.states[state_name]
+
+    def get_transition(self, from_state: str, to_state: str):
+        """Get or create transition text (e.g., '1→0'', '2→0')"""
+        transition_key = f"{from_state}→{to_state}"
+        if transition_key not in self.transitions:
+            transition = MathTex(
+                rf"\text{{{from_state}}} \rightarrow \text{{{to_state}}}",
+                color=LayoutConfig.STATE_TEXT_COLOR
+            )
+            transition.to_edge(self.state_text_position)
+            self.transitions[transition_key] = transition
+        return self.transitions[transition_key]
 
 class AnimationTimingConfig:
     """Centralized animation timing configuration"""
@@ -209,6 +225,8 @@ class LayoutConfig:
     BLOCK_FILL_OPACITY = 0
 
     LABEL_FONT_SIZE = 24
+    STATE_FONT_SIZE = 24
+    CAPTION_FONT_SIZE = 24
 
     LABEL_COLOR = WHITE
     LINE_COLOR = WHITE
@@ -216,6 +234,7 @@ class LayoutConfig:
     HONEST_CHAIN_COLOR = "#0000FF" # PURE_BLUE
     GENESIS_BLOCK_COLOR = "#0000FF" # PURE_BLUE
     STATE_TEXT_COLOR = WHITE
+    CAPTION_TEXT_COLOR = WHITE
 
     SELFISH_BLOCK_OPACITY = 0.5
 
@@ -237,22 +256,61 @@ class LayoutConfig:
 class AnimationFactory:
 
     @staticmethod
-    def fade_in_and_create(mobject):
+    def fade_in_and_create_block_body(mobject) -> Animation:
         mobject.is_visible = True
         return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
 
     @staticmethod
-    def fade_out_and_remove(mobject):
+    def fade_out_and_remove_block_body(mobject) -> Animation:
         mobject.is_visible = False
         return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
 
-# passing scene to class to bypass limitations of a single play call (last animation on a mobject will override previous)
+    @staticmethod
+    def fade_in_and_create_block_label(mobject) -> Animation:
+        mobject.is_visible = True
+        return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
+
+    @staticmethod
+    def fade_out_and_remove_block_label(mobject) -> Animation:
+        mobject.is_visible = False
+        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
+
+    @staticmethod
+    def fade_in_and_create_line(mobject) -> Animation:
+        mobject.is_visible = True
+        return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
+
+    @staticmethod
+    def fade_out_and_remove_line(mobject) -> Animation:
+        mobject.is_visible = False
+        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
+
+    @staticmethod
+    def add_state_text(mobject) -> Animation:
+        """Fade in state text"""
+        return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
+
+    @staticmethod
+    def transform_state_text(old_mobject, new_mobject) -> Animation:
+        """Transform one state text to another"""
+        return ReplacementTransform(old_mobject, new_mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
+
+    @staticmethod
+    def remove_state_text(mobject) -> Animation:
+        """Fade out state text"""
+        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
+
 class SelfishMiningSquares:
-    def __init__(self, scene, alpha=0.3, gamma=0.5):
+    def __init__(self, scene, alpha=0.3, gamma=0.5, enable_narration=False):
+        # Scene to bypass manim and use play in SelfishMiningSquares
         self.scene = scene
 
+        # Adversary % and Connectedness
         self.alpha = alpha
         self.gamma = gamma
+
+        # Narration control
+        self.enable_narration = enable_narration
 
         self.current_race_number = 0
         self.race_history = []  # List of dicts with race results
@@ -269,6 +327,9 @@ class SelfishMiningSquares:
         self.state_manager = StateTextManager()
         self.animation_factory = AnimationFactory()
 
+        self.current_state_text = None
+        self.current_caption_text = None
+
         # Create blockchains
         self.selfish_chain = ChainBranch("selfish")
         self.honest_chain = ChainBranch("honest")
@@ -279,7 +340,11 @@ class SelfishMiningSquares:
         self.scene.wait(AnimationTimingConfig.INITIAL_SCENE_WAIT_TIME)
 
         # Add genesis block to scene
-        self.scene.play(*[AnimationFactory.fade_in_and_create(mob) for mob in self.genesis.get_mobjects()])
+        genesis_animations = [
+            self.animation_factory.fade_in_and_create_block_body(self.genesis.square),
+            self.animation_factory.fade_in_and_create_block_label(self.genesis.label)
+        ]
+        self.scene.play(*genesis_animations)
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     ####################
@@ -299,7 +364,7 @@ class SelfishMiningSquares:
             elif decision == "honest_on_honest":
                 self.advance_honest_chain()
             else:  # "honest_on_selfish"
-                self.advance_honest_on_selfish_chain()
+                self._advance_honest_on_selfish_chain()
         else:
             decision = self._decide_next_block_normal()
 
@@ -350,12 +415,12 @@ class SelfishMiningSquares:
     # Public API
     ####################
 
-    def advance_selfish_chain(self):
+    def advance_selfish_chain(self, caption: str = None) -> None:
         """Create next selfish block with animated fade-in"""
         self._store_previous_lead()
 
         self.selfish_blocks_created += 1
-        label = f"s{self.selfish_blocks_created}"
+        label = f"S{self.selfish_blocks_created}"
 
         parent = self._get_parent_block("selfish")
         position = self._calculate_block_position(parent, "selfish")
@@ -363,16 +428,16 @@ class SelfishMiningSquares:
         block = self.selfish_chain.add_block(label, position, parent_block=parent)
         line = self.selfish_chain.create_line_to_target(block, parent)
 
-        self._animate_block_and_line(block, line)
+        self._animate_block_and_line(block, line, caption)
 
         self._check_if_race_continues()
 
-    def advance_honest_chain(self):
+    def advance_honest_chain(self, caption: str = None) -> None:
         """Create next honest block with animated fade-in"""
         self._store_previous_lead()
 
         self.honest_blocks_created += 1
-        label = f"h{self.honest_blocks_created}"
+        label = f"H{self.honest_blocks_created}"
 
         parent = self._get_parent_block("honest")
         position = self._calculate_block_position(parent, "honest")
@@ -380,17 +445,16 @@ class SelfishMiningSquares:
         block = self.honest_chain.add_block(label, position, parent_block=parent)
         line = self.honest_chain.create_line_to_target(block, parent)
 
-        self._animate_block_and_line(block, line)
+        self._animate_block_and_line(block, line, caption)
 
         self._check_if_race_continues()
 
-    # TODO determine if this should be public or private (ties handled automatically, might have a use for manually breaking ties)
-    def advance_honest_on_selfish_chain(self):
+    def _advance_honest_on_selfish_chain(self, caption: str = None) -> None:
         """Create honest block on selfish chain (honest miner builds on selfish parent)"""
         self._store_previous_lead()
 
         self.honest_blocks_created += 1
-        label = f"h{self.honest_blocks_created}"
+        label = f"H{self.honest_blocks_created}"
 
         parent = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else self.genesis
         position = self._calculate_block_position(parent, "selfish")
@@ -401,7 +465,7 @@ class SelfishMiningSquares:
 
         line = self.selfish_chain.create_line_to_target(block, parent)
 
-        self._animate_block_and_line(block, line)
+        self._animate_block_and_line(block, line, caption)
 
         self._check_if_race_continues()
 
@@ -459,11 +523,32 @@ class SelfishMiningSquares:
 
         return x_position, y_position, 0
 
-    def _animate_block_and_line(self, block: Block, line: Line | FollowLine) -> None:
+    def _animate_block_and_line(self, block: Block, line: Line | FollowLine, caption: str = None) -> None:
         """Animate block and line creation"""
-        animations = [self.animation_factory.fade_in_and_create(mob) for mob in block.get_mobjects()]
+        animations = [
+            self.animation_factory.fade_in_and_create_block_body(block.square),
+            self.animation_factory.fade_in_and_create_block_label(block.label),
+        ]
+
+        # Add line animation if present
         if line:
-            animations.append(self.animation_factory.fade_in_and_create(line))
+            animations.append(self.animation_factory.fade_in_and_create_line(line))
+
+        # Add caption animation if present
+        if caption:
+            caption_text = Text(
+                caption,
+                font_size=LayoutConfig.CAPTION_FONT_SIZE,
+                color=LayoutConfig.CAPTION_TEXT_COLOR
+            )
+            caption_text.to_edge(self.state_manager.caption_text_position)
+
+            if self.current_caption_text:
+                animations.append(self.animation_factory.transform_state_text(self.current_caption_text, caption_text))
+                self.current_caption_text = caption_text
+            else:
+                animations.append(self.animation_factory.add_state_text(caption_text))
+                self.current_caption_text = caption_text
 
         self.scene.play(*animations)
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
@@ -530,7 +615,7 @@ class SelfishMiningSquares:
             elif decision == "honest_on_honest":
                 self.advance_honest_chain()
             else:
-                self.advance_honest_on_selfish_chain()
+                self._advance_honest_on_selfish_chain()
 
             self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
@@ -582,7 +667,7 @@ class SelfishMiningSquares:
         if not winning_block:
             return
 
-        # Mark winning block as next genesis
+            # Mark winning block as next genesis
         winning_block.set_as_next_genesis()
 
         # Step 1: Calculate vertical shift based on winning block's current position
@@ -627,34 +712,39 @@ class SelfishMiningSquares:
             run_time=AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME
         ))
 
-        # Step 3: Fade out everything except winning block square
-        fade_out_mobjects = []
+        # Step 3: Fade out everything except winning block square using AnimationFactory
+        fade_out_animations = []
 
-        # All winning chain blocks except winner square
+        # All winning chain blocks except winner - fade out both body and label
         for block in winning_chain.blocks[:-1]:
-            fade_out_mobjects.extend(block.get_mobjects())
-        fade_out_mobjects.append(winning_block.label)
+            fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_body(block.square))
+            fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_label(block.label))
 
-        # All losing chain blocks
+            # Fade out winning block's old label (keep square)
+        fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_label(winning_block.label))
+
+        # All losing chain blocks - fade out both body and label
         for block in losing_chain.blocks:
-            fade_out_mobjects.extend(block.get_mobjects())
+            fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_body(block.square))
+            fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_label(block.label))
 
-        # All lines from both chains
-        fade_out_mobjects.extend(winning_chain.lines)
-        fade_out_mobjects.extend(losing_chain.lines)
+            # All lines from both chains
+        for line in winning_chain.lines:
+            fade_out_animations.append(self.animation_factory.fade_out_and_remove_line(line))
+        for line in losing_chain.lines:
+            fade_out_animations.append(self.animation_factory.fade_out_and_remove_line(line))
 
-        # Old genesis
-        fade_out_mobjects.extend(self.genesis.get_mobjects())
+            # Old genesis - fade out both body and label
+        fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_body(self.genesis.square))
+        fade_out_animations.append(self.animation_factory.fade_out_and_remove_block_label(self.genesis.label))
 
-        self.scene.play(AnimationGroup(
-            *[self.animation_factory.fade_out_and_remove(mob) for mob in fade_out_mobjects]
-        ))
+        self.scene.play(AnimationGroup(*fade_out_animations))
 
         # Step 4: Create and fade in new "Gen" label for winning block
         new_label = Text("Gen", font_size=LayoutConfig.LABEL_FONT_SIZE, color=LayoutConfig.LABEL_COLOR)
         new_label.move_to(winning_block.square.get_center())
 
-        self.scene.play(self.animation_factory.fade_in_and_create(new_label))
+        self.scene.play(self.animation_factory.fade_in_and_create_block_label(new_label))
 
         # Update the winning block's label reference
         winning_block.label = new_label
@@ -717,6 +807,55 @@ class SelfishMiningSquares:
     # State Management
     # Private
     ####################
+    # unused atm
+    def _calculate_current_state(self) -> str:
+        """Calculate current state name based on selfish lead
+
+        Returns:
+            State name as string: "0", "0prime", "1", "2", etc.
+        """
+        _, _, selfish_lead = self._get_current_chain_lengths()
+
+        if selfish_lead == 0:
+            # Check if we're in a tie situation (both chains have blocks)
+            honest_len, selfish_len, _ = self._get_current_chain_lengths()
+            if honest_len > 0 and selfish_len > 0:
+                return "0prime"  # Tied state
+            return "0"  # Initial state
+        elif selfish_lead > 0:
+            # Return the lead as a string - supports infinite states
+            return str(selfish_lead)
+        else:
+            # Honest is ahead, back to state 0
+            return "0"
+    # unused atm
+    def _show_state(self, state_name: str):
+        """Display state text at top of scene"""
+        if not self.enable_narration:
+            return  # Skip state text if narration is disabled
+
+        new_state = self.state_manager.get_state(state_name)
+
+        if self.current_state_text:
+            self.scene.play(
+                self.animation_factory.transform_state_text(self.current_state_text, new_state)
+            )
+        else:
+            self.scene.play(
+                self.animation_factory.add_state_text(new_state)
+            )
+            self.current_state_text = new_state
+    # unused atm
+    def _hide_current_state(self):
+        """Remove current state text"""
+        if not self.enable_narration:
+            return  # Skip state text if narration is disabled
+
+        if self.current_state_text:
+            self.scene.play(
+                self.animation_factory.remove_state_text(self.current_state_text)
+            )
+            self.current_state_text = None
 
     def _had_selfish_lead_of_exactly_two(self) -> bool:
         """Check if previous selfish lead was 2"""
@@ -746,13 +885,16 @@ class SelfishMiningManualExample(Scene):
 
         # TODO previous version limited to +4 from Gen, can change but any time selfish is +4 from gen and +1 added,
         #       need to shift chains left 1 position after filling the screen
-        sm.advance_selfish_chain()
-        sm.advance_selfish_chain()
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        sm.advance_honest_chain()
+        sm.advance_selfish_chain("Selfish Mines a Block")
+        sm.advance_selfish_chain("Selfish Mines another Block")
+        sm.advance_selfish_chain("Selfish Mines yet another Block")
+        sm.advance_honest_chain("Honest Mines a Block")
+        sm.advance_selfish_chain("Selfish Mines a Block again")
+        sm.advance_honest_chain("Honest Mines another Block")
+        sm.advance_honest_chain("Honest Mines yet another Block")
+        # TODO after caption added, never removed
+        # TODO add a way to caption without advancing chain
+        # TODO add a way to manually tiebreak
         # first block race over
         sm.advance_honest_chain()
         # next race over
