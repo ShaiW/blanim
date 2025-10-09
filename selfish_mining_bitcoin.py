@@ -2,7 +2,9 @@ from manim.typing import Point3DLike
 from common import *
 import random
 
-# README: !!!Do NOT store lines in blocks!!! (slows animation creation down to a crawl) Creates circular references?
+##########WARNINGS##########
+# README: !!!Do NOT store lines in Block objects, creates circular references (Block→Line→Block) causing severe performance issues.
+# README: !!!Do NOT cache any Mobject that gets removed with ReplacementTransform (e.g. state/transition/caption text), create new Mobjects instead.
 
 class Block:
     def __init__(self, label: str, position: Point3DLike, block_color: str, parent_block: 'Block' = None) -> None:
@@ -97,12 +99,14 @@ class ChainBranch:
 
     def add_block(self, label: str, position: Point3DLike, parent_block: Block):
         """Add a block to this chain. Parent block is required."""
-        # Determine color based on chain type
-        block_color = (
-            LayoutConfig.SELFISH_CHAIN_COLOR
-            if self.chain_type == "selfish"
-            else LayoutConfig.HONEST_CHAIN_COLOR
-        )
+        # Determine color based on block label prefix, not chain type
+        if label.startswith("H"):
+            block_color = LayoutConfig.HONEST_CHAIN_COLOR
+        elif label.startswith("S"):
+            block_color = LayoutConfig.SELFISH_CHAIN_COLOR
+        else:
+            # Fallback to genesis color for other labels (like "Gen")
+            block_color = LayoutConfig.GENESIS_BLOCK_COLOR
 
         block = Block(label, position, block_color, parent_block=parent_block)
         self.blocks.append(block)
@@ -138,46 +142,55 @@ class ChainBranch:
         mobjects.extend(self.lines)
         return mobjects
 
-# TODO implement an optional state text / narration, currently this is broken
-class StateTextManager:
+class NarrationTextFactory:
     def __init__(self):
-        self.states = {}
-        self.transitions = {}
 
         self.state_text_position = DOWN
         self.caption_text_position = UP
 
-    def get_state(self, state_name: str):
+    def get_state(self, state_name: str) -> Mobject:
         """Get or create state text dynamically based on state name"""
-        if state_name not in self.states:
-            # Parse the state name to generate appropriate text
-            if state_name == "0":
-                text = "State 0"
-            elif state_name == "0prime":
-                text = "State 0'"
-            elif state_name.isdigit():
-                # For any numeric state (1, 2, 3, ..., infinity)
-                text = f"State {state_name}"
-            else:
-                # Fallback for any other state names
-                text = state_name
+        # Always create a new instance instead of caching
+        text_map = {
+            "0prime": "State 0'"
+        }
+        text = text_map.get(state_name, f"State {state_name}")
 
-            state = MathTex(rf"\text{{{text}}}", color=LayoutConfig.STATE_TEXT_COLOR)
-            state.to_edge(self.state_text_position)
-            self.states[state_name] = state
-        return self.states[state_name]
+        state = MathTex(
+            rf"\text{{{text}}}",
+            color=LayoutConfig.STATE_TEXT_COLOR
+        )
+        state.to_edge(self.state_text_position)
 
-    def get_transition(self, from_state: str, to_state: str):
+        return state
+
+    def get_transition(self, from_state: str, to_state: str) -> Mobject:
         """Get or create transition text (e.g., '1→0'', '2→0')"""
-        transition_key = f"{from_state}→{to_state}"
-        if transition_key not in self.transitions:
-            transition = MathTex(
-                rf"\text{{{from_state}}} \rightarrow \text{{{to_state}}}",
-                color=LayoutConfig.STATE_TEXT_COLOR
-            )
-            transition.to_edge(self.state_text_position)
-            self.transitions[transition_key] = transition
-        return self.transitions[transition_key]
+        # Always create a new instance instead of caching
+        state_text_map = {
+            "0prime": "0'"
+        }
+        from_text = state_text_map.get(from_state, from_state)
+        to_text = state_text_map.get(to_state, to_state)
+
+        transition = MathTex(
+            rf"\text{{{from_text}}} \rightarrow \text{{{to_text}}}",
+            color=LayoutConfig.STATE_TEXT_COLOR
+        )
+        transition.to_edge(self.state_text_position)
+
+        return transition
+
+    def get_caption(self, caption_text: str) -> Mobject:
+        """Get or create caption text"""
+        # Always create a new instance
+        caption = Text(
+            caption_text,
+            font_size=LayoutConfig.CAPTION_FONT_SIZE,
+            color=LayoutConfig.CAPTION_TEXT_COLOR
+        )
+        caption.to_edge(self.caption_text_position)
+        return caption
 
 class AnimationTimingConfig:
     """Centralized animation timing configuration"""
@@ -324,11 +337,12 @@ class SelfishMiningSquares:
         self.previous_selfish_lead = 0
 
         # Initialize managers
-        self.state_manager = StateTextManager()
+        self.narration_factory = NarrationTextFactory()
         self.animation_factory = AnimationFactory()
 
         self.current_state_text = None
         self.current_caption_text = None
+        self.current_state_name = "0"
 
         # Create blockchains
         self.selfish_chain = ChainBranch("selfish")
@@ -344,7 +358,15 @@ class SelfishMiningSquares:
             self.animation_factory.fade_in_and_create_block_body(self.genesis.square),
             self.animation_factory.fade_in_and_create_block_label(self.genesis.label)
         ]
+
+        # Show initial state if narration enabled
+        if self.enable_narration:
+            initial_state = self.narration_factory.get_state("0")
+            genesis_animations.append(self.animation_factory.add_state_text(initial_state))
+            self.current_state_text = initial_state
+
         self.scene.play(*genesis_animations)
+
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     ####################
@@ -378,6 +400,7 @@ class SelfishMiningSquares:
     # Private
     ####################
 
+#TODO duplicate logic within here and _get_current_chain_lengths
     def _get_race_state(self) -> tuple[int, int, int, bool]:
         """Get current race state from chain lengths"""
         honest_len = len(self.honest_chain.blocks)
@@ -414,58 +437,73 @@ class SelfishMiningSquares:
     # Advance Race / Block Creation
     # Public API
     ####################
-
+#TODO state and state transitions are not accurate once honest mines
     def advance_selfish_chain(self, caption: str = None) -> None:
         """Create next selfish block with animated fade-in"""
+
         self._store_previous_lead()
 
+        previous_state = self._capture_state_before_block()
+
         self.selfish_blocks_created += 1
+
         label = f"S{self.selfish_blocks_created}"
 
         parent = self._get_parent_block("selfish")
+
         position = self._calculate_block_position(parent, "selfish")
 
         block = self.selfish_chain.add_block(label, position, parent_block=parent)
+
         line = self.selfish_chain.create_line_to_target(block, parent)
 
-        self._animate_block_and_line(block, line, caption)
+        self._animate_block_and_line(block, line, caption, previous_state)
 
         self._check_if_race_continues()
 
     def advance_honest_chain(self, caption: str = None) -> None:
         """Create next honest block with animated fade-in"""
+
         self._store_previous_lead()
 
+        previous_state = self._capture_state_before_block()
+
         self.honest_blocks_created += 1
+
         label = f"H{self.honest_blocks_created}"
 
         parent = self._get_parent_block("honest")
+
         position = self._calculate_block_position(parent, "honest")
 
         block = self.honest_chain.add_block(label, position, parent_block=parent)
+
         line = self.honest_chain.create_line_to_target(block, parent)
 
-        self._animate_block_and_line(block, line, caption)
+        self._animate_block_and_line(block, line, caption, previous_state)
 
         self._check_if_race_continues()
 
     def _advance_honest_on_selfish_chain(self, caption: str = None) -> None:
         """Create honest block on selfish chain (honest miner builds on selfish parent)"""
+
         self._store_previous_lead()
 
-        self.honest_blocks_created += 1
-        label = f"H{self.honest_blocks_created}"
+        previous_state = self._capture_state_before_block()
 
-        parent = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else self.genesis
+        self.honest_blocks_created += 1
+
+        label = f"H{self.honest_blocks_created}" # Note this only occurs during tiebreaking so using this works
+
+        parent = self._get_parent_block("selfish")
+
         position = self._calculate_block_position(parent, "selfish")
 
-        block_color = LayoutConfig.HONEST_CHAIN_COLOR
-        block = Block(label, position, block_color, parent_block=parent)
-        self.selfish_chain.blocks.append(block)
+        block = self.selfish_chain.add_block(label, position, parent_block=parent)
 
         line = self.selfish_chain.create_line_to_target(block, parent)
 
-        self._animate_block_and_line(block, line, caption)
+        self._animate_block_and_line(block, line, caption, previous_state)
 
         self._check_if_race_continues()
 
@@ -481,6 +519,7 @@ class SelfishMiningSquares:
         selfish_lead = selfish_len - honest_len
         return honest_len, selfish_len, selfish_lead
 
+#TODO does this store the actual branches(here or in a related process)
     def _record_race_result(self, winner: str):
         """Record race result in simple dict format"""
         honest_len, selfish_len, _ = self._get_current_chain_lengths()
@@ -503,10 +542,9 @@ class SelfishMiningSquares:
 
     def _get_parent_block(self, chain_type: str) -> Block:
         """Get parent block for next block in chain"""
-        blocks_created = self.selfish_blocks_created if chain_type == "selfish" else self.honest_blocks_created
         chain = self.selfish_chain if chain_type == "selfish" else self.honest_chain
 
-        if blocks_created == 1:
+        if not chain.blocks:
             return self.genesis
         else:
             return chain.blocks[-1]
@@ -523,34 +561,101 @@ class SelfishMiningSquares:
 
         return x_position, y_position, 0
 
-    def _animate_block_and_line(self, block: Block, line: Line | FollowLine, caption: str = None) -> None:
+    def _animate_block_and_line(self, block: Block, line: Line | FollowLine, caption: str = None,
+                                previous_state: str = None) -> None:
         """Animate block and line creation"""
+
+        print(f"DEBUG _animate_block_and_line")
+
+        ########## Block Anims ##########
         animations = [
             self.animation_factory.fade_in_and_create_block_body(block.square),
             self.animation_factory.fade_in_and_create_block_label(block.label),
         ]
 
-        # Add line animation if present
+        ########## Line Anims ##########
         if line:
             animations.append(self.animation_factory.fade_in_and_create_line(line))
 
-        # Add caption animation if present
+            ########## Caption Anims ##########     #TODO remove old caption is no new caption provided
         if caption:
-            caption_text = Text(
-                caption,
-                font_size=LayoutConfig.CAPTION_FONT_SIZE,
-                color=LayoutConfig.CAPTION_TEXT_COLOR
-            )
-            caption_text.to_edge(self.state_manager.caption_text_position)
+            caption_mobject = self.narration_factory.get_caption(caption)
 
             if self.current_caption_text:
-                animations.append(self.animation_factory.transform_state_text(self.current_caption_text, caption_text))
-                self.current_caption_text = caption_text
+                animations.append(self.animation_factory.transform_state_text(
+                    self.current_caption_text, caption_mobject))
             else:
-                animations.append(self.animation_factory.add_state_text(caption_text))
-                self.current_caption_text = caption_text
+                animations.append(self.animation_factory.add_state_text(caption_mobject))
 
-        self.scene.play(*animations)
+            self.current_caption_text = caption_mobject
+
+            ########## State Anims ##########
+        transition_text_ref = None
+        current_state = None  # Store the calculated state to reuse later
+        is_special_case_2_to_0 = False  # Track if this is the 2→0 special case (honest catches up from -2)
+        is_special_case_0_to_0 = False  # Track if this is the 0→0 special case (honest wins, triggers race resolution)
+        is_special_case_to_0prime = False  # Track if this is a transition to 0' (tie reveal situation)
+        is_special_case_from_0prime = False  # Track if transitioning from 0prime during tiebreak resolution
+
+        # Always calculate current state when narration is enabled
+        if self.enable_narration:
+            # Check if we're in tiebreaking mode by seeing if previous state was 0prime
+            in_tiebreak = (previous_state == "0prime")
+            current_state = self._calculate_current_state(in_tiebreak=in_tiebreak)
+
+            # SPECIAL CASE: Check if this triggers the "honest catches up from -2 to -1" resolution
+            # In this case, we want to show transition to "0" instead of "1"
+            if previous_state == "2" and current_state == "1":
+                current_state = "0"  # Override to show 2→0 transition
+                is_special_case_2_to_0 = True  # Mark this as special case
+
+            # SPECIAL CASE: Check if this is a 0→0 transition (honest wins, triggers race resolution)
+            # In this case, we want State 0 to fade in with genesis label during race resolution
+            if previous_state == "0" and current_state == "0":
+                is_special_case_0_to_0 = True  # Mark this as special case
+
+            # SPECIAL CASE: Check if this is a transition to 0' (tie reveal situation)
+            # In this case, we want State 0' to fade in during the tie movement shift
+            if current_state == "0prime":
+                is_special_case_to_0prime = True  # Mark this as special case
+
+            # SPECIAL CASE: Check if transitioning from 0prime during tiebreak resolution
+            # In this case, we want the state transition to happen with genesis label fade-in
+            if previous_state == "0prime" and current_state in ["0", "1"]:
+                is_special_case_from_0prime = True  # Mark this as special case
+
+        # Only show transition if we have a previous state
+        if self.enable_narration and self.current_state_text and previous_state is not None and current_state is not None:
+            transition_text_ref = self.narration_factory.get_transition(previous_state, current_state)
+            animations.append(self.animation_factory.transform_state_text(self.current_state_text, transition_text_ref))
+
+            ########## PLAY Anims ##########     Draw Block, Line, Caption, and State Transition     #TODO missing timing
+        self.scene.play(*animations)  # This should ALWAYS play a State Transition Text from a State Text
+
+        # NOW update the reference using the SAME object
+        if transition_text_ref is not None:
+            self.current_state_text = transition_text_ref
+
+            ########## WAIT Anims ##########
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+        ########## ANOTHER PLAY Anims ##########  # TODO is this the correct timing of animations?
+        # Skip the second transformation for special cases - let race resolution/tie reveal handle it
+        if self.enable_narration and previous_state is not None and current_state is not None and not is_special_case_2_to_0 and not is_special_case_0_to_0 and not is_special_case_to_0prime and not is_special_case_from_0prime:
+            final_state_text = self.narration_factory.get_state(current_state)
+
+            if self.current_state_text is not None:
+                self.scene.play(
+                    self.animation_factory.transform_state_text(self.current_state_text, final_state_text)
+                )
+            else:
+                # First block - just show the state without transition
+                self.scene.play(self.animation_factory.add_state_text(final_state_text))
+
+            self.current_state_text = final_state_text
+            self.current_state_name = current_state
+
+            ########## WAIT Anims ##########
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     @staticmethod
@@ -744,7 +849,16 @@ class SelfishMiningSquares:
         new_label = Text("Gen", font_size=LayoutConfig.LABEL_FONT_SIZE, color=LayoutConfig.LABEL_COLOR)
         new_label.move_to(winning_block.square.get_center())
 
-        self.scene.play(self.animation_factory.fade_in_and_create_block_label(new_label))
+        state_animations = [self.animation_factory.fade_in_and_create_block_label(new_label)]
+
+        # Transform transition text back to state text if narration enabled
+        if self.enable_narration and self.current_state_text:
+            final_state = self.narration_factory.get_state("0")
+            state_animations.append(self.animation_factory.transform_state_text(self.current_state_text, final_state))
+            self.current_state_text = final_state
+            self.current_state_name = "0"  # <-- ADDED: Reset state name to "0"
+
+        self.scene.play(*state_animations)
 
         # Update the winning block's label reference
         winning_block.label = new_label
@@ -792,41 +906,81 @@ class SelfishMiningSquares:
             AnimationTimingConfig.VERTICAL_SHIFT_TIME
         )
 
-        # Animate vertical shift for both chains simultaneously
-        self.scene.play(
+        # Prepare animations list
+        shift_animations = [
             *[mob.animate.shift(UP * honest_shift) for mob in honest_mobjects],
             *[mob.animate.shift(UP * selfish_shift) for mob in selfish_mobjects],
-            *follow_line_animations,
+            *follow_line_animations
+        ]
+
+        # Add state transition animation if narration is enabled
+        final_state_text = None  # Declare outside the if block
+        if self.enable_narration and self.current_state_text:
+            final_state_text = self.narration_factory.get_state("0prime")
+            shift_animations.append(
+                self.animation_factory.transform_state_text(self.current_state_text, final_state_text)
+            )
+
+            # Animate vertical shift for both chains simultaneously with state transition
+        self.scene.play(
+            *shift_animations,
             run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
         )
 
-        # Wait to show the tie state
+        # Update the state text reference after the animation completes
+        if self.enable_narration and final_state_text is not None:
+            self.current_state_text = final_state_text
+            self.current_state_name = "0prime"
+
+            # Wait to show the tie state
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     ####################
     # State Management
     # Private
     ####################
-    # unused atm
-    def _calculate_current_state(self) -> str:
+    def _capture_state_before_block(self) -> str | None:
+        """Capture current state before adding a block (for narration)"""
+        if not self.enable_narration:
+            return None
+
+        captured_state = self.current_state_name
+        return captured_state
+
+    def _calculate_current_state(self, in_tiebreak: bool = False) -> str:
         """Calculate current state name based on selfish lead
+
+        Args:
+            in_tiebreak: Whether we're currently in tiebreaking mode
 
         Returns:
             State name as string: "0", "0prime", "1", "2", etc.
         """
         _, _, selfish_lead = self._get_current_chain_lengths()
 
+        print(f"DEBUG [_calculate_current_state]: selfish_lead = {selfish_lead}, in_tiebreak = {in_tiebreak}")
+
         if selfish_lead == 0:
             # Check if we're in a tie situation (both chains have blocks)
             honest_len, selfish_len, _ = self._get_current_chain_lengths()
             if honest_len > 0 and selfish_len > 0:
+                print(f"DEBUG [_calculate_current_state]: Returning '0prime' (tie state)")
                 return "0prime"  # Tied state
+            print(f"DEBUG [_calculate_current_state]: Returning '0' (initial state)")
             return "0"  # Initial state
         elif selfish_lead > 0:
-            # Return the lead as a string - supports infinite states
-            return str(selfish_lead)
+            # SPECIAL CASE: During tiebreaking, even if selfish is ahead, return "0"
+            # because the race hasn't been resolved yet
+            if in_tiebreak:
+                print(f"DEBUG [_calculate_current_state]: Returning '0' (tiebreak in progress)")
+                return "0"
+                # Return the lead as a string - supports infinite states
+            result = str(selfish_lead)
+            print(f"DEBUG [_calculate_current_state]: Returning '{result}' (selfish lead)")
+            return result
         else:
             # Honest is ahead, back to state 0
+            print(f"DEBUG [_calculate_current_state]: Returning '0' (honest ahead)")
             return "0"
     # unused atm
     def _show_state(self, state_name: str):
@@ -834,7 +988,7 @@ class SelfishMiningSquares:
         if not self.enable_narration:
             return  # Skip state text if narration is disabled
 
-        new_state = self.state_manager.get_state(state_name)
+        new_state = self.narration_factory.get_state(state_name)
 
         if self.current_state_text:
             self.scene.play(
@@ -881,17 +1035,17 @@ class SelfishMiningAutomaticExample(Scene):
 class SelfishMiningManualExample(Scene):
     def construct(self):
         # Initialize the mining system
-        sm = SelfishMiningSquares(self, 0.30, 0.1)
+        sm = SelfishMiningSquares(self, 0.30, 0.1, enable_narration=True)
 
         # TODO previous version limited to +4 from Gen, can change but any time selfish is +4 from gen and +1 added,
         #       need to shift chains left 1 position after filling the screen
-        sm.advance_selfish_chain("Selfish Mines a Block")
-        sm.advance_selfish_chain("Selfish Mines another Block")
-        sm.advance_selfish_chain("Selfish Mines yet another Block")
-        sm.advance_honest_chain("Honest Mines a Block")
-        sm.advance_selfish_chain("Selfish Mines a Block again")
-        sm.advance_honest_chain("Honest Mines another Block")
-        sm.advance_honest_chain("Honest Mines yet another Block")
+        sm.advance_selfish_chain()
+        sm.advance_selfish_chain()
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        sm.advance_honest_chain()
         # TODO after caption added, never removed
         # TODO add a way to caption without advancing chain
         # TODO add a way to manually tiebreak
@@ -912,7 +1066,7 @@ class SelfishMiningManualExample(Scene):
 class SelfishMiningManualTiesExample(Scene):
     def construct(self):
         # Ties handled automatically
-        sm = SelfishMiningSquares(self, 0.33, 0.5) # gives 1/3 chance to each outcome
+        sm = SelfishMiningSquares(self, 0.33, 0.5, enable_narration=True) # gives 1/3 chance to each outcome
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
 
