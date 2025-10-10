@@ -350,6 +350,7 @@ class SelfishMiningSquares:
 
         # Create Genesis block
         self.genesis = Block("Gen", self.genesis_position, LayoutConfig.GENESIS_BLOCK_COLOR)
+        self.original_genesis = self.genesis
 
         self.scene.wait(AnimationTimingConfig.INITIAL_SCENE_WAIT_TIME)
 
@@ -519,7 +520,7 @@ class SelfishMiningSquares:
         selfish_lead = selfish_len - honest_len
         return honest_len, selfish_len, selfish_lead
 
-#TODO does this store the actual branches(here or in a related process)
+#TODO does this store the actual branches(here or in a related process) A. NO, but blocks contain info to recreate the race anyways
     def _record_race_result(self, winner: str):
         """Record race result in simple dict format"""
         honest_len, selfish_len, _ = self._get_current_chain_lengths()
@@ -936,6 +937,124 @@ class SelfishMiningSquares:
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     ####################
+    # ZoomOut on Chain
+    # Public
+    ####################
+
+    def zoom_out_from_genesis(self, max_blocks: int = 50, animation_time: float = 3.0,
+                                       margin: float = 1.0):
+        """Automatically scale and center the blockchain to fit on screen
+
+        Args:
+            max_blocks: Maximum number of blocks to display
+            animation_time: Duration of the repositioning animation
+            margin: Buffer space on each side (in Manim units)
+        """
+        # Step 1: Collect all blocks via BFS
+        all_blocks = []
+        blocks_to_visit = [self.original_genesis]
+        visited = set()
+
+        while blocks_to_visit and len(all_blocks) < max_blocks:
+            block = blocks_to_visit.pop(0)
+            if block in visited:
+                continue
+            visited.add(block)
+            all_blocks.append(block)
+            blocks_to_visit.extend(block.children)
+
+        if not all_blocks:
+            return
+
+            # Step 2: Calculate blockchain depth (max level)
+        block_levels = {}
+        queue = [(self.original_genesis, 0)]
+        visited_levels = set()
+        max_depth = 0
+
+        while queue:
+            block, level = queue.pop(0)
+            if block in visited_levels:
+                continue
+            visited_levels.add(block)
+            block_levels[block] = level
+            max_depth = max(max_depth, level)
+
+            for child in block.children:
+                queue.append((child, level + 1))
+
+                # Step 3: Calculate required scale factor to fit on screen
+        # Available screen width (using config frame dimensions)
+        from manim import config
+        screen_width = 2 * config.frame_x_radius - 2 * margin
+
+        # Calculate blockchain width at scale=1.0
+        unscaled_width = max_depth * LayoutConfig.BLOCK_HORIZONTAL_SPACING
+
+        # Calculate scale factor to fit blockchain on screen
+        if unscaled_width > 0:
+            calculated_scale = screen_width / unscaled_width
+            # Cap scale factor to reasonable bounds
+            scale_factor = min(calculated_scale, 1.0)  # Don't scale up, only down
+        else:
+            scale_factor = 1.0
+
+            # Step 4: Calculate where original_genesis should be positioned
+        # After scaling, blockchain will span from x=0 to x=(max_depth * scaled_spacing)
+        scaled_width = max_depth * LayoutConfig.BLOCK_HORIZONTAL_SPACING * scale_factor
+
+        # Center point of screen is at x=0
+        # We want blockchain centered, so original_genesis should be at:
+        original_genesis_target_x = -scaled_width / 2
+
+        # Step 5: Identify winning chain (same as before)
+        winning_chain_blocks = set()
+        next_genesis_blocks = [b for b in all_blocks if b.is_next_genesis()]
+
+        for ng_block in next_genesis_blocks:
+            current = ng_block
+            while current is not None:
+                winning_chain_blocks.add(current)
+                current = current.parent_block
+                if current == self.original_genesis:
+                    winning_chain_blocks.add(current)
+                    break
+
+                    # Step 6: Calculate positions for all blocks
+        block_positions = {}
+        scaled_spacing = LayoutConfig.BLOCK_HORIZONTAL_SPACING * scale_factor
+        scaled_selfish_offset = LayoutConfig.SELFISH_Y_OFFSET * scale_factor
+
+        for block in all_blocks:
+            level = block_levels.get(block, 0)
+            x_pos = original_genesis_target_x + (level * scaled_spacing)
+
+            # Y positioning (same logic as before)
+            if block in winning_chain_blocks:
+                y_pos = LayoutConfig.GENESIS_Y
+            else:
+                if block.label.text.startswith("H"):
+                    y_pos = LayoutConfig.GENESIS_Y - scaled_selfish_offset
+                elif block.label.text.startswith("S"):
+                    y_pos = LayoutConfig.GENESIS_Y + scaled_selfish_offset
+                else:
+                    y_pos = LayoutConfig.GENESIS_Y
+
+            block_positions[block] = (x_pos, y_pos, 0)
+
+            # Step 7: Create animations
+        animations = []
+
+        for block in all_blocks:
+            new_pos = block_positions[block]
+            animations.append(block.square.animate.scale(scale_factor).move_to(new_pos))
+            animations.append(block.label.animate.scale(scale_factor).move_to(new_pos))
+
+            # Step 8: Play animations
+        self.scene.play(*animations, run_time=animation_time)
+        self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+    ####################
     # State Management
     # Private
     ####################
@@ -1061,6 +1180,7 @@ class SelfishMiningManualExample(Scene):
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
         # too close, reveal
+        sm.zoom_out_from_genesis()
         self.wait(1)
 
 class SelfishMiningManualTiesExample(Scene):
@@ -1082,14 +1202,6 @@ class SelfishMiningManualTiesExample(Scene):
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
 
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        sm.zoom_out_from_genesis()
 
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        self.wait(3)
