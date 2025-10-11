@@ -6,6 +6,8 @@ import random
 # README: !!!Do NOT store lines in Block objects, creates circular references (Block→Line→Block) causing severe performance issues.
 # README: !!!Do NOT cache any Mobject that gets removed with ReplacementTransform (e.g. state/transition/caption text), create new Mobjects instead.
 
+##########NOTES##########
+
 class Block:
     def __init__(self, label: str, position: Point3DLike, block_color: str, parent_block: 'Block' = None) -> None:
         # Visual components (existing Manim objects)
@@ -98,41 +100,30 @@ class ChainBranch:
         self.lines = []
 
     def add_block(self, label: str, position: Point3DLike, parent_block: Block):
-        """Add a block to this chain. Parent block is required."""
-        # Determine color based on block label prefix, not chain type
+        """Add a block to this chain. Parent block is required.
+        Automatically creates a FollowLine connecting to parent."""
+        # Determine color based on block label prefix
         if label.startswith("H"):
             block_color = LayoutConfig.HONEST_CHAIN_COLOR
         elif label.startswith("S"):
             block_color = LayoutConfig.SELFISH_CHAIN_COLOR
         else:
-            # Fallback to genesis color for other labels (like "Gen")
             block_color = LayoutConfig.GENESIS_BLOCK_COLOR
 
         block = Block(label, position, block_color, parent_block=parent_block)
         self.blocks.append(block)
-        return block
 
-    def create_line_to_target(self, source_block, target_block):
-        """Create line connecting source block to target block"""
-        line_params = {
-            'buff': LayoutConfig.LINE_BUFFER,
-            'color': LayoutConfig.LINE_COLOR,
-            'stroke_width': LayoutConfig.LINE_STROKE_WIDTH
-        }
-
-        if target_block.is_genesis() or target_block.is_next_genesis():
+        # Automatically create line to parent
+        if parent_block:
             line = FollowLine(
-                start_mobject=source_block,
-                end_mobject=target_block)
-        else:
-            line = Line(
-                start=source_block.get_left(),
-                end=target_block.get_right(),
-                **line_params
+                start_mobject=block,
+                end_mobject=parent_block
             )
+            self.lines.append(line)
+        else:
+            line = None
 
-        self.lines.append(line)  # Store in blockchain, not block
-        return line
+        return block, line
 
     def get_all_mobjects(self) -> list:
         """Get all mobjects including blocks and lines"""
@@ -438,7 +429,7 @@ class SelfishMiningSquares:
     # Advance Race / Block Creation
     # Public API
     ####################
-#TODO state and state transitions are not accurate once honest mines
+
     def advance_selfish_chain(self, caption: str = None) -> None:
         """Create next selfish block with animated fade-in"""
 
@@ -454,9 +445,7 @@ class SelfishMiningSquares:
 
         position = self._calculate_block_position(parent, "selfish")
 
-        block = self.selfish_chain.add_block(label, position, parent_block=parent)
-
-        line = self.selfish_chain.create_line_to_target(block, parent)
+        block, line = self.selfish_chain.add_block(label, position, parent_block=parent)
 
         self._animate_block_and_line(block, line, caption, previous_state)
 
@@ -477,9 +466,7 @@ class SelfishMiningSquares:
 
         position = self._calculate_block_position(parent, "honest")
 
-        block = self.honest_chain.add_block(label, position, parent_block=parent)
-
-        line = self.honest_chain.create_line_to_target(block, parent)
+        block, line = self.honest_chain.add_block(label, position, parent_block=parent)
 
         self._animate_block_and_line(block, line, caption, previous_state)
 
@@ -494,15 +481,13 @@ class SelfishMiningSquares:
 
         self.honest_blocks_created += 1
 
-        label = f"H{self.honest_blocks_created}" # Note this only occurs during tiebreaking so using this works
+        label = f"H{self.honest_blocks_created}"
 
         parent = self._get_parent_block("selfish")
 
         position = self._calculate_block_position(parent, "selfish")
 
-        block = self.selfish_chain.add_block(label, position, parent_block=parent)
-
-        line = self.selfish_chain.create_line_to_target(block, parent)
+        block, line = self.selfish_chain.add_block(label, position, parent_block=parent)
 
         self._animate_block_and_line(block, line, caption, previous_state)
 
@@ -562,11 +547,8 @@ class SelfishMiningSquares:
 
         return x_position, y_position, 0
 
-    def _animate_block_and_line(self, block: Block, line: Line | FollowLine, caption: str = None,
-                                previous_state: str = None) -> None:
+    def _animate_block_and_line(self, block: Block, line: Line | FollowLine, caption: str = None, previous_state: str = None) -> None:
         """Animate block and line creation"""
-
-        print(f"DEBUG _animate_block_and_line")
 
         ########## Block Anims ##########
         animations = [
@@ -578,7 +560,7 @@ class SelfishMiningSquares:
         if line:
             animations.append(self.animation_factory.fade_in_and_create_line(line))
 
-            ########## Caption Anims ##########     #TODO remove old caption is no new caption provided
+        ########## Caption Anims ##########     #TODO remove old caption if no new caption provided
         if caption:
             caption_mobject = self.narration_factory.get_caption(caption)
 
@@ -590,7 +572,7 @@ class SelfishMiningSquares:
 
             self.current_caption_text = caption_mobject
 
-            ########## State Anims ##########
+        ########## State Anims ##########
         transition_text_ref = None
         current_state = None  # Store the calculated state to reuse later
         is_special_case_2_to_0 = False  # Track if this is the 2→0 special case (honest catches up from -2)
@@ -630,17 +612,17 @@ class SelfishMiningSquares:
             transition_text_ref = self.narration_factory.get_transition(previous_state, current_state)
             animations.append(self.animation_factory.transform_state_text(self.current_state_text, transition_text_ref))
 
-            ########## PLAY Anims ##########     Draw Block, Line, Caption, and State Transition     #TODO missing timing
-        self.scene.play(*animations)  # This should ALWAYS play a State Transition Text from a State Text
+        ########## PLAY Anims ##########     Draw Block, Line, Caption, and State Transition
+        self.scene.play(*animations)
 
         # NOW update the reference using the SAME object
         if transition_text_ref is not None:
             self.current_state_text = transition_text_ref
 
-            ########## WAIT Anims ##########
+        ########## WAIT Anims ##########
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
-        ########## ANOTHER PLAY Anims ##########  # TODO is this the correct timing of animations?
+        ########## ANOTHER PLAY Anims ##########
         # Skip the second transformation for special cases - let race resolution/tie reveal handle it
         if self.enable_narration and previous_state is not None and current_state is not None and not is_special_case_2_to_0 and not is_special_case_0_to_0 and not is_special_case_to_0prime and not is_special_case_from_0prime:
             final_state_text = self.narration_factory.get_state(current_state)
@@ -656,7 +638,7 @@ class SelfishMiningSquares:
             self.current_state_text = final_state_text
             self.current_state_name = current_state
 
-            ########## WAIT Anims ##########
+        ########## WAIT Anims ##########
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
     @staticmethod
@@ -941,8 +923,7 @@ class SelfishMiningSquares:
     # Public
     ####################
 
-    def zoom_out_from_genesis(self, max_blocks: int = 50, animation_time: float = 3.0,
-                                       margin: float = 1.0):
+    def zoom_out_from_genesis(self, max_blocks: int = 50, animation_time: float = 3.0, margin: float = 1.0):
         """Automatically scale and center the blockchain to fit on screen
 
         Args:
@@ -984,30 +965,22 @@ class SelfishMiningSquares:
                 queue.append((child, level + 1))
 
                 # Step 3: Calculate required scale factor to fit on screen
-        # Available screen width (using config frame dimensions)
         from manim import config
         screen_width = 2 * config.frame_x_radius - 2 * margin
 
-        # Calculate blockchain width at scale=1.0
         unscaled_width = max_depth * LayoutConfig.BLOCK_HORIZONTAL_SPACING
 
-        # Calculate scale factor to fit blockchain on screen
         if unscaled_width > 0:
             calculated_scale = screen_width / unscaled_width
-            # Cap scale factor to reasonable bounds
-            scale_factor = min(calculated_scale, 1.0)  # Don't scale up, only down
+            scale_factor = min(calculated_scale, 1.0)
         else:
             scale_factor = 1.0
 
             # Step 4: Calculate where original_genesis should be positioned
-        # After scaling, blockchain will span from x=0 to x=(max_depth * scaled_spacing)
         scaled_width = max_depth * LayoutConfig.BLOCK_HORIZONTAL_SPACING * scale_factor
-
-        # Center point of screen is at x=0
-        # We want blockchain centered, so original_genesis should be at:
         original_genesis_target_x = -scaled_width / 2
 
-        # Step 5: Identify winning chain (same as before)
+        # Step 5: Identify winning chain
         winning_chain_blocks = set()
         next_genesis_blocks = [b for b in all_blocks if b.is_next_genesis()]
 
@@ -1029,7 +1002,6 @@ class SelfishMiningSquares:
             level = block_levels.get(block, 0)
             x_pos = original_genesis_target_x + (level * scaled_spacing)
 
-            # Y positioning (same logic as before)
             if block in winning_chain_blocks:
                 y_pos = LayoutConfig.GENESIS_Y
             else:
@@ -1042,15 +1014,41 @@ class SelfishMiningSquares:
 
             block_positions[block] = (x_pos, y_pos, 0)
 
-            # Step 7: Create animations
+            # Step 7: Create animations with FadeIn for previously faded-out blocks
         animations = []
 
         for block in all_blocks:
             new_pos = block_positions[block]
-            animations.append(block.square.animate.scale(scale_factor).move_to(new_pos))
-            animations.append(block.label.animate.scale(scale_factor).move_to(new_pos))
 
-            # Step 8: Play animations
+            # Check if block was faded out (not visible)
+            if hasattr(block.square, 'is_visible') and not block.square.is_visible:
+                # Use AnimationGroup to combine FadeIn with movement/scaling
+                animations.append(
+                    AnimationGroup(
+                        FadeIn(block.square),
+                        FadeIn(block.label),
+                        block.square.animate.scale(scale_factor).move_to(new_pos),
+                        block.label.animate.scale(scale_factor).move_to(new_pos),
+                    )
+                )
+            else:
+                # Block is already visible, just move/scale
+                animations.append(block.square.animate.scale(scale_factor).move_to(new_pos))
+                animations.append(block.label.animate.scale(scale_factor).move_to(new_pos))
+
+                # Step 8: Add FollowLine animations
+        follow_line_animations = self._collect_follow_line_animations(
+            [self.selfish_chain, self.honest_chain],
+            animation_time
+        )
+        animations.extend(follow_line_animations)
+
+        # Step 9: Handle lines that were faded out
+        for line in self.selfish_chain.lines + self.honest_chain.lines:
+            if hasattr(line, 'is_visible') and not line.is_visible:
+                animations.append(FadeIn(line))
+
+                # Step 10: Play all animations
         self.scene.play(*animations, run_time=animation_time)
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
