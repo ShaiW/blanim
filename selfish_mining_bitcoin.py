@@ -1,6 +1,12 @@
+from __future__ import annotations
+
 from manim.typing import Point3DLike
 from common import *
 import random
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from typing_extensions import TypeAlias
 
 ##########WARNINGS##########
 # README: !!!Lines are stored in block objects BUT do not reference the block, lines use the square(visual block) for end points.
@@ -80,6 +86,7 @@ Key Design Principles:
 - All configuration (styling, timing) should be parameterizable  
 - Scene types must support ThreeDScene.add_fixed_in_frame_mobjects()  
 """
+
 
 ##########END Proposed Structure##########
 
@@ -163,9 +170,37 @@ class Block:
         else:
             self.line = None
 
-        # Track if part of scene for animation factory
-        self.square.is_in_scene = False
-        self.label.is_in_scene = False
+    def change_label_to(self, new_text: str, run_time: float = None) -> Animation:
+        """Create a Transform animation to change the label text.
+
+        The label mobject remains the same object in memory, but its appearance
+        is transformed to display the new text. This is similar to the HUD primer
+        pattern used for state/caption text.
+
+        Parameters
+        ----------
+        new_text : str
+            The new text to display on the label
+        run_time : float, optional
+            Animation duration. If None, uses AnimationTimingConfig.FADE_IN_TIME
+
+        Returns
+        -------
+        Animation
+            Transform animation that morphs the current label to the new text
+        """
+        target_label = Text(
+            new_text,
+            font_size=LayoutConfig.LABEL_FONT_SIZE,
+            color=LayoutConfig.LABEL_COLOR
+        )
+        target_label.move_to(self.square.get_center())
+        self._label_text = new_text
+
+        if run_time is None:
+            run_time = AnimationTimingConfig.FADE_IN_TIME
+
+        return Transform(self.label, target_label, run_time=run_time)
 
     def get_mobjects(self):
         """Return list of Manim mobjects for rendering.
@@ -228,31 +263,6 @@ class Block:
             List containing only square and label (excludes line)
         """
         return [self.square, self.label]
-
-    # TODO worked before adding
-    def get_fade_out_animations(self, include_line=True):
-        """Get fade out animations for all block components."""
-        fade_animations = [
-            animations.fade_out_and_remove_block_body(self.square),
-            animations.fade_out_and_remove_block_label(self.label)
-        ]
-        if include_line and self.has_line():
-            fade_animations.append(animations.fade_out_and_remove_line(self.line))
-        return fade_animations
-
-    # TODO worked before adding
-    def update_label(self, new_text: str) -> Text:
-        """Update the block's label text and return the new label mobject."""
-        new_label = Text(
-            new_text,
-            font_size=LayoutConfig.LABEL_FONT_SIZE,
-            color=LayoutConfig.LABEL_COLOR
-        )
-        new_label.move_to(self.square.get_center())
-        new_label.is_in_scene = False
-        self.label = new_label
-        self._label_text = new_text
-        return new_label
 
     def move_to(self, position):
         """Move block to a new position.
@@ -350,6 +360,7 @@ class Block:
         children_labels = [child.get_label_text() for child in self.children]
         return f"Block(label={self.get_label_text()}, parent={parent_label}, children={children_labels}, next_genesis={self.next_genesis})"
 
+
 class FollowLine(Line):
     """A Line that dynamically connects two mobjects via animation.
 
@@ -388,9 +399,6 @@ class FollowLine(Line):
         self.end_mobject = end_mobject
         self._fixed_stroke_width = LayoutConfig.LINE_STROKE_WIDTH
 
-        # Track if part of scene for animation factory
-        self.is_in_scene = False
-
     def _update_position_and_size(self, _mobject):
         """Update function called by UpdateFromFunc animation.
 
@@ -427,6 +435,7 @@ class FollowLine(Line):
             suspend_mobject_updating=False
         )
 
+
 class ChainBranch:
     def __init__(self, chain_type: str):
         self.chain_type = chain_type
@@ -458,6 +467,7 @@ class ChainBranch:
             mobjects.extend(block.get_mobjects())
 
         return mobjects
+
 
 class NarrationTextFactory:
     """Factory for creating HUD text mobjects with primer-based Transform support.
@@ -592,6 +602,7 @@ class NarrationTextFactory:
         caption.to_edge(self.caption_text_position)
         return caption
 
+
 class AnimationTimingConfig:
     """Centralized animation timing configuration"""
 
@@ -623,7 +634,7 @@ class AnimationTimingConfig:
         cls.CHAIN_REVEAL_ANIMATION_TIME *= multiplier
         cls.FOLLOW_LINE_UPDATE_TIME *= multiplier
 
-# TODO doublecheck this AND make positioning dynamic so you can fit target number of blocks to screen based on expected block race length
+
 class LayoutConfig:
     GENESIS_X = -4
     GENESIS_Y = 0
@@ -665,6 +676,7 @@ class LayoutConfig:
         """
         spacing = LayoutConfig.get_tie_chain_spacing()
         return genesis_y + spacing, genesis_y - spacing
+
 
 class AnimationManager:
     """Facade for Manim animations with scene membership tracking.
@@ -755,27 +767,7 @@ class AnimationManager:
         Animation
             Create animation with configured fade-in time
         """
-        mobject.is_in_scene = True
         return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
-
-    @staticmethod
-    def fade_out_and_remove_block_body(mobject) -> Animation:
-        """Fade out and remove a block body (square) from scene.
-
-        Sets `mobject.is_in_scene = False` before returning the animation.
-
-        Parameters
-        ----------
-        mobject : Square
-            The block's square mobject to animate
-
-        Returns
-        -------
-        Animation
-            FadeOut animation with configured fade-out time
-        """
-        mobject.is_in_scene = False
-        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
 
     @staticmethod
     def fade_in_and_create_block_label(mobject) -> Animation:
@@ -793,27 +785,7 @@ class AnimationManager:
         Animation
             Create animation with configured fade-in time
         """
-        mobject.is_in_scene = True
         return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
-
-    @staticmethod
-    def fade_out_and_remove_block_label(mobject) -> Animation:
-        """Fade out and remove a block label (text) from scene.
-
-        Sets `mobject.is_in_scene = False` before returning the animation.
-
-        Parameters
-        ----------
-        mobject : Text
-            The block's label mobject to animate
-
-        Returns
-        -------
-        Animation
-            FadeOut animation with configured fade-out time
-        """
-        mobject.is_in_scene = False
-        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
 
     @staticmethod
     def fade_in_and_create_line(mobject) -> Animation:
@@ -831,28 +803,7 @@ class AnimationManager:
         Animation
             Create animation with configured fade-in time
         """
-        mobject.is_in_scene = True
         return Create(mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
-
-    @staticmethod
-    def fade_out_and_remove_line(mobject) -> Animation:
-        """Fade out and remove a connection line from scene.
-
-        Sets `mobject.is_in_scene = False` before returning the animation.
-        This enables automatic filtering in `_collect_follow_line_animations()`.
-
-        Parameters
-        ----------
-        mobject : FollowLine
-            The line mobject to animate
-
-        Returns
-        -------
-        Animation
-            FadeOut animation with configured fade-out time
-        """
-        mobject.is_in_scene = False
-        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
 
     @staticmethod
     def transform_text(old_mobject, new_mobject) -> Animation:
@@ -874,26 +825,9 @@ class AnimationManager:
         """
         return Transform(old_mobject, new_mobject, run_time=AnimationTimingConfig.FADE_IN_TIME)
 
-    @staticmethod
-    def remove_text(mobject) -> Animation:
-        """Fade out and remove text from scene.
-
-        Sets `mobject.is_in_scene = False` before returning the animation.
-
-        Parameters
-        ----------
-        mobject : Mobject
-            The text mobject to animate
-
-        Returns
-        -------
-        Animation
-            FadeOut animation with configured fade-out time
-        """
-        mobject.is_in_scene = False
-        return FadeOut(mobject, run_time=AnimationTimingConfig.FADE_OUT_TIME)
 
 animations = AnimationManager()
+
 
 class NarrationManager:
     """Scene-aware narration factory with automatic HUD fixing and lifecycle tracking.
@@ -1018,7 +952,7 @@ class NarrationManager:
     """
     """
     ---PERFORMANCE CONSIDERATIONS---
-    Tested after clearing all text and mathtex files, cacheing disabled
+    Tested after clearing all text and MathTex files, cacheing disabled
     Text - Fast
     MathTex - Mixed Text and MathTex during testing, need to properly test.
     LaTex - Untested
@@ -1077,7 +1011,25 @@ class NarrationManager:
         # No registration needed - primer already registered
         return text
 
+    def get_empty_narration(self):
+        """Create invisible placeholder text to clear narration."""
+        text = self.factory.get_caption(".....")
+        text.set_color(BLACK)  # Invisible against black background
+        text.move_to(self.current_caption_text.get_center())
+        return text
+
+
+# TiebreakDecision = Literal["honest_on_honest", "honest_on_selfish", "selfish_on_selfish"]
+if TYPE_CHECKING:
+    TiebreakDecision: TypeAlias = Literal["honest_on_honest", "honest_on_selfish", "selfish_on_selfish"]
+
+
 class SelfishMiningSquares:
+    # TODO - Low Priority - might be able to generate animations faster(5-10%) if using a 2d scene, will require
+    #   refactoring AND getting HUD to work(might be able to get an old version to work, if persisting HUD
+    #   variables(with transform) and priming(similar to how it is done here), this was functional, but after
+    #   learning how to accomplish this with extending ThreeDScene, might be able to apply this to
+    #   MovingCamera(extended for a HUD))
     def __init__(self, scene: HUD2DScene, alpha=0.3, gamma=0.5, enable_narration=False):
         # Validate scene type
         if not isinstance(scene, HUD2DScene):
@@ -1086,7 +1038,7 @@ class SelfishMiningSquares:
                 f"got {type(scene).__name__} instead. "
                 f"Please change your scene class to inherit from HUD2DScene."
             )
-        # Scene to bypass manim and use play in SelfishMiningSquares
+        # Scene to bypass manim limitations and use play in SelfishMiningSquares
         self.scene = scene
 
         # Create scene-specific narration manager
@@ -1099,9 +1051,10 @@ class SelfishMiningSquares:
 
         # Narration control
         self.enable_narration = enable_narration
+        self._pending_tiebreak = None
 
-        self.current_race_number = 0
-        self.race_history = []  # List of dicts with race results
+        # Camera tracking for long races
+        self._previous_max_chain_len = 4  # Track maximum chain length for camera scrolling
 
         self.genesis_position = (LayoutConfig.GENESIS_X, LayoutConfig.GENESIS_Y, 0)
 
@@ -1178,21 +1131,42 @@ class SelfishMiningSquares:
         is_tied = (selfish_lead == 0 and honest_len > 0)
         return honest_len, selfish_len, selfish_lead, is_tied
 
-    def _decide_next_block_in_tie(self) -> str:
-        """Decide which type of block to create during tie state
+    def _decide_next_block_in_tie(self) -> "TiebreakDecision":
+        """Decide which chain gets the next block during a tie.
 
-        Returns:
-            str: One of "selfish_on_selfish", "honest_on_honest", "honest_on_selfish"
+        Returns "honest_on_honest", "honest_on_selfish", or "selfish_on_selfish"
+        based on manual override or probabilistic distribution using alpha (adversarial hash power)
+        and gamma (network connectivity).
+
+        Probability Distribution (from selfish mining paper state 0'):
+        - P(selfish_on_selfish) = α
+          (selfish pool mines next block with probability equal to their hash power)
+
+        - P(honest_on_selfish) = γ(1-α)
+          (honest miners build on selfish chain: honest % × connectivity advantage)
+
+        - P(honest_on_honest) = (1-γ)(1-α)
+          (honest miners build on honest chain: honest % × (1 - connectivity))
+
+        Where:
+        - α = selfish pool's hash power (adversarial percentage)
+        - γ = network connectivity (proportion of honest miners who see selfish chain first)
+        - (1-α) = honest miners' hash power
+
+        Total probability: α + γ(1-α) + (1-γ)(1-α) = 1
         """
+        # Check for manual tiebreak override
+        if self._pending_tiebreak is not None:
+            return self._pending_tiebreak
+
         rand = random.random()
-        h = 1 - self.alpha
 
         if rand < self.alpha:
             return "selfish_on_selfish"
-        elif rand < self.alpha + h * (1 - self.gamma):
-            return "honest_on_honest"
-        else:
+        elif rand < self.alpha + self.gamma * (1 - self.alpha):
             return "honest_on_selfish"
+        else:
+            return "honest_on_honest"
 
     def _decide_next_block_normal(self) -> str:
         """Decide which type of block to create during normal (non-tie) state
@@ -1207,9 +1181,21 @@ class SelfishMiningSquares:
     # Public API
     ####################
 
-    # TODO add optional manual tiebreaking, possible when creating an instance of SMS
-    def advance_selfish_chain(self, caption: str = None) -> None:
-        """Create next selfish block with animated fade-in"""
+    def advance_selfish_chain(self, caption: str | None = None, tiebreak: "TiebreakDecision | None" = None) -> None:
+        """Create next selfish block with animated fade-in
+
+        Parameters
+        ----------
+        caption : str | None
+            Optional caption text to display
+        tiebreak : Literal["honest_on_honest", "honest_on_selfish", "selfish_on_selfish"] | None
+            Manual tiebreak override. Invalid values are silently ignored.
+        """
+        # Validate tiebreak - silently convert invalid strings to None
+        if tiebreak is not None and tiebreak not in ("honest_on_honest", "honest_on_selfish", "selfish_on_selfish"):
+            tiebreak = None
+
+        self._pending_tiebreak = tiebreak
 
         self._store_previous_lead()
 
@@ -1229,8 +1215,21 @@ class SelfishMiningSquares:
 
         self._check_if_race_continues()
 
-    def advance_honest_chain(self, caption: str = None) -> None:
-        """Create next honest block with animated fade-in"""
+    def advance_honest_chain(self, caption: str | None = None, tiebreak: "TiebreakDecision | None" = None) -> None:
+        """Create next honest block with animated fade-in
+
+        Parameters
+        ----------
+        caption : str | None
+            Optional caption text to display
+        tiebreak : Literal["honest_on_honest", "honest_on_selfish", "selfish_on_selfish"] | None
+            Manual tiebreak override. Invalid values are silently ignored.
+        """
+        # Validate tiebreak - silently convert invalid strings to None
+        if tiebreak is not None and tiebreak not in ("honest_on_honest", "honest_on_selfish", "selfish_on_selfish"):
+            tiebreak = None
+
+        self._pending_tiebreak = tiebreak
 
         self._store_previous_lead()
 
@@ -1271,6 +1270,39 @@ class SelfishMiningSquares:
 
         self._check_if_race_continues()
 
+    def update_caption(self, caption_text: str) -> None:
+        """Update caption text without advancing any chain.
+
+        This method transforms the caption text and waits for the same duration
+        as a normal block addition (including state transitions and waits).
+
+        Parameters
+        ----------
+        caption_text : str
+            The text to display in the caption/narration space. Pass empty string
+            or None to clear the caption.
+        """
+        if not self.enable_narration:
+            return
+
+            # Transform caption text
+        if caption_text:
+            caption_mobject = self.narration.get_narration(caption_text)
+        else:
+            caption_mobject = self.narration.get_empty_narration()
+
+        self.scene.play(
+            animations.transform_text(
+                self.narration.current_caption_text,
+                caption_mobject
+            )
+        )
+
+        # Wait for the same duration as a block addition
+        # This matches: initial wait + state transition + final wait
+        total_wait_time = (AnimationTimingConfig.WAIT_TIME * 2) + AnimationTimingConfig.FADE_IN_TIME
+        self.scene.wait(total_wait_time)
+
     ####################
     # Block Race Tracking
     # Private
@@ -1282,18 +1314,6 @@ class SelfishMiningSquares:
         selfish_len = len(self.selfish_chain.blocks)
         selfish_lead = selfish_len - honest_len
         return honest_len, selfish_len, selfish_lead
-
-    # TODO does this store the actual branches(here or in a related process) A. NO, but blocks contain info to recreate the race anyways
-    def _record_race_result(self, winner: str):
-        """Record race result in simple dict format"""
-        honest_len, selfish_len, _ = self._get_current_chain_lengths()
-        self.race_history.append({
-            'race_number': self.current_race_number,
-            'winner': winner,
-            'honest_blocks': honest_len,
-            'selfish_blocks': selfish_len
-        })
-        self.current_race_number += 1
 
     ####################
     # Helper Methods
@@ -1325,7 +1345,6 @@ class SelfishMiningSquares:
 
         return x_position, y_position, 0
 
-    # TODO Document and clean this up
     def _animate_block_and_line(self, block: Block, line: Line | FollowLine, caption: str = None,
                                 previous_state: str = None) -> None:
         """Animate block and line creation with primer-based Transform for HUD text.
@@ -1344,14 +1363,19 @@ class SelfishMiningSquares:
         if line:
             anims.append(animations.fade_in_and_create_line(line))
 
-            ########## Caption Anims ##########
-        if caption:
-            caption_mobject = self.narration.get_narration(caption)
-            # Always transform the primer - it's already registered as fixed-in-frame
+        ########## Caption Anims ##########
+        if self.enable_narration:
+            if caption:
+                # Transform to new caption text
+                caption_mobject = self.narration.get_narration(caption)
+            else:
+                # Transform to invisible placeholder (clears the caption)
+                caption_mobject = self.narration.get_empty_narration()
+
             anims.append(animations.transform_text(
                 self.narration.current_caption_text, caption_mobject))
 
-            ########## State Anims ##########
+        ########## State Anims ##########
         current_state = None
         is_special_case_2_to_0 = False
         is_special_case_0_to_0 = False
@@ -1387,8 +1411,11 @@ class SelfishMiningSquares:
                 anims.append(animations.transform_text(
                     self.narration.current_state_text, transition_text_ref))
 
-                ########## PLAY Anims ##########
+        ########## PLAY Anims ##########
         self.scene.play(*anims)
+
+        # Check if camera needs to shift AFTER block is created but BEFORE state transition
+        self._check_and_shift_camera_if_needed()
 
         ########## WAIT Anims ##########
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
@@ -1402,8 +1429,29 @@ class SelfishMiningSquares:
                 animations.transform_text(self.narration.current_state_text, final_state_text)
             )
 
-            ########## WAIT Anims ##########
+        ########## WAIT Anims ##########
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
+
+    def _check_and_shift_camera_if_needed(self) -> None:
+        """Shift camera right if either chain exceeds previous maximum length."""
+        honest_len, selfish_len, _ = self._get_current_chain_lengths()
+        max_chain_len = max(honest_len, selfish_len)
+
+        # Only shift if we've exceeded the previous maximum
+        if max_chain_len > 4 and max_chain_len > self._previous_max_chain_len:
+            # Shift by exactly one block spacing
+            shift_amount = LayoutConfig.BLOCK_HORIZONTAL_SPACING
+
+            current_center = self.scene.camera.frame_center
+            new_center = [current_center[0] + shift_amount, current_center[1], current_center[2]]
+
+            self.scene.move_camera(
+                frame_center=new_center,
+                run_time=AnimationTimingConfig.WAIT_TIME
+            )
+
+            # Update the tracked maximum
+            self._previous_max_chain_len = max_chain_len
 
     @staticmethod
     def _collect_follow_line_animations(chains: list[ChainBranch]) -> list:
@@ -1412,9 +1460,7 @@ class SelfishMiningSquares:
         for chain in chains:
             for block in chain.blocks:
                 if block.has_line() and isinstance(block.line, FollowLine):
-                    # Only collect lines that are in scene
-                    if getattr(block.line, 'is_in_scene', False):
-                        anims.append(block.line.create_update_animation())
+                    anims.append(block.line.create_update_animation())
         return anims
 
     def _get_winning_and_losing_chains(self, winner: str) -> tuple[ChainBranch, ChainBranch]:
@@ -1509,10 +1555,11 @@ class SelfishMiningSquares:
             winning_block.set_as_next_genesis()
             self._transition_to_next_race(winning_block)
 
-            # Reset for next race
-        self._finalize_race_and_start_next(winner)
+        # Reset for next race
+        self._finalize_race_and_start_next()
 
     def _animate_race_resolution(self, winner: str):
+        """Animate the resolution of a blockchain race."""
         winning_chain, losing_chain = self._get_winning_and_losing_chains(winner)
         winning_block = winning_chain.blocks[-1] if winning_chain.blocks else None
 
@@ -1521,71 +1568,49 @@ class SelfishMiningSquares:
 
         winning_block.set_as_next_genesis()
 
-        # Step 1: Vertical shift - move blocks to offset positions
-        genesis_y = self.genesis_position[1]
-        winning_block_current_y = winning_block.get_center()[1]
-        vertical_shift = genesis_y - winning_block_current_y
+        # Step 1: Vertical shift (only if selfish chain has blocks)
+        if self.selfish_chain.blocks:
+            genesis_y = self.genesis_position[1]
+            winning_block_current_y = winning_block.get_center()[1]
+            vertical_shift = genesis_y - winning_block_current_y
 
-        winning_group = VGroup(*[mob for block in winning_chain.blocks
-                                 for mob in block.get_transform_safe_mobjects()])
-        losing_group = VGroup(*[mob for block in losing_chain.blocks
-                                for mob in block.get_transform_safe_mobjects()])
+            winning_group = VGroup(*[mob for block in winning_chain.blocks
+                                     for mob in block.get_transform_safe_mobjects()])
+            losing_group = VGroup(*[mob for block in losing_chain.blocks
+                                    for mob in block.get_transform_safe_mobjects()])
 
-        follow_line_animations = self._collect_follow_line_animations([winning_chain, losing_chain])
+            follow_line_animations = self._collect_follow_line_animations([winning_chain, losing_chain])
 
-        # Move blocks vertically
-        self.scene.play(
-            winning_group.animate.shift(UP * vertical_shift),
-            losing_group.animate.shift(UP * vertical_shift),
-            *follow_line_animations,
-            run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
-        )
+            self.scene.play(
+                winning_group.animate.shift(UP * vertical_shift),
+                losing_group.animate.shift(UP * vertical_shift),
+                *follow_line_animations,
+                run_time=AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME
+            )
 
-        # Step 2: Horizontal shift - move CAMERA instead of blocks
+            # Step 2: Horizontal shift - position winning block at genesis screen position
         winning_block_x = winning_block.get_center()[0]
-        current_genesis_x = self.genesis.get_center()[0]  # ✓ Use CURRENT genesis position
-        horizontal_shift = winning_block_x - current_genesis_x
+        current_camera_x = self.scene.camera.frame_center[0]
 
-        # Calculate the new frame center position
-        current_center = self.scene.camera.frame_center
-        new_center = current_center + RIGHT * horizontal_shift
+        # Where does winning block appear on screen right now?
+        winning_block_screen_x = winning_block_x - current_camera_x
+
+        # Where should genesis appear on screen?
+        target_screen_x = self.genesis_position[0]
+
+        # How far to shift camera?
+        camera_shift = winning_block_screen_x - target_screen_x
+
+        # Move camera
+        new_camera_x = current_camera_x + camera_shift
 
         self.scene.move_camera(
-            frame_center=new_center,
+            frame_center=[new_camera_x, self.scene.camera.frame_center[1], self.scene.camera.frame_center[2]],
             run_time=AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME
         )
 
-        # Step 3: Fade out losing blocks
-        fade_out_animations = []
-        for block in winning_chain.blocks[:-1]:
-            fade_out_animations.extend(block.get_fade_out_animations())
-
-        fade_out_animations.append(animations.fade_out_and_remove_block_label(winning_block.label))
-        if winning_block.has_line():
-            fade_out_animations.append(animations.fade_out_and_remove_line(winning_block.line))
-
-        for block in losing_chain.blocks:
-            fade_out_animations.extend(block.get_fade_out_animations())
-
-        fade_out_animations.extend(self.genesis.get_fade_out_animations(include_line=False))
-
-        self.scene.play(AnimationGroup(*fade_out_animations))
-
-        # Step 4: Cleanup and create new genesis label
-        for block in winning_chain.blocks[:-1]:
-            self.scene.remove(block.square, block.label)
-            if block.has_line():
-                self.scene.remove(block.line)
-
-        for block in losing_chain.blocks:
-            self.scene.remove(block.square, block.label)
-            if block.has_line():
-                self.scene.remove(block.line)
-
-        self.scene.remove(self.genesis.square, self.genesis.label)
-
-        new_label = winning_block.update_label("Gen")
-        state_animations = [animations.fade_in_and_create_block_label(new_label)]
+        # Step 3: Update label to "Gen"
+        state_animations = [winning_block.change_label_to("Gen")]
 
         if self.enable_narration and self.narration.current_state_text:
             final_state = self.narration.get_state("0")
@@ -1594,10 +1619,8 @@ class SelfishMiningSquares:
         self.scene.play(*state_animations)
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
 
-    def _finalize_race_and_start_next(self, winner: str):
+    def _finalize_race_and_start_next(self):
         """Record result and reset for next race"""
-        self._record_race_result(winner)
-
         # Reset counters
         self.honest_blocks_created = 0
         self.selfish_blocks_created = 0
@@ -1613,7 +1636,7 @@ class SelfishMiningSquares:
         if not self.selfish_chain.blocks or not self.honest_chain.blocks:
             return
 
-            # Calculate target y-positions using config - now returns both positions as a tuple
+        # Calculate target y-positions using config - now returns both positions as a tuple
         genesis_y = self.genesis_position[1]
         honest_target_y, selfish_target_y = LayoutConfig.get_tie_positions(genesis_y)
 
@@ -1648,7 +1671,7 @@ class SelfishMiningSquares:
                 animations.transform_text(self.narration.current_state_text, final_state_text)
             )
 
-            # Animate vertical shift for both chains simultaneously with state transition
+        # Animate vertical shift for both chains simultaneously with state transition
         self.scene.play(
             *shift_animations,
             run_time=AnimationTimingConfig.VERTICAL_SHIFT_TIME
@@ -1670,23 +1693,12 @@ class SelfishMiningSquares:
         if not all_blocks:
             return
 
-            # Step 2: Fade in previously hidden blocks/lines
-        fade_in_anims = []
-        for block in all_blocks:
-            if not getattr(block.square, 'is_in_scene', True):
-                fade_in_anims.append(animations.fade_in_and_create_block_body(block.square))
-                fade_in_anims.append(animations.fade_in_and_create_block_label(block.label))
-            if block.has_line() and not getattr(block.line, 'is_in_scene', True):
-                fade_in_anims.append(animations.fade_in_and_create_line(block.line))
-
-                # Step 3: Calculate bounding box manually
+        # Step 2: Calculate bounding box manually
         all_block_mobjects = []
         for block in all_blocks:
             all_block_mobjects.extend([block.square, block.label])
 
-            # Calculate bounding box
-        from manim.constants import LEFT, RIGHT, UP, DOWN
-
+        # Calculate bounding box
         min_x = min(mob.get_critical_point(LEFT)[0] for mob in all_block_mobjects)
         max_x = max(mob.get_critical_point(RIGHT)[0] for mob in all_block_mobjects)
         min_y = min(mob.get_critical_point(DOWN)[1] for mob in all_block_mobjects)
@@ -1698,24 +1710,19 @@ class SelfishMiningSquares:
         width = max_x - min_x + margin
         height = max_y - min_y + margin
 
-        # Calculate zoom factor (inverse of scale in ThreeDScene)
-        # ThreeDScene.zoom works inversely - higher zoom = smaller view
-        from manim import config
+        # Calculate zoom factor
         frame_aspect = config.frame_width / config.frame_height
         content_aspect = width / height
 
         if content_aspect > frame_aspect:
-            # Width is limiting factor
             zoom_factor = config.frame_width / width
         else:
-            # Height is limiting factor
             zoom_factor = config.frame_height / height
 
-            # Step 4: Animate camera movement
+            # Step 3: Animate camera movement
         self.scene.move_camera(
             frame_center=[center_x, center_y, 0],
             zoom=zoom_factor,
-            added_anims=fade_in_anims,
             run_time=animation_time
         )
         self.scene.wait(AnimationTimingConfig.WAIT_TIME)
@@ -1748,7 +1755,7 @@ class SelfishMiningSquares:
                 genesis_blocks.append(current)
             current = current.parent_block
 
-            # Step 3: Use the Nth genesis back as starting point (or original_genesis if not enough)
+        # Step 3: Use the Nth genesis back as starting point (or original_genesis if not enough)
         starting_genesis = genesis_blocks[-1] if genesis_blocks else self.original_genesis
 
         # Step 4: Forward BFS from starting genesis
@@ -1783,7 +1790,7 @@ class SelfishMiningSquares:
         elif self.honest_chain.blocks and self.honest_chain.blocks[-1].is_next_genesis():
             return self.honest_chain.blocks[-1]
 
-            # Race not resolved - return the furthest block from either chain
+        # Race not resolved - return the furthest block from either chain
         selfish_last = self.selfish_chain.blocks[-1] if self.selfish_chain.blocks else None
         honest_last = self.honest_chain.blocks[-1] if self.honest_chain.blocks else None
 
@@ -1796,6 +1803,7 @@ class SelfishMiningSquares:
     # State Management
     # Private
     ####################
+
     def _capture_state_before_block(self) -> str | None:
         """Capture current state before adding a block (for narration)"""
         if not self.enable_narration:
@@ -1845,64 +1853,129 @@ class SelfishMiningSquares:
         self.selfish_chain.blocks.clear()
         self.honest_chain.blocks.clear()
 
+        # Reset camera tracking for new race
+        self._previous_max_chain_len = 4  # Reset to threshold
+
+
 ##########Examples##########
 
 class SelfishMiningAutomaticExample(HUD2DScene):
     def construct(self):
-        # Initialize the mining system
+        # Fully automated probabilistic simulation (no narration)
         sm = SelfishMiningSquares(self, alpha=0.40, gamma=0.15)
         for _ in range(20):
-            sm.generate_next_block_probabilistic()
+            sm.generate_next_block_probabilistic()  # Each block created using probability
+
 
 class SelfishMiningManualExample(HUD2DScene):
     def construct(self):
-        # Initialize the mining system
+        # Manual block-by-block control with narration enabled
         sm = SelfishMiningSquares(self, 0.30, 0.1, enable_narration=True)
 
-        # TODO previous version limited to +4 from Gen, can change but any time selfish is +4 from gen and +1 added,
-        #       need to shift camera right 1 position after filling the screen
-        sm.advance_selfish_chain("a block")
+        # Add blocks with optional captions
+        sm.advance_selfish_chain("A Block")
+        sm.advance_selfish_chain()
+        sm.update_caption("Narration without Block")  # Update caption independently
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        sm.advance_honest_chain("Another Block")  # ← This triggers race resolution (selfish wins)
+
+        # New race starts from winning block as genesis
+        sm.advance_honest_chain()  # ← First block of new race
+
+        # Automatic tiebreak resolution (uses probability)
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+
+        # Continue building - automatic resolution when needed
         sm.advance_selfish_chain()
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        sm.advance_honest_chain("another block")
-        # TODO after caption added, never removed
-        # TODO add a way to caption without advancing chain
-        # TODO add a way to manually tiebreak
-        # first block race over
-        sm.advance_honest_chain()
-        # next race over
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        # tiebreak handled automatically
-        sm.advance_selfish_chain()
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        # too close, reveal
+
+        # Zoom out to show multiple races
         sm.zoom_out_to_show_races()
         self.wait(1)
 
+
 class SelfishMiningManualTiesExample(HUD2DScene):
     def construct(self):
-        # Ties handled automatically
-        sm = SelfishMiningSquares(self, 0.33, 0.5, enable_narration=True)  # gives 1/3 chance to each outcome
+        # Manual tiebreak control (alpha=0.33, gamma=0.5 gives equal probability to each outcome)
+        sm = SelfishMiningSquares(self, 0.33, 0.5, enable_narration=True)
         sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+
+        # Demonstrate all three valid tiebreak options
+        sm.advance_honest_chain(tiebreak="honest_on_honest")
 
         sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        sm.advance_honest_chain(tiebreak="honest_on_selfish")
 
         sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        sm.advance_honest_chain(tiebreak="selfish_on_selfish")
 
+        # Invalid tiebreak - silently falls back to probabilistic
         sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        sm.advance_honest_chain(tiebreak="bad tiebreak")
 
+        # No tiebreak parameter - uses probabilistic
         sm.advance_selfish_chain()
         sm.advance_honest_chain()
 
         sm.zoom_out_to_show_races()
-
         self.wait(3)
+
+
+# TODO need to limit zoom out by depth from current gen block, but collect the full race that depth is part of
+#   (if depth too far, will zoom out to the point where blocks are not visible)
+# TODO low priority, after zoom out to max depth, scroll camera(single animation where animation time is function
+#   of how far camera scrolls, so scrolling speed is always same)
+class SelfishMiningTrackingExample(HUD2DScene):
+    def construct(self):
+        # Manual block-by-block control with narration enabled
+        sm = SelfishMiningSquares(self, 0.30, 0.1, enable_narration=True)
+
+        # First race: Build long selfish chain (5 blocks)
+        # Camera scrolls right by 1 block spacing when 5th block is added
+        sm.advance_selfish_chain()  # Block 1
+        sm.advance_selfish_chain()  # Block 2
+        sm.advance_selfish_chain()  # Block 3
+        sm.advance_selfish_chain()  # Block 4
+        sm.advance_selfish_chain()  # Block 5 - triggers camera scroll
+
+        # Honest chain catches up (4 blocks)
+        # No additional camera scroll (max chain length still 5)
+        sm.advance_honest_chain()  # Block 1
+        sm.advance_honest_chain()  # Block 2
+        sm.advance_honest_chain()  # Block 3
+        sm.advance_honest_chain()  # Block 4 - race resolves, selfish wins
+
+        # Second race: Build very long selfish chain (10 blocks)
+        # Camera scrolls incrementally as chain grows beyond previous max
+        sm.advance_selfish_chain()  # Block 1 (from new genesis)
+        sm.advance_selfish_chain()  # Block 2
+        sm.advance_selfish_chain()  # Block 3
+        sm.advance_selfish_chain()  # Block 4
+        sm.advance_selfish_chain()  # Block 5
+        sm.advance_selfish_chain()  # Block 6 - camera scrolls (new max)
+        sm.advance_selfish_chain()  # Block 7 - camera scrolls (new max)
+        sm.advance_selfish_chain()  # Block 8 - camera scrolls (new max)
+        sm.advance_selfish_chain()  # Block 9 - camera scrolls (new max)
+        sm.advance_selfish_chain()  # Block 10 - camera scrolls (new max)
+
+        # Honest chain catches up (9 blocks)
+        # No additional camera scroll (max chain length still 10)
+        sm.advance_honest_chain()  # Block 1
+        sm.advance_honest_chain()  # Block 2
+        sm.advance_honest_chain()  # Block 3
+        sm.advance_honest_chain()  # Block 4
+        sm.advance_honest_chain()  # Block 5
+        sm.advance_honest_chain()  # Block 6
+        sm.advance_honest_chain()  # Block 7
+        sm.advance_honest_chain()  # Block 8
+        sm.advance_honest_chain()  # Block 9 - race resolves, selfish wins
+
+        # Zoom out to show both completed races
+        # Camera adjusts to fit all blocks in view
+        sm.zoom_out_to_show_races()
+        self.wait(1)
