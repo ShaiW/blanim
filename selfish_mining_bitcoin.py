@@ -4778,7 +4778,7 @@ class SelfishMiningExplanation(HUD2DScene):
 
 
 #TODO list of things to be implemented
-#   Implement opacity(0.5) for the hidden seflish chain with an animation that changes to full opacity upon reveal.
+#   Implement opacity(0.5) for the hidden seflish chain with an animation that changes to full opacity upon reveal .
 #   Narration works with Text OR MathTex OR Tex, add a way on creation to set one option, then use that on option only throughout NarrationManager/TextFactory
 #   Override automatic resolution so animations can be generated that deviate from selfish mining strategy(help explain why the strategy exists)
 #   Add captioning to each part of race resolution (after breaking down into individual public calls, can try advance_animation that always plays the next step in the anim)
