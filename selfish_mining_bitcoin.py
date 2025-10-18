@@ -4617,7 +4617,7 @@ class SelfishMiningManualTiesExample(HUD2DScene):
         sm.advance_honest_chain(tiebreak="honest_on_honest")
 
         sm.advance_selfish_chain()
-        sm.advance_honest_chain(tiebreak="honest_on_selfish")
+        sm.advance_honest_chain(caption="Honest mines on selfish chain",tiebreak="honest_on_selfish")
 
         sm.advance_selfish_chain()
         sm.advance_honest_chain(tiebreak="selfish_on_selfish")
@@ -4625,7 +4625,7 @@ class SelfishMiningManualTiesExample(HUD2DScene):
         # Invalid tiebreak - silently falls back to probabilistic
         sm.advance_selfish_chain()
         # Comment here is to intentionally ignore the warning this generates, remove to see warning in IDE
-        sm.advance_honest_chain(tiebreak="bad tiebreak")  # type: ignore[arg-type]
+        sm.advance_honest_chain("Passes invalid tiebreak, result probablistic", "bad tiebreak")  # type: ignore[arg-type]
 
         # No tiebreak parameter - uses probabilistic
         sm.advance_selfish_chain()
@@ -4778,6 +4778,8 @@ class SelfishMiningExplanation(HUD2DScene):
 
 
 #TODO list of things to be implemented
+#   Implement opacity(0.5) for the hidden seflish chain with an animation that changes to full opacity upon reveal.
+#   Narration works with Text OR MathTex OR Tex, add a way on creation to set one option, then use that on option only throughout NarrationManager/TextFactory
 #   Override automatic resolution so animations can be generated that deviate from selfish mining strategy(help explain why the strategy exists)
 #   Add captioning to each part of race resolution (after breaking down into individual public calls, can try advance_animation that always plays the next step in the anim)
 #   Add captioning to any public API
