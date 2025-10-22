@@ -4779,11 +4779,13 @@ class SelfishMiningExplanation(HUD2DScene):
 
 #TODO list of things to be implemented
 #   Implement opacity(0.5) for the hidden seflish chain with an animation that changes to full opacity upon reveal .
-#   Narration works with Text OR MathTex OR Tex, add a way on creation to set one option, then use that on option only throughout NarrationManager/TextFactory
 #   Override automatic resolution so animations can be generated that deviate from selfish mining strategy(help explain why the strategy exists)
 #   Add captioning to each part of race resolution (after breaking down into individual public calls, can try advance_animation that always plays the next step in the anim)
 #   Add captioning to any public API
 #   Limit zoom out by depth from current gen, but collect full race for that block.(if depth too deep, will zoom to the point of invisible blocks)
 #   After zoom out to max depth, scroll camera(single animation where time is a func of distance, so scrolling speed remains the same)
-#   Revisit 2dHUD with moving camera using these HUD methods(possible previous attempts failed due to not properly using HUD)
 #   Make AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME dynamic up to 4 blocks (so horizontal shift speed is the same)
+
+#TODO resolved once migrated to use HUD2DScene (has new NarrationManager integrated in scene)
+#   Narration works with Text OR MathTex OR Tex, add a way on creation to set one option, then use that on option only throughout NarrationManager/TextFactory
+#   Camera movements can now be used in HUD2DScene, method chaining also works (wrappers restricted to camera panning and zooming, can still perform 3D movements but blanim is 2D)

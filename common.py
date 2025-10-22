@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+from typing import Optional, Any, Literal, Type
+
 from manim import *
-from manim.utils.family import extract_mobject_family_members
-from manim.typing import Point3D_Array
-import numpy.typing as npt
-from manim.typing import ManimInt
+
 
 ##all sort of stuff that manim should have but doesn't
 
 ##########START Properly Documented Stuff##########
 
+# Reccomend moving everything to HUD2DScene
 class MovingCameraFixedLayerScene(MovingCameraScene):
     """A scene with a moving camera and support for fixed-layer elements (attribute-based).
 
@@ -300,12 +300,17 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
         mob.fixedLayer = (not mob.fixedLayer) if hasattr(mob, "fixedLayer") else True
         return mob
 
+#TODO properly document all this AND create examples in common_examples.py for everything added
 class HUD2DScene(ThreeDScene):
     """A 2D scene with heads-up display (HUD) support using ThreeDScene's fixed-in-frame system.
 
     This scene extends :class:`~.ThreeDScene` but configures the camera for orthographic 2D viewing
     (looking straight down the Z-axis). It provides access to :meth:`~.ThreeDScene.add_fixed_in_frame_mobjects`
     for creating HUD elements that remain fixed in the camera frame regardless of camera movements.
+
+    The scene includes an integrated :class:`UniversalNarrationManager` that provides convenient
+    methods for managing dual HUD text elements (upper narration and lower caption) using the
+    primer pattern. This eliminates the need for manual primer creation and management.
 
     **Design Rationale**: This is a workaround for Manim's lack of a performant 2D moving camera
     scene with HUD support. Previous attempts to optimize :class:`MovingCameraFixedLayerScene`
@@ -323,138 +328,129 @@ class HUD2DScene(ThreeDScene):
         designed exclusively for 2D use with a fixed top-down view. Changing ``phi``, ``theta``,
         or ``gamma`` values is untested and not supported.
 
-    .. warning::
-        **Primer Pattern Requirements**: When using text in the HUD, you MUST:
-
-        1. Create an invisible primer with sufficient character capacity (excluding spaces)
-        2. Add primer to fixed-in-frame BEFORE any transforms
-        3. Use ONLY :class:`~.Transform` (not ReplacementTransform)
-        4. Always transform the SAME primer mobject
-        5. Never exceed primer character capacity (overflow chars detach from HUD)
-        6. Pick ONE text type (Text, MathTex, or Tex) and stick with it - do NOT mix
-
-    **Character Counting Rules**:
-
-    - **Spaces do NOT count** toward character capacity in any text type
-    - Only visible non-space characters count (letters, numbers, symbols)
-    - LaTeX commands (``\\``, ``{}``, ``^``, etc.) do NOT count as characters
-    - Example: ``"HELLO WORLD"`` = 10 characters (space excluded)
-    - Example: ``r"\\text{HELLO WORLD}"`` = 10 characters (space excluded)
-
-    **Primer Overflow Behavior**:
-
-    When text exceeds primer character capacity, overflow characters will:
-
-    - Appear in the scene but NOT stay fixed in the HUD
-    - Remain attached to the moving scene content
-    - Move with camera transformations instead of staying fixed
-    - **Non-deterministic**: Which specific characters detach is unpredictable
-    - Avoid overflow by ensuring primer capacity exceeds longest text
-
     Examples
     --------
 
-    .. code-block:: python
-
-        class BasicHUD(HUD2DScene):
-            def construct(self):
-                # Primer: 10 char capacity (spaces excluded)
-                hud = Text("0123456789", color=BLACK).to_corner(UL)
-                self.add_fixed_in_frame_mobjects(hud)
-
-                # Transform to visible (10 chars: HELLOWORLD)
-                self.play(Transform(hud, Text("HELLO WORLD", color=WHITE).to_corner(UL)))
-
-                # Camera moves, HUD stays fixed
-                self.move_camera(frame_center=RIGHT * 2, run_time=2)
+    **Using Convenience Methods (Recommended)**:
 
     .. code-block:: python
 
-        class OverflowExample(HUD2DScene):
+        class ConvenienceHUDExample(HUD2DScene):
             def construct(self):
-                hud = Text("0123456789", color=BLACK).to_corner(UL)  # 10 char capacity
-                self.add_fixed_in_frame_mobjects(hud)
-
-                # 13 chars (HELLOWORLDABC) - some chars detach (non-deterministic)
-                self.play(Transform(hud, Text("HELLO WORLD ABC", color=WHITE).to_corner(UL)))
-                self.move_camera(frame_center=RIGHT * 3)  # Detached chars move with camera
-
-    .. code-block:: python
-
-        class MathTexHUDExample(HUD2DScene):
-            def construct(self):
-                square = Square(color=GREEN)
+                # Create scene content
+                square = Square(color=BLUE)
                 self.add(square)
 
-                # MathTex primer (10 character capacity, spaces excluded)
-                hud_text = MathTex(r"\\text{0123456789}", color=BLACK).to_corner(UL)
-                self.add_fixed_in_frame_mobjects(hud_text)
+                # Use convenience methods for HUD text
+                self.narrate("Main Title")  # Upper narration
+                self.caption("Subtitle text")  # Lower caption
 
-                # Transform to math expression (4 chars: x, 2, y, 2)
-                math_expr = MathTex(r"\\text{x}^{2}+\\text{y}^{2}", color=WHITE).to_corner(UL)
-                self.play(Transform(hud_text, math_expr))
+                # Camera movement - HUD stays fixed
+                self.move_camera(frame_center=RIGHT * 2, run_time=2)
+
+                # Clear HUD elements
+                self.clear_narrate()
+                self.clear_caption()
+
+    **Temporary Narration with Auto-Clear**:
+
+    .. code-block:: python
+
+        class TemporaryNarrationExample(HUD2DScene):
+            def construct(self):
+                square = Square()
+                self.add(square)
+
+                # Display narration for 2 seconds, then auto-clear
+                self.narrate_and_clear("This appears briefly", display_time=2.0)
+
+                # Display caption for 3 seconds, then auto-clear
+                self.narrate_and_clear("Lower caption", display_time=3.0, upper=False)
+
+    **Manual Primer Pattern (Advanced)**:
+
+    .. code-block:: python
+
+        class ManualPrimerExample(HUD2DScene):
+            def construct(self):
+                # Access the narration manager directly
+                narration = self.narration.get_narration("Custom Title")
+                self.play(Transform(self.narration.current_narration_text, narration))
+
+                caption = self.narration.get_caption("Custom Subtitle")
+                self.play(Transform(self.narration.current_caption_text, caption))
 
                 # Camera movement
                 self.move_camera(frame_center=LEFT * 2, run_time=2)
 
+    **Custom Primer Configuration**:
+
     .. code-block:: python
 
-        class TexHUDExample(HUD2DScene):
+        class CustomPrimerExample(HUD2DScene):
+            def setup(self):
+                super().setup()
+                # Override default narration manager with custom settings
+                self.narration = UniversalNarrationManager(
+                    self,
+                    max_narration_chars=150,  # Larger capacity
+                    max_caption_chars=200,
+                    narration_font_size=48,   # Larger font
+                    caption_font_size=32
+                )
+
             def construct(self):
-                square = Square(color=RED)
-                self.add(square)
-
-                # Tex primer (10 character capacity, spaces excluded)
-                hud_text = Tex(r"\\text{0123456789}", color=BLACK).to_corner(UL)
-                self.add_fixed_in_frame_mobjects(hud_text)
-
-                # Transform to LaTeX (5 chars: L, a, T, e, X)
-                latex_text = Tex(r"\\LaTeX", color=WHITE).to_corner(UL)
-                self.play(Transform(hud_text, latex_text))
-
-                # Camera movement
-                self.move_camera(frame_center=ORIGIN, run_time=2)
+                self.narrate("Large Title Text")
+                self.caption("Large Caption Text")
 
     See Also
     --------
     :class:`~.ThreeDScene` : Parent class providing fixed-in-frame functionality
+    :class:`UniversalNarrationManager` : Integrated HUD text manager with primer pattern
     :meth:`~.ThreeDScene.add_fixed_in_frame_mobjects` : Method for adding HUD elements
     :meth:`~.ThreeDScene.move_camera` : Camera movement method (NOT MovingCameraScene API)
     :class:`MovingCameraFixedLayerScene` : Alternative 2D HUD implementation (less performant)
-    :class:`NarrationTextFactory` : Factory for creating HUD text with primer pattern
-    :class:`NarrationManager` : Scene-aware wrapper for managing HUD text lifecycle
 
     Notes
     -----
     - Camera is set to orthographic 2D view (phi=0, theta=-90°) in :meth:`setup`
+    - Integrated :class:`UniversalNarrationManager` handles primer creation automatically
     - Uses :meth:`~.ThreeDScene.add_fixed_in_frame_mobjects` for HUD elements
     - **Spaces do NOT count** toward primer character capacity
-    - **Primer must have enough non-space characters** for longest text you'll display
-    - **Overflow behavior is non-deterministic**: unpredictable which chars detach
+    - **Default capacity**: 100 chars for narration, 100 chars for caption
     - **Only Transform works**: Do not use ReplacementTransform or other animations
-    - **Do NOT mix text types**: Pick Text, MathTex, OR Tex and stick with it
-    - **Mixing types not recommended**: Causes failures and performance degradation
+    - **Do NOT mix text types**: Currently supports Text only (MathTex/Tex support planned)
     - **Camera API**: Use ``move_camera(frame_center=...)``, not ``camera.frame.animate``
-    - **Tested text types**: Text, MathTex, Tex (each tested individually, not mixed)
     - **Renderer agnostic**: Cairo/OpenGL choice is irrelevant for 2D-only usage
     - This is a temporary workaround; proper 2D HUD scene is planned
 
     Attributes
     ----------
-    None (inherits from ThreeDScene)
+    narration : UniversalNarrationManager
+        Integrated narration manager for HUD text elements. Automatically initialized
+        in :meth:`setup` with default settings. Provides access to primer mobjects
+        and text generation methods.
     """
+    narration_text_type: Literal["Text", "MathTex", "Tex"] = "Text"
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        """Initialize the HUD2DScene.  
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialize the HUD2DScene.
 
-        Parameters  
-        ----------  
-        **kwargs  
-            Keyword arguments passed to :class:`~.ThreeDScene`  
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments passed to :class:`~.ThreeDScene`
+
+        Notes
+        -----
+        The narration manager is initialized to None here and will be created
+        in :meth:`setup` to ensure the rendering infrastructure is ready.
         """
+        super().__init__(**kwargs)
 
-    def setup(self):
+        self.narration: Optional[UniversalNarrationManager] = None # manim warns against overriding init
+
+    def setup(self) -> None:
         """Set up the scene with 2D orthographic camera orientation.
 
         This method is called automatically before :meth:`construct`. It configures
@@ -465,922 +461,652 @@ class HUD2DScene(ThreeDScene):
             Do not override this method or modify camera orientation after setup.
             This scene is designed exclusively for 2D use.
 
+        Examples
+        --------
+        .. code-block:: python
+
+            class MyScene(HUD2DScene):
+                def construct(self):
+                    # setup() has already been called automatically
+                    self.narrate("Scene is ready")
+
+        See Also
+        --------
+        :meth:`construct` : Main method for defining scene content
+        :class:`UniversalNarrationManager` : The narration manager created here
+
         Notes
         -----
         Sets camera orientation to ``phi=0, theta=-90 * DEGREES`` for top-down 2D view.
+        Creates the :class:`UniversalNarrationManager` instance with default settings.
         """
         super().setup()
         # Set camera to orthographic 2D view (looking straight down)
         self.set_camera_orientation(phi=0, theta=-90 * DEGREES)
 
-##########END Properly Documented Stuff##########
+        # Create 2D frame wrapper for MovingCameraScene API compatibility
+        self.camera.frame = Frame2DWrapper(self.camera)
 
-##########START Untested Stuff##########
-# Stuff that *might* work but likely was used improperly at the time
-
-#TODO some of these might actually work, but the problem could have been mathtex not handled properly (culling does not work or provide performance)
-class ViewportCullingHUDCamera(MovingCamera):
-    """A MovingCamera with fixed-in-frame HUD support and viewport culling optimization.
-
-    This camera extends MovingCamera to add two key features:
-    1. Support for mobjects that remain fixed in the camera frame (HUD elements)
-    2. Viewport culling to skip rendering mobjects outside the viewable area
-
-    The fixed-in-frame implementation stores the initial screen position and scale of
-    mobjects when they are added to the fixed set. During rendering, it restores these
-    positions to compensate for camera movement and zoom, ensuring HUD elements remain
-    at constant screen positions and sizes.
-
-    The viewport culling optimization filters out off-screen mobjects before rendering
-    to improve performance in large scenes, while always rendering fixed-in-frame HUD
-    elements regardless of their position.
-
-    Limitations and Warnings
-    ------------------------
-
-    **Bounding Box Approximation**
-        Viewport culling uses bounding box checks, not pixel-perfect visibility:
-
-        - Rotated objects may be culled incorrectly (bounding box doesn't rotate)
-        - Conservative culling includes objects if any part of bounding box overlaps frame
-        - Irregular shapes with large empty areas may render when mostly off-screen
-
-    **Fixed-in-Frame Positioning**
-        HUD elements must be positioned BEFORE being added to fixed_in_frame_mobjects.
-        Their initial position and scale are captured at that moment and maintained
-        throughout camera movements.
-
-    **Transform vs ReplacementTransform**
-        When updating fixed-in-frame HUD elements:
-
-        - Use Transform to keep mobject in fixed_in_frame_mobjects set automatically
-        - ReplacementTransform swaps mobject instances; new mobject must be re-fixed
-        - Failing to re-fix after ReplacementTransform causes HUD to move with camera
-
-    **Performance Overhead**
-        Viewport culling adds per-mobject bounding box checks. Not recommended for:
-
-        - Small scenes where most objects are always visible
-        - Dense scenes with many tightly packed objects
-        - Debugging (disable culling with enable_viewport_culling(False))
-
-    **Renderer Compatibility**
-        Designed for Cairo renderer. OpenGL renderer has different camera/rendering
-        pipelines and may require modifications for correct behavior.
-
-    **Submobject Handling**
-        Adding a VGroup to fixed-in-frame fixes all submobjects. Removing parent
-        doesn't automatically remove submobjects from the fixed set.
-
-    **Frame Configuration**
-        Fixed-in-frame mobjects position relative to config["frame_width"] and
-        config["frame_height"]. Changing frame config after adding fixed mobjects
-        may cause unexpected position shifts.
-
-    **Z-Ordering**
-        Fixed-in-frame mobjects render in scene mobject list order, not special
-        z-ordering. Use add_foreground_mobject() or careful ordering for HUD on top.
-
-    Examples
-    --------
-    .. code-block:: python
-
-        class MyScene(MovingCameraScene):
-            def __init__(self, **kwargs):
-                super().__init__(camera_class=ViewportCullingHUDCamera, **kwargs)
-
-            def construct(self):
-                # Create and position HUD element BEFORE fixing
-                title = Text("Title").to_corner(UL)
-                self.add(title)
-                self.camera.add_fixed_in_frame_mobjects(title)
-
-                # Create many scene objects
-                objects = VGroup(*[Square().shift(RIGHT * x) for x in range(-20, 20)])
-                self.add(objects)
-
-                # Camera movements won't affect title, and off-screen objects won't be rendered
-                self.play(self.camera.frame.animate.shift(RIGHT * 10))
-                self.play(self.camera.frame.animate.scale(0.5))
-
-    See Also
-    --------
-    ViewportCullingHUDScene : Scene class that uses this camera
-    ThreeDCamera : Similar fixed-in-frame functionality for 3D scenes
-
-    Notes
-    -----
-    The implementation stores initial positions relative to the camera's frame_center
-    and initial scale relative to the camera's frame dimensions. During rendering,
-    it calculates the offset needed to restore the original screen position and scale,
-    compensating for any camera movement or zoom that has occurred.
-    """
-
-    def __init__(self, **kwargs):
-        """Initialize the ViewportCullingHUDCamera.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments passed to MovingCamera.__init__
-        """
-        super().__init__(**kwargs)
-        self.fixed_in_frame_mobjects: set[Mobject] = set()
-        self.enable_culling: bool = True
-
-    def add_fixed_in_frame_mobjects(self, *mobjects: Mobject) -> None:
-        """Add mobjects that should stay fixed in the camera frame.
-
-        This method captures the current screen position and scale of each mobject
-        relative to the camera's current state. These values are stored and used
-        during rendering to maintain constant screen position and size regardless
-        of camera movement or zoom.
-
-        Highly useful for displaying titles, scores, timers, or other HUD-style elements.
-
-        Fixed-in-frame mobjects are always rendered, even if they would normally be
-        outside the viewable area (when viewport culling is enabled).
-
-        Parameters
-        ----------
-        *mobjects
-            The mobjects to fix in frame. All submobjects are also fixed.
-
-        Examples
-        --------
-        .. code-block:: python
-
-            # Position BEFORE fixing
-            title = Text("Score: 0").to_corner(UL)
-            self.add(title)
-            self.camera.add_fixed_in_frame_mobjects(title)
-
-            # Update the title later using Transform (stays fixed automatically)
-            new_title = Text("Score: 100").to_corner(UL)
-            self.play(Transform(title, new_title))
-
-        See Also
-        --------
-        remove_fixed_in_frame_mobjects : Remove mobjects from fixed-in-frame set
-        ThreeDCamera.add_fixed_in_frame_mobjects : Similar functionality for 3D scenes
-
-        Notes
-        -----
-        The mobject's position and scale are captured at the moment this method is called.
-        Make sure to position the mobject where you want it on screen BEFORE calling this method.
-        """
-        for mobject in extract_mobject_family_members(mobjects):
-            self.fixed_in_frame_mobjects.add(mobject)
-
-    def remove_fixed_in_frame_mobjects(self, *mobjects: Mobject) -> None:
-        """Remove mobjects from the fixed-in-frame set.
-
-        If a mobject was fixed in frame by passing it through
-        add_fixed_in_frame_mobjects, this undoes that fixing.
-        The mobject will be affected by camera transformations again.
-
-        Parameters
-        ----------
-        *mobjects
-            The mobjects which need not be fixed in frame any longer.
-
-        See Also
-        --------
-        add_fixed_in_frame_mobjects : Add mobjects to fixed-in-frame set
-        """
-        for mobject in extract_mobject_family_members(mobjects):
-            if mobject in self.fixed_in_frame_mobjects:
-                self.fixed_in_frame_mobjects.remove(mobject)
-
-    def points_to_pixel_coords(
+        # Initialize universal narration manager with dual text support
+        self.narration = UniversalNarrationManager(
             self,
-            mobject: Mobject,
-            points: Point3D_Array,
-    ) -> npt.NDArray[ManimInt]:
-        """Convert points to pixel coordinates, compensating for camera transformations on fixed mobjects.
-
-        This method overrides the parent's implementation to handle fixed-in-frame mobjects.
-        For fixed mobjects, it calculates the offset needed to restore their original screen
-        position and scale, compensating for camera movement and zoom.
-
-        This is the key method that makes fixed-in-frame HUD elements work with MovingCamera,
-        since MovingCamera applies its transformations here rather than in
-        transform_points_pre_display().
-
-        Parameters
-        ----------
-        mobject
-            The mobject being rendered
-        points
-            The 3D points to convert to pixel coordinates
-
-        Returns
-        -------
-        np.ndarray
-            2D pixel coordinates as integers
-
-        Notes
-        -----
-        For fixed-in-frame mobjects, this method:
-        1. Retrieves stored initial position and scale data
-        2. Calculates position offset to compensate for camera movement
-        3. Calculates scale factor to compensate for camera zoom
-        4. Applies both compensations before calling parent implementation
-
-        For regular mobjects, delegates to the parent implementation which applies
-        the frame_center offset and zoom scaling normally.
-
-        The compensation ensures that fixed mobjects maintain their original screen
-        position and size regardless of camera transformations, with no drift over time.
-
-        See Also
-        --------
-        Camera.points_to_pixel_coords : Base implementation
-        MovingCamera.frame_center : The camera position that affects transformations
-        """
-        if mobject in self.fixed_in_frame_mobjects:
-            # Apply transform_points_pre_display first
-            points = self.transform_points_pre_display(mobject, points)
-
-            # Use config frame dimensions (constant) instead of self.frame_width/height (dynamic)
-            pixel_height = self.pixel_height
-            pixel_width = self.pixel_width
-            frame_height = config["frame_height"]  # Static, doesn't change with zoom
-            frame_width = config["frame_width"]  # Static, doesn't change with zoom
-
-            width_mult = pixel_width / frame_width
-            width_add = pixel_width / 2
-            height_mult = pixel_height / frame_height
-            height_add = pixel_height / 2
-            height_mult *= -1  # Flip y-axis
-
-            result = np.zeros((len(points), 2))
-            result[:, 0] = points[:, 0] * width_mult + width_add
-            result[:, 1] = points[:, 1] * height_mult + height_add
-            return result.astype("int")
-
-            # For non-fixed mobjects, use parent implementation
-        return super().points_to_pixel_coords(mobject, points)
-
-    def get_mobjects_to_display(
-            self,
-            mobjects,
-            include_submobjects=True,
-            excluded_mobjects=None,
-    ):
-        """Filter out off-screen mobjects for performance (viewport culling).
-
-        This method is called during rendering to determine which mobjects to process.
-        When viewport culling is enabled, it filters the list to include only:
-        1. Fixed-in-frame mobjects (HUD elements) - always rendered
-        2. Mobjects within the camera's viewable area - checked via is_in_frame()
-
-        The culling check happens on a per-frame basis, so mobjects that move into
-        view during camera animations will be rendered correctly.
-
-        Parameters
-        ----------
-        mobjects
-            The mobjects to potentially display
-        include_submobjects
-            Whether to include submobjects
-        excluded_mobjects
-            Mobjects to exclude from display
-
-        Returns
-        -------
-        list
-            Filtered list of mobjects to render
-
-        Notes
-        -----
-        The is_in_frame() check uses bounding boxes, which means:
-        - Partially visible objects are included (conservative culling)
-        - Better to render slightly more than miss visible objects
-        - Rotated objects might be culled incorrectly in edge cases
-
-        See Also
-        --------
-        Camera.is_in_frame : Method used to check if mobjects are visible
-        enable_viewport_culling : Toggle this optimization on/off
-        """
-        # Get the base list of mobjects
-        mobjects = super().get_mobjects_to_display(
-            mobjects, include_submobjects, excluded_mobjects
+            text_type=self.narration_text_type
         )
 
-        if not self.enable_culling:
-            return mobjects
+    def play(self, *args, **kwargs):
+        """Override play to handle Frame2DAnimateWrapper."""
+        processed_args = []
+        for arg in args:
+            if isinstance(arg, Frame2DAnimateWrapper):
+                built = arg.build()
+                if built is not None:
+                    processed_args.append(built)
+            else:
+                processed_args.append(arg)
+        return super().play(*processed_args, **kwargs)
 
-            # Filter: keep fixed-in-frame mobjects and on-screen mobjects
-        filtered = []
-        for mob in mobjects:
-            # Always render fixed-in-frame mobjects (HUD elements)
-            if mob in self.fixed_in_frame_mobjects:
-                filtered.append(mob)
-                # Only render regular mobjects if they're in frame
-            elif self.is_in_frame(mob):
-                filtered.append(mob)
+    def narrate(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
+        """Update upper narration text with animation.
 
-        return filtered
-
-    def enable_viewport_culling(self, enable: bool = True) -> None:
-        """Enable or disable viewport culling optimization.
-
-        When enabled, mobjects outside the camera's viewable area are not rendered,
-        improving performance in large scenes. Fixed-in-frame HUD elements are
-        always rendered regardless of this setting.
+        Uses the primer pattern to transform the upper narration text. The primer
+        mobject is mutated to display the new text while remaining fixed in frame.
 
         Parameters
         ----------
-        enable
-            Whether to enable viewport culling (default: True)
+        text : str
+            Narration text to display at the top of the screen
+        run_time : float
+            Duration of the transform animation in seconds
+        **kwargs
+            Additional arguments passed to :meth:`~.Scene.play`, such as
+            ``rate_func`` or ``lag_ratio``
 
         Examples
         --------
         .. code-block:: python
 
-            # Disable culling for debugging
-            self.camera.enable_viewport_culling(False)
+            class NarrateExample(HUD2DScene):
+                def construct(self):
+                    square = Square()
+                    self.add(square)
 
-            # Re-enable for performance
-            self.camera.enable_viewport_culling(True)
+                    # Basic usage
+                    self.narrate("Step 1: Create square")
+                    self.wait(1)
+
+                    # With custom animation timing
+                    self.narrate("Step 2: Transform", run_time=1.0)
+                    self.play(square.animate.scale(2))
 
         See Also
         --------
-        get_mobjects_to_display : Method that performs the culling
-        """
-        self.enable_culling = enable
-
-class ViewportCullingHUDScene(MovingCameraScene):
-    """A MovingCameraScene with fixed-in-frame HUD elements and viewport culling.
-
-    This scene class uses ViewportCullingHUDCamera to provide:
-    1. Convenient methods for adding HUD elements that remain fixed in the camera frame
-    2. Automatic viewport culling to optimize performance in large scenes
-
-    HUD elements can be added at any time (before or after camera movement) and will
-    always appear at their designated screen positions. Use positioning methods like
-    to_corner(), to_edge(), or move_to() to place HUD elements where you want them.
-
-    Viewport culling automatically filters out off-screen mobjects during rendering,
-    while always rendering HUD elements regardless of their position.
-
-    Limitations and Warnings
-    ------------------------
-
-    **Bounding Box Approximation**
-        Viewport culling uses bounding box checks, not pixel-perfect visibility:
-
-        - Rotated objects may be culled incorrectly (bounding box doesn't rotate)
-        - Conservative culling includes objects if any part of bounding box overlaps frame
-        - Irregular shapes with large empty areas may render when mostly off-screen
-
-    **Fixed-in-Frame Positioning**
-        HUD elements must use positioning methods (to_corner, to_edge, move_to) relative
-        to scene frame boundaries, not camera position. Absolute coordinates may not
-        position elements where expected after camera movement.
-
-    **Transform vs ReplacementTransform**
-        When updating fixed-in-frame HUD elements:
-
-        - Use Transform to keep mobject in fixed_in_frame_mobjects set automatically
-        - ReplacementTransform swaps mobject instances; new mobject must be re-fixed
-        - Failing to re-fix after ReplacementTransform causes HUD to move with camera
-
-    **Performance Overhead**
-        Viewport culling adds per-mobject bounding box checks. Not recommended for:
-
-        - Small scenes where most objects are always visible
-        - Dense scenes with many tightly packed objects
-        - Debugging (disable culling with enable_viewport_culling(False))
-
-    **Renderer Compatibility**
-        Designed for Cairo renderer. OpenGL renderer has different camera/rendering
-        pipelines and may require modifications for correct behavior.
-
-    **Submobject Handling**
-        Adding a VGroup to fixed-in-frame fixes all submobjects. Removing parent
-        doesn't automatically remove submobjects from the fixed set.
-
-    **Frame Configuration**
-        Fixed-in-frame mobjects position relative to config["frame_x_radius"] and
-        config["frame_y_radius"]. Changing frame config after adding fixed mobjects
-        may cause unexpected position shifts.
-
-    **Z-Ordering**
-        Fixed-in-frame mobjects render in scene mobject list order, not special
-        z-ordering. Use add_foreground_mobject() or careful ordering for HUD on top.
-
-    Best Practices
-    --------------
-
-    1. Always use Transform for HUD updates to avoid re-fixing mobjects
-    2. Position HUD elements with to_corner(), to_edge(), etc. for predictable placement
-    3. Test with culling disabled first to ensure correctness before optimizing
-    4. Use FadeOut to remove mobjects when done, rather than leaving them invisible
-    5. Monitor performance - only enable culling if you have many off-screen objects
-
-    Examples
-    --------
-    .. code-block:: python
-
-        class MyHUDScene(ViewportCullingHUDScene):
-            def construct(self):
-                # Create HUD elements
-                title = Text("Title").to_corner(UL)
-                score = Text("Score: 100").to_corner(UR)
-
-                # Fix them in frame (no updaters needed!)
-                self.add_fixed_in_frame_mobjects(title, score)
-
-                # Create many scene objects spread across a large area
-                objects = VGroup(*[
-                    Square().shift(RIGHT * x + UP * y)
-                    for x in range(-20, 20, 2)
-                    for y in range(-20, 20, 2)
-                ])
-                self.add(objects)
-
-                # Camera movements won't affect HUD, and off-screen objects won't be rendered
-                self.play(self.camera.frame.animate.shift(RIGHT * 10))
-                self.play(self.camera.frame.animate.scale(0.5))
-
-                # Can add more HUD elements after camera has moved
-                timer = Text("Time: 0:00").to_edge(DOWN)
-                self.add_fixed_in_frame_mobjects(timer)
-
-                # Update HUD elements using Transform (stays fixed automatically)
-                self.play(Transform(score, Text("Score: 200").to_corner(UR)))
-
-    See Also
-    --------
-    ThreeDScene : Similar fixed-in-frame functionality for 3D scenes
-    MovingCameraScene : Base class for camera movement
-    """
-
-    def __init__(self, **kwargs):
-        """Initialize the ViewportCullingHUDScene.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments passed to MovingCameraScene.__init__
-        """
-        super().__init__(camera_class=ViewportCullingHUDCamera, **kwargs)
-
-    def add_fixed_in_frame_mobjects(self, *mobjects: Mobject) -> None:
-        """Add HUD elements that stay fixed in the camera frame.
-
-        This is a convenience method that both adds the mobjects to the scene
-        and marks them as fixed in the camera frame.
-
-        Fixed-in-frame mobjects are always rendered, even when viewport culling
-        is enabled and they would normally be outside the viewable area.
-
-        Parameters
-        ----------
-        *mobjects
-            The mobjects to add as fixed-in-frame HUD elements
+        :meth:`caption` : Update lower caption text
+        :meth:`clear_narrate` : Clear upper narration
+        :meth:`narrate_and_clear` : Display and auto-clear narration
+        :class:`UniversalNarrationManager` : The underlying manager
 
         Notes
         -----
-        You must use positioning methods like to_corner(), to_edge(), or
-        move_to() to position HUD elements where you want them on screen.
-        These methods position relative to the scene's frame boundaries,
-        not the camera's current position.
-
-        When updating HUD elements, use Transform instead of ReplacementTransform
-        to avoid having to re-fix the mobject after each update.
-
-        Examples
-        --------
-        .. code-block:: python
-
-            # Create and fix HUD element
-            score = Text("Score: 0").to_corner(UL)
-            self.add_fixed_in_frame_mobjects(score)
-
-            # Update using Transform (stays fixed automatically)
-            self.play(Transform(score, Text("Score: 100").to_corner(UL)))
+        - Uses :class:`~.Transform` animation on the primer mobject
+        - Text remains fixed in frame during camera movements
+        - Character count (excluding spaces) must not exceed ``max_narration_chars``
+        - The primer mobject is mutated, not replaced
         """
-        self.add(*mobjects)
-        self.camera.add_fixed_in_frame_mobjects(*mobjects)
+        narration = self.narration.get_narration(text)
+        self.play(
+            Transform(self.narration.current_narration_text, narration),
+            run_time=run_time,
+            **kwargs
+        )
 
-    def remove_fixed_in_frame_mobjects(self, *mobjects: Mobject) -> None:
-        """Remove HUD elements from the fixed-in-frame set.
+    def caption(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
+        """Update lower caption text with animation.
+
+        Uses the primer pattern to transform the lower caption text. The primer
+        mobject is mutated to display the new text while remaining fixed in frame.
 
         Parameters
         ----------
-        *mobjects
-            The mobjects to remove from fixed-in-frame
-        """
-        self.camera.remove_fixed_in_frame_mobjects(*mobjects)
-
-    def enable_viewport_culling(self, enable: bool = True) -> None:
-        """Enable or disable viewport culling optimization.
-
-        This is a convenience method that calls the camera's enable_viewport_culling().
-
-        Parameters
-        ----------
-        enable
-            Whether to enable viewport culling (default: True)
-
-        Examples
-        --------
-        .. code-block:: python
-
-            # Disable culling for debugging
-            self.enable_viewport_culling(False)
-
-            # Re-enable for performance
-            self.enable_viewport_culling(True)
-        """
-        self.camera.enable_viewport_culling(enable)
-
-# TODO this one may have worked, but was used incorrectly for fixed mobjects
-class MovingCameraHUDScene(MovingCameraScene):
-    """A scene with a moving camera and support for fixed HUD (heads-up display) elements.
-
-    This scene extends :class:`~.MovingCameraScene` to provide HUD functionality where certain
-    mobjects remain fixed in screen space regardless of camera movements (panning or zooming).
-    Unlike :class:`~.ThreeDScene`'s ``add_fixed_in_frame_mobjects()``, this implementation is
-    optimized for 2D scenes and avoids 3D rendering overhead.
-
-    The scene uses a custom :class:`HUDMovingCamera` that renders fixed mobjects in a separate
-    rendering pass with an identity camera transformation, ensuring they bypass camera movements
-    entirely during the rendering pipeline.
-
-    Examples
-    --------
-
-    .. code-block:: python
-
-        class HUDExample(MovingCameraHUDScene):
-            def construct(self):
-                # Create HUD title that stays fixed
-                title = Text("Fixed HUD Title").to_corner(UL)
-                self.add(self.fix(title))
-
-                # Create regular content that moves with camera
-                square = Square()
-                self.add(square)
-
-                # Camera zooms, but title stays fixed
-                self.play(self.camera.frame.animate.scale(2))
-                self.play(self.camera.frame.animate.shift(RIGHT * 3))
-
-    .. code-block:: python
-
-        class BlockchainHUDExample(MovingCameraHUDScene):
-            def construct(self):
-                # Fixed state indicator
-                state_text = Text("State: 0").to_edge(DOWN)
-                self.add(self.fix(state_text))
-
-                # Moving blockchain blocks
-                blocks = VGroup(*[Square().shift(RIGHT * i * 2) for i in range(5)])
-                self.add(blocks)
-
-                # Zoom out to show all blocks, state text stays readable
-                self.play(self.camera.frame.animate.scale(3))
-
-    See Also
-    --------
-    :class:`~.MovingCameraScene` : Base class for moving camera functionality
-    :class:`~.ThreeDScene` : 3D scene with ``add_fixed_in_frame_mobjects()`` method
-    :class:`HUDMovingCamera` : Custom camera class for dual-pass rendering
-
-    Notes
-    -----
-    - Fixed mobjects are tracked in ``_fixed_mobjects`` set for O(1) lookup performance
-    - Uses dual-pass rendering: moving mobjects with camera transform, fixed mobjects without
-    - No post-animation corrections needed - HUD elements stay fixed during animations
-    - Compatible with ``ReplacementTransform`` without requiring updater management
-    - Zero per-frame Python overhead - exclusion happens at rendering pipeline level
-    """
-
-    def __init__(self, **kwargs):
-        """Initialize the MovingCameraHUDScene with HUD-aware camera.
-
-        This initialization creates a custom HUDMovingCamera that renders fixed
-        HUD mobjects in a separate rendering pass, ensuring they remain at constant
-        screen position and size regardless of camera transformations.
-
-        The camera uses a dual-pass rendering system:
-        1. Moving mobjects are rendered with the current camera transformation
-        2. Fixed mobjects are rendered with an identity camera (no transformation)
-
-        Parameters
-        ----------
+        text : str
+            Caption text to display at the bottom of the screen
+        run_time : float
+            Duration of the transform animation in seconds
         **kwargs
-            Keyword arguments passed to :class:`~.MovingCameraScene`
+            Additional arguments passed to :meth:`~.Scene.play`, such as
+            ``rate_func`` or ``lag_ratio``
+
+        Examples
+        --------
+        .. code-block:: python
+
+            class CaptionExample(HUD2DScene):
+                def construct(self):
+                    circle = Circle()
+                    self.add(circle)
+
+                    # Basic usage
+                    self.caption("Detailed explanation here")
+                    self.wait(1)
+
+                    # With custom rate function
+                    from manim import smooth
+                    self.caption("Smooth transition", run_time=1.0, rate_func=smooth)
+
+        See Also
+        --------
+        :meth:`narrate` : Update upper narration text
+        :meth:`clear_caption` : Clear lower caption
+        :meth:`narrate_and_clear` : Display and auto-clear caption
+        :class:`UniversalNarrationManager` : The underlying manager
 
         Notes
         -----
-        The HUDMovingCamera requires a reference to the scene to access the
-        ``_fixed_mobjects`` set during rendering. This reference is set after
-        the parent class initialization completes.
-
-        See Also
-        --------
-        :class:`HUDMovingCamera` : Custom camera class for HUD rendering
-        :meth:`fix` : Mark a mobject as fixed in the camera frame
-        :meth:`unfix` : Remove fixed status from a mobject
+        - Uses :class:`~.Transform` animation on the primer mobject
+        - Text remains fixed in frame during camera movements
+        - Character count (excluding spaces) must not exceed ``max_caption_chars``
+        - The primer mobject is mutated, not replaced
         """
-        # Initialize with HUDMovingCamera class
-        super().__init__(camera_class=HUDMovingCamera, **kwargs)
+        caption = self.narration.get_caption(text)
+        self.play(
+            Transform(self.narration.current_caption_text, caption),
+            run_time=run_time,
+            **kwargs
+        )
 
-        # Initialize fixed mobjects tracking set
-        self._fixed_mobjects = set()
+    def clear_narrate(self, run_time: float = 0.5, **kwargs: Any) -> None:
+        """Clear upper narration text with animation.
 
-        # Pass scene reference to camera for fixed mobject access during rendering
-        self.camera.scene = self
-
-    def get_moving_mobjects(self, *animations):
-        """Get moving mobjects, excluding fixed HUD elements.
-
-        This method filters out fixed mobjects from the moving mobjects list,
-        preventing them from triggering full scene redraws during animations.
+        Transforms the narration to invisible text (BLACK color) to effectively
+        clear it from view while maintaining the primer mobject.
 
         Parameters
         ----------
-        *animations : Animation
-            The animations to check for moving mobjects
-
-        Returns
-        -------
-        list[Mobject]
-            List of moving mobjects, excluding those marked as fixed
-
-        See Also
-        --------
-        :meth:`~.Scene.get_moving_mobjects` : Parent class implementation
-        """
-        moving = super().get_moving_mobjects(*animations)
-        # Filter out fixed mobjects from moving list
-        return [m for m in moving if m not in self._fixed_mobjects]
-
-    def fix(self, mob):
-        """Mark a mobject as fixed in the camera frame (HUD element).
-
-        Fixed mobjects maintain constant screen position and size regardless of
-        camera movements. This is useful for UI elements, titles, state indicators,
-        and other heads-up display components.
-
-        Parameters
-        ----------
-        mob : Mobject
-            The mobject to mark as fixed
-
-        Returns
-        -------
-        Mobject
-            The same mobject (for method chaining)
+        run_time : float
+            Duration of the clear animation in seconds
+        **kwargs
+            Additional arguments passed to :meth:`~.Scene.play`
 
         Examples
         --------
         .. code-block:: python
 
-            # Mark and add in one line
-            self.add(self.fix(Text("HUD Title")))
+            class ClearNarrateExample(HUD2DScene):
+                def construct(self):
+                    self.narrate("Temporary message")
+                    self.wait(2)
 
-            # Or separately
-            title = Text("HUD Title")
-            self.fix(title)
-            self.add(title)
+                    # Clear the narration
+                    self.clear_narrate()
+                    self.wait(1)
+
+                    # Show new narration
+                    self.narrate("New message")
 
         See Also
         --------
-        :meth:`unfix` : Remove fixed status from a mobject
+        :meth:`narrate` : Display upper narration
+        :meth:`clear_caption` : Clear lower caption
+        :meth:`narrate_and_clear` : Display and auto-clear in one call
+
+        Notes
+        -----
+        - Transforms to invisible text (BLACK color with "....." content)
+        - The primer mobject remains in the scene but is not visible
+        - Uses the same :class:`~.Transform` pattern as :meth:`narrate`
         """
-        self._fixed_mobjects.add(mob)
-        return mob
+        empty = self.narration.get_empty_narration()
+        self.play(
+            Transform(self.narration.current_narration_text, empty),
+            run_time=run_time,
+            **kwargs
+        )
 
-    def unfix(self, mob):
-        """Remove fixed status from a mobject.
+    def clear_caption(self, run_time: float = 0.5, **kwargs: Any) -> None:
+        """Clear lower caption text with animation.
 
-        After calling this method, the mobject will move and scale normally
-        with camera transformations.
+        Transforms the caption to invisible text (BLACK color) to effectively
+        clear it from view while maintaining the primer mobject.
 
         Parameters
         ----------
-        mob : Mobject
-            The mobject to unmark as fixed
+        run_time : float
+            Duration of the clear animation in seconds
+        **kwargs
+            Additional arguments passed to :meth:`~.Scene.play`
 
-        Returns
-        -------
-        Mobject
-            The same mobject (for method chaining)
+        Examples
+        --------
+        .. code-block:: python
+
+            class ClearCaptionExample(HUD2DScene):
+                def construct(self):
+                    self.caption("Detailed explanation")
+                    self.wait(2)
+
+                    # Clear the caption
+                    self.clear_caption()
+                    self.wait(1)
+
+                    # Show new caption
+                    self.caption("Updated explanation")
 
         See Also
         --------
-        :meth:`fix` : Mark a mobject as fixed in frame
+        :meth:`caption` : Display lower caption
+        :meth:`clear_narrate` : Clear upper narration
+        :meth:`narrate_and_clear` : Display and auto-clear in one call
+
+        Notes
+        -----
+        - Transforms to invisible text (BLACK color with "....." content)
+        - The primer mobject remains in the scene but is not visible
+        - Uses the same :class:`~.Transform` pattern as :meth:`caption`
         """
-        self._fixed_mobjects.discard(mob)
-        return mob
+        empty = self.narration.get_empty_caption()
+        self.play(
+            Transform(self.narration.current_caption_text, empty),
+            run_time=run_time,
+            **kwargs
+        )
 
-class HUDMovingCamera(MovingCamera):
-    """MovingCamera that renders fixed HUD mobjects in a separate pass.
+    def narrate_and_clear(
+        self,
+        text: str,
+        display_time: float = 2.0,
+        fade_time: float = 0.5,
+        upper: bool = True,
+        **kwargs: Any
+    ) -> None:
+        """Display narration temporarily, then auto-clear.
 
-    This camera extends :class:`~.MovingCamera` to support heads-up display (HUD)
-    elements that remain fixed in screen space. It uses a dual-pass rendering system
-    inspired by :class:`~.ThreeDCamera`'s ``fixed_in_frame_mobjects`` pattern.
+        Convenience method that displays text, waits for a specified duration,
+        then automatically clears it. Useful for temporary messages or tooltips.
 
-    The rendering process:
-    1. Moving mobjects are captured with the current camera transformation
-    2. Fixed mobjects are captured with an identity camera (no transformation)
-    3. Both passes composite onto the same frame
+        Parameters
+        ----------
+        text : str
+            Text to display temporarily
+        display_time : float
+            How long to display the text before clearing (in seconds)
+        fade_time : float
+            Duration of both the fade-in and fade-out animations (in seconds)
+        upper : bool
+            If True, use upper narration; if False, use lower caption
+        **kwargs
+            Additional arguments passed to :meth:`~.Scene.play` for both
+            the display and clear animations
 
-    This approach ensures HUD elements bypass camera transformations entirely during
-    the rendering pipeline, with zero per-frame Python overhead.
+        Examples
+        --------
+        .. code-block:: python
+
+            class TemporaryTextExample(HUD2DScene):
+                def construct(self):
+                    square = Square()
+                    self.add(square)
+
+                    # Show temporary narration at top
+                    self.narrate_and_clear("Watch this!", display_time=1.5)
+
+                    # Animate while narration is visible
+                    self.play(square.animate.rotate(PI))
+
+                    # Show temporary caption at bottom
+                    self.narrate_and_clear(
+                        "Rotation complete",
+                        display_time=2.0,
+                        upper=False
+                    )
+
+        .. code-block:: python
+
+            class CustomTimingExample(HUD2DScene):
+                def construct(self):
+                    # Quick flash message
+                    self.narrate_and_clear(
+                        "Quick message",
+                        display_time=0.5,
+                        fade_time=0.2
+                    )
+
+                    # Slow, dramatic reveal
+                    self.narrate_and_clear(
+                        "Important announcement",
+                        display_time=3.0,
+                        fade_time=1.5
+                    )
+
+        See Also
+        --------
+        :meth:`narrate` : Display upper narration (persistent)
+        :meth:`caption` : Display lower caption (persistent)
+        :meth:`clear_narrate` : Clear upper narration manually
+        :meth:`clear_caption` : Clear lower caption manually
+
+        Notes
+        -----
+        - Internally calls :meth:`narrate` or :meth:`caption`, then :meth:`~.Scene.wait`,
+          then :meth:`clear_narrate` or :meth:`clear_caption`
+        - Total time is ``fade_time + display_time + fade_time``
+        - Uses the same primer pattern as other narration methods
+        - Useful for tooltips, temporary instructions, or status messages
+        """
+        if upper:
+            self.narrate(text, run_time=fade_time, **kwargs)
+            self.wait(display_time)
+            self.clear_narrate(run_time=fade_time, **kwargs)
+        else:
+            self.caption(text, run_time=fade_time, **kwargs)
+            self.wait(display_time)
+            self.clear_caption(run_time=fade_time, **kwargs)
+
+class UniversalNarrationManager:
+    """Universal HUD text manager for ThreeDScene with dual-text primer pattern.
+
+    Manages HUD text elements using the primer pattern. Creates invisible primer
+    text mobjects once during initialization for both upper narration and lower
+    caption, then provides methods to generate visible text for Transform animations.
+    Primers are automatically registered as fixed-in-frame with the scene.
 
     Parameters
     ----------
-    **kwargs
-        Additional keyword arguments passed to :class:`~.MovingCamera`
+    scene : ThreeDScene
+        Scene instance with add_fixed_in_frame_mobjects support
+    text_type : Literal["Text", "MathTex", "Tex"], optional
+        The type of text mobject to use for narration and caption.
+        Defaults to "Text".
+        Mixing Text, MathTex, or Tex within the same manager is not supported
+        and will break the primer pattern.
 
     Attributes
     ----------
-    scene : MovingCameraHUDScene or None
-        Reference to the parent scene for accessing fixed mobjects.
-        Set to None initially and populated by the scene after initialization.
-
-    See Also
-    --------
-    :class:`~.MovingCamera` : Base camera class
-    :class:`MovingCameraHUDScene` : Scene class that uses this camera
-    :class:`~.ThreeDCamera` : 3D camera with similar fixed-in-frame pattern
+    scene : ThreeDScene
+        Reference to the scene instance
+    current_narration_text : Mobject
+        Primer mobject for upper narration text
+    current_caption_text : Mobject
+        Primer mobject for lower caption text
+    narration_font_size : int
+        Font size for upper narration text
+    caption_font_size : int
+        Font size for lower caption text
+    narration_color : ManimColor
+        Color for upper narration text
+    caption_color : ManimColor
+        Color for lower caption text
+    text_class : Type[Union[Text, MathTex, Tex]]
+        The class used for creating text mobjects (Text, MathTex, or Tex)
 
     Notes
     -----
-    The dual-pass rendering approach is more performant than post-animation
-    corrections or updaters because:
-
-    - Fixed mobjects are excluded via O(1) set membership check
-    - No Python callbacks run per frame
-    - Works at the Cairo rendering level, not animation level
-    - Produces smooth animations without "snap" artifacts
-
-    The scene parameter is set to None during initialization because Manim's
-    renderer creates the camera before the scene is fully initialized. The
-    scene reference is set afterward by MovingCameraHUDScene.__init__().
-
-    Examples
-    --------
-    This camera is automatically created by :class:`MovingCameraHUDScene`.
-    You typically don't instantiate it directly:
-
-    .. code-block:: python
-
-        class MyScene(MovingCameraHUDScene):
-            def construct(self):
-                # Camera is automatically HUDMovingCamera
-                title = Text("HUD Title")
-                self.add(self.fix(title))
-
-                # Camera moves, title stays fixed
-                self.play(self.camera.frame.animate.shift(RIGHT * 3))
+    - The primer pattern requires that all subsequent Transforms reuse the same primer mobjects
+    - Character capacity is fixed at initialization (spaces excluded)
+    - Must use Transform, NOT ReplacementTransform
+    - Exceeding capacity causes characters to detach from HUD
+    - The text type (Text, MathTex, or Tex) is set at initialization and cannot be mixed.
+      Mixing text types will break the primer pattern.
     """
 
-    def __init__(self, **kwargs):
-        """Initialize HUDMovingCamera without scene reference.
+    def __init__(
+            self,
+            scene: ThreeDScene,
+            text_type: Literal["Text", "MathTex", "Tex"] = "Text",
+    ) -> None:
+        self.scene = scene
+        self.narration_font_size: int = 28
+        self.caption_font_size: int = 24
+        self.narration_color = WHITE
+        self.caption_color = WHITE
+        self.narration_position = UP
+        self.caption_position = DOWN
+        self.max_narration_chars: int = 100
+        self.max_caption_chars: int = 100
 
-        The scene reference will be set by MovingCameraHUDScene after
-        the renderer completes camera initialization.
+        if text_type == "Text":
+            self.text_class: Type[Union[Text, MathTex, Tex]] = Text
+        elif text_type == "MathTex":
+            self.text_class = MathTex
+        elif text_type == "Tex":
+            self.text_class = Tex
+        else:
+            # Default to Text for invalid text_type
+            logger.warning(
+                f"Invalid text_type '{text_type}'. Defaulting to 'Text'. "
+                f"Valid options are: 'Text', 'MathTex', 'Tex'"
+            )
+            self.text_class = Text
+
+        # Create invisible primer mobjects for narration and caption
+        # Use "0" * max_chars to ensure consistent width for primer
+        narration_primer_string = "0" * self.max_narration_chars
+        caption_primer_string = "0" * self.max_caption_chars
+
+        narration_primer = self.text_class(
+            narration_primer_string, color=BLACK, font_size=1
+        )
+        narration_primer.to_edge(self.narration_position)
+
+        caption_primer = self.text_class(
+            caption_primer_string, color=BLACK, font_size=1
+        )
+        caption_primer.to_edge(self.caption_position)
+
+        # Register primers as fixed-in-frame
+        self.scene.add_fixed_in_frame_mobjects(narration_primer, caption_primer)
+
+        self.current_narration_text = narration_primer
+        self.current_caption_text = caption_primer
+
+    def get_narration(self, text: str) -> Mobject:
+        narration = self.text_class(
+            text,
+            font_size=self.narration_font_size,
+            color=self.narration_color,
+        )
+        narration.move_to(self.current_narration_text.get_center())
+        return narration
+
+    def get_caption(self, text: str) -> Mobject:
+        caption = self.text_class(
+            text,
+            font_size=self.caption_font_size,
+            color=self.caption_color,
+        )
+        caption.move_to(self.current_caption_text.get_center())
+        return caption
+
+    def get_empty_narration(self) -> Mobject:
+        empty = self.text_class(".....", color=BLACK, font_size=self.narration_font_size)
+        empty.move_to(self.current_narration_text.get_center())
+        return empty
+
+    def get_empty_caption(self) -> Mobject:
+        empty = self.text_class(".....", color=BLACK, font_size=self.caption_font_size)
+        empty.move_to(self.current_caption_text.get_center())
+        return empty
+
+    def set_narration_font_size(self, font_size: int):
+        """Change font size for future narrations.
 
         Parameters
         ----------
-        **kwargs
-            Additional keyword arguments passed to :class:`~.MovingCamera`
+        font_size : int
+            New font size for narrations
         """
-        super().__init__(**kwargs)
-        self.scene = None  # Will be set by MovingCameraHUDScene.__init__()
+        self.narration_font_size = font_size
 
-    def capture_mobjects(self, mobjects, **kwargs):
-        """Capture mobjects in two passes: moving objects with camera transform,
-        fixed objects without transform.
-
-        This method implements the dual-pass rendering system that keeps HUD
-        elements fixed in screen space. It separates mobjects into two groups
-        based on the scene's ``_fixed_mobjects`` set, then renders each group
-        with different camera states.
-
-        The rendering process:
-
-        1. **Pass 1 - Moving mobjects**: Rendered with current camera transformation
-           (zoom, pan, rotation). These mobjects move and scale with the camera.
-
-        2. **Pass 2 - Fixed mobjects**: Rendered with identity camera transformation
-           (no zoom, no pan). The camera is temporarily reset to its default state,
-           mobjects are captured, then the camera is restored. These mobjects remain
-           at constant screen position and size.
+    def set_caption_font_size(self, font_size: int):
+        """Change font size for future captions.
 
         Parameters
         ----------
-        mobjects : Iterable[Mobject]
-            All mobjects to be captured in this frame
-        **kwargs
-            Additional keyword arguments passed to parent's ``capture_mobjects()``
-
-        Notes
-        -----
-        The camera state is saved and restored around the fixed mobjects pass to
-        ensure the camera's transformation is not permanently affected. This uses:
-
-        - ``frame.get_center().copy()`` to save position
-        - ``frame.height`` to save zoom level
-        - ``frame.move_to()`` and ``frame.set_height()`` to restore
-
-        The identity camera uses ``config.frame_height`` as the default frame height
-        and ``ORIGIN`` as the default center position.
-
-        If the scene reference is not set or the scene doesn't have a _fixed_mobjects
-        attribute, this method falls back to standard rendering (all mobjects treated
-        as moving).
-
-        See Also
-        --------
-        :meth:`~.Camera.capture_mobjects` : Parent class method
-        :meth:`MovingCameraHUDScene.fix` : Mark mobjects as fixed
-
-        Examples
-        --------
-        This method is called automatically during rendering. The separation
-        of fixed and moving mobjects happens transparently:
-
-        .. code-block:: python
-
-            # In your scene
-            square = Square()  # Will be in "moving" group
-            title = Text("Title")  # Will be in "fixed" group after fix()
-
-            self.add(square)
-            self.add(self.fix(title))
-
-            # During rendering, capture_mobjects() separates them automatically
-            self.play(self.camera.frame.animate.shift(RIGHT))
-            # square moves, title stays fixed
+        font_size : int
+            New font size for captions
         """
-        # Early exit if scene not set yet or no fixed mobjects
-        if self.scene is None or not hasattr(self.scene, '_fixed_mobjects'):
-            super().capture_mobjects(mobjects, **kwargs)
-            return
+        self.caption_font_size = font_size
 
-            # Separate fixed and moving mobjects using set membership (O(1) lookup)
-        fixed = [m for m in mobjects if m in self.scene._fixed_mobjects]
-        moving = [m for m in mobjects if m not in self.scene._fixed_mobjects]
+    def set_narration_color(self, narration_color):
+        """Change color for future narrations.
 
-        # Pass 1: Capture moving mobjects with current camera transformation
-        if moving:
-            super().capture_mobjects(moving, **kwargs)
+        Parameters
+        ----------
+        narration_color : ManimColor
+            New color for narrations
+        """
+        self.narration_color = narration_color
 
-            # Pass 2: Capture fixed mobjects with identity camera (no transformation)
-        if fixed:
-            # Save current camera state
-            saved_center = self.frame.get_center().copy()
-            saved_height = self.frame.height
+    def set_caption_color(self, caption_color):
+        """Change color for future captions.
 
-            # Reset camera to identity transform
-            self.frame.move_to([0, 0, 0])
-            self.frame.set_height(config.frame_height)
+        Parameters
+        ----------
+        caption_color : ManimColor
+            New color for captions
+        """
+        self.caption_color = caption_color
 
-            # Capture fixed mobjects at identity transform
-            super().capture_mobjects(fixed, **kwargs)
+class Frame2DWrapper:
+    """Wrapper that mimics MovingCamera.frame API for ThreeDCamera in 2D mode.
 
-            # Restore camera state for next frame
-            self.frame.move_to(saved_center)
-            self.frame.set_height(saved_height)
+    Supports: move_to, shift, scale, set, get_center
+    Does NOT support: save_state, restore (use manual positioning instead)
+    """
 
-# TODO test if wrapped play scene with decomposed properly plays animations without overriding earlier animations in the same play call
-class DecomposedPlay:
-    """Wrapper that signals to play() to decompose animations into separate calls."""
+    def __init__(self, camera):
+        self.camera = camera
 
-    def __init__(self, *animations):
-        self.animations = animations
+    @property
+    def animate(self):
+        """Returns an animation builder that mimics frame.animate behavior."""
+        return Frame2DAnimateWrapper(self)  # Create fresh instance every time
 
-    def __iter__(self):
-        """Make it iterable so play() can process it."""
-        return iter(self.animations)
+    def move_to(self, point):
+        """Move frame center to point (mimics ScreenRectangle.move_to)."""
+        self.camera._frame_center.move_to(point)
+        return self
+
+    def shift(self, vector):
+        """Shift frame center by vector (mimics ScreenRectangle.shift)."""
+        self.camera._frame_center.shift(vector)
+        return self
+
+    def scale(self, scale_factor: float):
+        """Scale frame (mimics ScreenRectangle.scale via zoom)."""
+        current_zoom = self.camera.zoom_tracker.get_value()
+        self.camera.zoom_tracker.set_value(current_zoom / scale_factor)
+        return self
+
+    def set(self, width: float = None, height: float = None):
+        """Set frame dimensions (mimics ScreenRectangle.set via zoom)."""
+        if width is not None:
+            from manim import config
+            zoom_factor = config["frame_width"] / width
+            self.camera.zoom_tracker.set_value(zoom_factor)
+        return self
+
+    def get_center(self):
+        """Get frame center (mimics ScreenRectangle.get_center)."""
+        return self.camera._frame_center.get_center()
+
+class Frame2DAnimateWrapper:
+    """Animation builder that mimics Manim's _AnimationBuilder pattern."""
+
+    def __init__(self, frame):
+        self.frame = frame
+        # Store initial state
+        self.target_center = self.frame.camera._frame_center.copy()
+        self.target_zoom = self.frame.camera.zoom_tracker.get_value()
+        self.operations = []
+
+    def move_to(self, point):
+        """Apply move_to to target center."""
+        self.target_center.move_to(point)
+        self.operations.append(('move_to', point))
+        return self
+
+    def shift(self, vector):
+        """Apply shift to target center."""
+        self.target_center.shift(vector)
+        self.operations.append(('shift', vector))
+        return self
+
+    def scale(self, scale_factor: float):
+        """Apply scale to target zoom."""
+        self.target_zoom = self.target_zoom / scale_factor
+        self.operations.append(('scale', scale_factor))
+        return self
+
+    def set(self, width: float = None, height: float = None):
+        """Apply set to target zoom."""
+        if width is not None:
+            from manim import config
+            self.target_zoom = config["frame_width"] / width
+            self.operations.append(('set', width))
+        return self
+
+    def build(self):
+        from manim import AnimationGroup
+
+        animations = []
+
+        # Always create animation for frame center (even if unchanged)
+        animations.append(
+            self.frame.camera._frame_center.animate.move_to(
+                self.target_center.get_center()
+            )
+        )
+
+        # Always create animation for zoom (even if unchanged)
+        animations.append(
+            self.frame.camera.zoom_tracker.animate.set_value(self.target_zoom)
+        )
+
+        if len(animations) == 1:
+            return animations[0]
+        return AnimationGroup(*animations)
+
+##########END Properly Documented Stuff##########
+
+"""  
+BASELINE ALIGNMENT PLAN FOR TEXT/MATHTEX/TEX MOBJECTS  
+  
+Goal: Ensure consistent baseline alignment across text changes by aligning to a reference vowel character.  
+  
+Approach:  
+1. Create an invisible reference mobject (e.g., Text("a", color=BLACK) or MathTex(r"\text{a}", color=BLACK))  
+   positioned at a fixed location to serve as the "baseline ruler"  
+  
+2. Before each text change:  
+   - Find the first vowel (a, e, i, o, u) in the new text mobject's submobjects  
+   - Get its baseline using get_critical_point(DOWN)[1]   
+   - Calculate y-offset needed to align that vowel's baseline to the reference  
+   - Apply shift(UP * offset) to the entire text mobject  
+  
+3. Implementation considerations:  
+   - For MathTex/Tex: Use tex_string attribute to identify characters  
+   - For Text: Use positional tracking through submobjects list  
+   - Use family_members_with_points() to flatten hierarchy and find leaf submobjects  
+     
+4. Key methods to use:  
+   - get_critical_point(DOWN) - gets bottom edge (baseline for non-descenders)  
+   - shift() - applies vertical offset  
+   - align_to(reference, DOWN) - alternative alignment method  
+   - next_to(reference, RIGHT, buff=0, aligned_edge=DOWN) - another option  
+  
+5. This works universally because Text, MathTex, and Tex all:  
+   - Inherit from SVGMobject  
+   - Have hierarchical submobject structures  
+   - Support the same Mobject positioning methods  
+     
+Result: All text without descenders (p, g, y, q, j) appears on the same imaginary line,  
+preventing vertical drift across text changes, similar to how text aligns in a book.  
+  
+See DecimalNumber class (manim/mobject/text/numbers.py:168-197) for similar baseline  
+alignment implementation with aligned_edge=DOWN.  
+"""
 
 
-class WrappedPlayScene(Scene):
-    def play(self, *args, **kwargs):
-        """Override play to handle DecomposedPlay wrappers."""
-        processed_args = []
 
-        for arg in args:
-            if isinstance(arg, DecomposedPlay):
-                # Decompose the wrapper into individual play calls
-                for anim in arg.animations:
-                    super().play(anim, **kwargs)
-                    # Don't add to processed_args since we already played them
-            else:
-                processed_args.append(arg)
-
-                # Play any remaining non-wrapped animations normally
-        if processed_args:
-            super().play(*processed_args, **kwargs)
+##########START Untested Stuff##########
 
 ##########END Untested Stuff##########

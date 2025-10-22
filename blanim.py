@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -53,103 +55,139 @@ class ColoringOutput:
 class Parent:
     name: str
     is_selected_parent: bool
-#    kwargs: dict = field(default_factory=dict)
 
-@dataclass
-class ArrowStyle:
-    color: str = "WHITE"
-    stroke_width: float = 3
-    stroke_opacity: float = 1
-    z_index: float = -2
-    tip_config: dict = field(default_factory=dict)
+#TODO removed visual block from Block, started adding automatic parent lines
+class VisualBlock:
+    """Base class handling only visual elements and animations"""
 
-    @classmethod
-    def selected_parent_style(cls):
-        """Factory method for selected parent arrow styling"""
-        return cls(
-            color=BLUE,
-            stroke_width=3,
-            z_index=-1  # Behind blocks but in front of regular arrows
-        )
-
-    def to_kwargs(self) -> dict:
-        """Convert to kwargs dict, filtering out None values"""
-        kwargs = {}
-        if self.color is not None:
-            kwargs["color"] = self.color
-        if self.stroke_width is not None:
-            kwargs["stroke_width"] = self.stroke_width
-        if self.stroke_opacity is not None:
-            kwargs["stroke_opacity"] = self.stroke_opacity
-        if self.z_index is not None:
-            kwargs["z_index"] = self.z_index
-        if self.tip_config:
-            kwargs.update(self.tip_config)
-        return kwargs
-
-class Block(ABC):
-
-    DEFAULT_COLOR = BLUE
-
-    def __init__(self, name=None, DAG=None, parents=None, pos=None, label=None, block_color=None, h=BLOCK_H, w=BLOCK_W):
-
-        # Use provided name or fall back to string ID
-        self.name = name if name is not None else str(id(self))
-
-        # set default color of block
-        if block_color is None:
-            block_color = self.DEFAULT_COLOR
-
+    def __init__(self, pos, label_text=None, block_color=BLUE, h=BLOCK_H, w=BLOCK_W):
         self.width = w
         self.height = h
-        self.DAG = DAG
-        self.parents = [DAG.blocks[p.name] for p in parents]
-        self.children = []
-        self.hash = id(self)
 
-        # Cache past blocks - calculated only once
-        self.past_blocks = self._calculate_past_blocks()
-        self.weight = len(self.past_blocks)
-        self.outgoing_arrows = []
-
+        # Visual components only
         self.rect = Rectangle(
             color=block_color,
             fill_opacity=1,
             height=h,
             width=w,
         )
-
-        # Each block type implements its own parent selection
-        self.selected_parent = self._select_parent()
-
         self.rect.move_to(pos)
 
-        if label is None:
-            if self.name == "Gen":
-                self.label = Tex("Gen").set_z_index(1).scale(0.7)
-                self.label.move_to(self.rect.get_center())  # Position it initially
-                self.rect.add(self.label)  # Add as submobject
-            else:
-                # each block is initialized with a label of its weight
-                self.label = Tex(str(self.weight)).set_z_index(1).scale(0.7)
-                self.label.move_to(self.rect.get_center())  # Position it initially
-                self.rect.add(self.label)  # Add as submobject
+        # Label creation
+        if label_text:
+            self.label = Tex(label_text).set_z_index(1).scale(0.7)
         else:
-            # create a label
-            self.label = Tex(label).set_z_index(1).scale(0.7)
-            self.label.move_to(self.rect.get_center())  # Position it initially
-            self.rect.add(self.label)  # Add as submobject
+            self.label = None
 
+        if self.label:
+            self.label.move_to(self.rect.get_center())
+            self.rect.add(self.label)
 
+        # Visual connections (lines to other blocks)
+        self.parent_lines = []
+
+    def add_parent_line(self, parent_rect, line_color=WHITE):
+        """Add a visual line to a parent block's rectangle"""
+        line = ParentLine(
+            this_block=self.rect,
+            parent_block=parent_rect,
+            line_color=line_color
+        )
+        self.parent_lines.append(line)
+        return line
+
+    def get_mobjects(self):
+        """Return all visual mobjects for rendering"""
+        mobjects = [self.rect]
+        mobjects.extend(self.parent_lines)
+        return mobjects
+
+    def move_to(self, pos):
+        """Move block to new position"""
+        self.rect.move_to(pos)
+        if self.label:
+            self.label.move_to(self.rect.get_center())
+
+#todo remove dag dependency
+class Block(VisualBlock, ABC):
+    """Multiple Inheritance Pattern"""
+    DEFAULT_COLOR = BLUE
+
+    def __init__(self, name=None, DAG=None, parents=None, pos=None,
+                 label=None, block_color=None, h=BLOCK_H, w=BLOCK_W):
+
+        # === BLOCKCHAIN IDENTITY ===
+        # Use provided name or generate unique ID from memory address
+        self.name = name if name is not None else str(id(self))
+
+        # === DAG STRUCTURE SETUP ===
+        # Store reference to the DAG this block belongs to
+        self.DAG = DAG
+
+        # Convert parent references (from 'parents' param) to actual Block objects
+        # by looking them up in the DAG's block registry
+        self.parents = [DAG.blocks[p.name] for p in parents]
+
+        # Initialize empty children list (will be populated by child blocks)
+        self.children = []
+
+        # Unique hash for this block instance
+        self.hash = id(self)
+
+        # === BLOCKCHAIN WEIGHT CALCULATION ===
+        # Calculate and cache all ancestor blocks (past blocks in the DAG)
+        # This is done once at initialization for performance
+        self.past_blocks = self._calculate_past_blocks()
+
+        # Weight = number of ancestor blocks (used for consensus/selection)
+        self.weight = len(self.past_blocks)
+
+        # === PARENT SELECTION ===
+        # Each block type (subclass) implements its own parent selection logic
+        # This determines which parent is the "main" parent for this block
+        self.selected_parent = self._select_parent()
+
+        # === VISUAL PROPERTIES DETERMINATION ===
+        # Set default color if not provided
+        if block_color is None:
+            block_color = self.DEFAULT_COLOR
+
+            # Determine label text based on block type and weight
+        # Genesis blocks show "Gen", others show their weight
+        if label is None:
+            label = "Gen" if self.name == "Gen" else str(self.weight)
+
+            # === VISUAL INITIALIZATION ===
+        # Initialize visual components (rect, label) via VisualBlock base class
+        # This separates visual concerns from blockchain logic
+        super().__init__(pos, label, block_color, h, w)
+
+        # === PARENT LINE CREATION ===
+        # Create visual lines connecting this block to all parent blocks
+        # Selected parent gets special color (PURE_BLUE), others are WHITE
+        for parent in self.parents:
+            # Check if this parent is the selected parent
+            # First check ensures selected_parent exists (not None)
+            # Second check compares names to identify the selected parent
+            is_selected = (self.selected_parent and
+                           self.selected_parent.name == parent.name)
+
+            # Choose line color based on selection status
+            line_color = PURE_BLUE if is_selected else WHITE
+
+            # Create line using VisualBlock's method (stores in self.parent_lines)
+            self.add_parent_line(parent.rect, line_color)
+
+            # === DAG BIDIRECTIONAL LINKING ===
+        # Register this block as a child in each parent's children list
+        # This maintains bidirectional parent-child relationships in the DAG
         for p in parents:
             DAG.blocks[p.name].children.append(self.name)
 
     @abstractmethod
     def _select_parent(self):
-        """Each block type must implement its own parent selection logic"""
+        """Each block type implements its own parent selection logic"""
         pass
-
-        # Common methods remain the same
 
     def _calculate_past_blocks(self):
         visited = set()
@@ -166,189 +204,7 @@ class Block(ABC):
         return self.past_blocks
 
     def is_tip(self):
-        return bool(self.children)
-
-    def create_parent_arrows(self, dag):
-        """Create arrows to parent blocks with appropriate styling"""
-        arrows = []
-
-        for parent in self.parents:
-            # Determine if this parent is the selected parent
-            is_selected = (hasattr(self, 'selected_parent') and
-                           self.selected_parent and
-                           self.selected_parent.name == parent.name)
-
-            # Get appropriate arrow style
-            if is_selected:
-                arrow_style = ArrowStyle.selected_parent_style()
-            else:
-                arrow_style = ArrowStyle()
-
-                # Create arrow using DAG's arrow creation methods
-            arrow_kwargs = arrow_style.to_kwargs()
-            arrow_anim = dag.add_arrow(self, parent, **arrow_kwargs)
-            arrows.append(arrow_anim)
-
-        return arrows
-
-    def calculate_arrow_endpoints(self, parent_block) -> dict:
-        """Calculate optimal start and end points for arrow between blocks."""
-        # Get block boundaries
-        from_rect = self.rect
-        to_rect = parent_block.rect
-
-        # Calculate positions
-        from_left, from_right = from_rect.get_left()[0], from_rect.get_right()[0]
-        to_left, to_right = to_rect.get_left()[0], to_rect.get_right()[0]
-        from_top, from_bottom = from_rect.get_top()[1], from_rect.get_bottom()[1]
-        to_top, to_bottom = to_rect.get_top()[1], to_rect.get_bottom()[1]
-
-        # Default to horizontal connection
-        start = from_rect.get_left()
-        end = to_rect.get_right()
-
-        # Adjust for horizontal overlap
-        if to_right - from_left > 0:
-            start = from_rect.get_right()
-            end = to_rect.get_left()
-
-            # Check if vertical connection is better
-        horizontal_overlap = max(to_right - from_left, from_right - to_left)
-        vertical_overlap = max(to_bottom - from_top, from_bottom - to_top)
-
-        if horizontal_overlap < vertical_overlap:
-            if to_bottom - from_top > from_bottom - to_top:
-                start = from_rect.get_top()
-                end = to_rect.get_bottom()
-            else:
-                start = from_rect.get_bottom()
-                end = to_rect.get_top()
-
-        return {"start": start, "end": end}
-
-    def setup_arrow_tracking(self, arrow: Arrow, parent_block):
-        """Set up arrow tracking information."""
-        arrow.source_block = self
-        arrow.target_block = parent_block
-
-        if hasattr(self, 'outgoing_arrows'):
-            parent_block.outgoing_arrows.append(arrow)
-
-    def create_arrow_updater(self, arrow: Arrow, parent_block):
-        """Create the arrow updater animation."""
-
-        class GrowArrowUpdater(GrowArrow):
-            def __init__(self, arrow, updater_func, **kwargs):
-                super().__init__(arrow, **kwargs)
-                self.arrow = arrow
-                self.updater_func = updater_func
-
-            def __del__(self):
-                self.arrow.add_updater(self.updater_func)
-
-        updater_func = lambda a: a.put_start_and_end_on(
-            **self.calculate_arrow_endpoints(parent_block)  # Removed redundant 'self'
-        )
-
-        return GrowArrowUpdater(arrow, updater_func)
-
-    def get_arrow_style_for_parent(self, parent):
-        """Get arrow style based on whether parent is selected"""
-        is_selected = (hasattr(self, 'selected_parent') and
-                       self.selected_parent and
-                       self.selected_parent.name == parent.name)
-
-        if is_selected:
-            return ArrowStyle.selected_parent_style()
-        else:
-            return ArrowStyle()  # Use the default constructor
-
-    def create_and_manage_parent_arrows(self, dag):
-        """Complete arrow creation and management for this block"""
-        arrows = []
-
-        for parent in self.parents:
-            # Determine styling
-            arrow_style = self.get_arrow_style_for_parent(parent)
-
-            # Calculate endpoints
-            endpoints = self.calculate_arrow_endpoints(parent)
-
-            # Create arrow directly in the block
-            arrow = self._create_positioned_arrow(parent, **arrow_style.to_kwargs())
-
-            # Set up tracking
-            self.setup_arrow_tracking(arrow, parent)
-
-            # Create updater
-            arrow_anim = self.create_arrow_updater(arrow, parent)
-            arrows.append(arrow_anim)
-
-        return arrows
-
-    def _create_positioned_arrow(self, parent_block, **kwargs):
-        """Create an arrow with optimal positioning between this block and parent"""
-        # Extract z_index if present
-        z_index = kwargs.pop('z_index', None)
-
-        # Set default arrow styling
-        defaults = {
-            "buff": 0,
-            "stroke_width": 2,
-            "tip_shape": StealthTip,
-            "max_tip_length_to_length_ratio": 0.04,
-            "color": WHITE
-        }
-        for key, value in defaults.items():
-            kwargs.setdefault(key, value)
-
-        arrow = Arrow(**kwargs)
-
-        # Position the arrow
-        endpoints = self.calculate_arrow_endpoints(parent_block)  # Removed redundant 'self'
-        arrow.put_start_and_end_on(**endpoints)
-
-        # Apply z_index if provided
-        if z_index is not None:
-            arrow.set_z_index(z_index)
-
-        return arrow
-
-    def highlight_outgoing_arrows(self, color=None, opacity=None):
-        """
-        Creates animations to highlight the block's outgoing arrows.
-        This method needs to be implemented to apply the color and opacity
-        to the actual Manim Arrow objects in self.outgoing_arrows.
-        """
-        animations = []
-        for arrow in self.outgoing_arrows:
-            if color is not None:
-                animations.append(arrow.animate.set_color(color))
-            if opacity is not None:
-                animations.append(arrow.animate.set_opacity(opacity))
-        return AnimationGroup(*animations)
-
-    def fade_outgoing_arrows(self, opacity):
-        """
-        Creates animations to fade the block's outgoing arrows.
-        """
-        animations = []
-        for arrow in self.outgoing_arrows:
-            animations.append(arrow.animate.set_opacity(opacity))
-        return AnimationGroup(*animations)
-
-    def highlight_outgoing_arrows_to_parent(self, parent_block, color=None, opacity=None):
-        """
-        Creates animations to highlight specific outgoing arrows to a given parent.
-        """
-        animations = []
-        for arrow in self.outgoing_arrows:
-            if hasattr(arrow, 'target_block') and arrow.target_block == parent_block:
-                if color is not None:
-                    animations.append(arrow.animate.set_color(color))
-                if opacity is not None:
-                    animations.append(arrow.animate.set_opacity(opacity))
-        return AnimationGroup(*animations)
+        return not bool(self.children)
 
 class GhostDAGBlock(Block):
     """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
@@ -920,7 +776,7 @@ class GHOSTDAG(LayerDAG):
         parent_chain = self._get_parent_chain(best_tip)
         new_positions = self._calculate_chain_tree_positions_ordered(parent_chain, vertical_offset, horizontal_offset)
 
-        # Start with everything faded
+        # Start with everything faded #TODO this can go back to adding block by block, just need to pass scene to dag
         self._fade_all_blocks()
 
         animations = []
@@ -1572,1671 +1428,629 @@ class GHOSTDAG(LayerDAG):
             tips = [name for name, block in self.blocks.items() if block.is_tip()]
             return tips
 
-class Miner():
-    def __init__(self, scene, x=0 , y=0, attempts = 20):
+#TODO revisit miner later
+class Miner:
+    def __init__(self, scene, x=0, y=0, attempts=20):
         self.scene = scene
         self.x = x
         self.y = y
         self.attempts = attempts
-        self.nonce = randint(10000,99000)
-        self.parts = {}
-        self.rect = Rectangle(
-            color=RED,
-            fill_opacity=1,
-            height = 2,
-            width = 3
-        )
-        self.rect.move_to([x,y,0])
-        self.lpar = Tex(r"(",font_size = 220)
-        self.lpar.move_to([x-1.8,y,0])
-        self.rpar = Tex(r")",font_size = 220)
-        self.rpar.move_to([x+1.8,y,0])
-        self.eq = Tex(r"=",font_size = 100)
-        self.eq.move_to([x+2.7,y,0])
-        self.H = Tex(r"\textsf{H}", font_size = 100)
-        self.H.move_to([x-2.6,y,0])
-        self.header = Rectangle(
-            color=BLACK,
-            fill_opacity=1,
-            height = 0.5,
-            width = 2.8
-        )
-        self.header.move_to([x,y+0.6,0])
-        self.nonce_label = Text("Nonce: " + str(self.nonce), font_size = 30)
-        self.nonce_label.move_to([x,y+0.6,0])
+        self.nonce = randint(10000, 99000)
+
+        # Create all mobjects
+        self.rect = Rectangle(color=RED, fill_opacity=1, height=2, width=3)
+        self.rect.move_to([x, y, 0])
+
+        self.lpar = Tex(r"(", font_size=220).move_to([x - 1.8, y, 0])
+        self.rpar = Tex(r")", font_size=220).move_to([x + 1.8, y, 0])
+        self.eq = Tex(r"=", font_size=100).move_to([x + 2.7, y, 0])
+        self.H = Tex(r"\textsf{H}", font_size=100).move_to([x - 2.6, y, 0])
+
+        self.header = Rectangle(color=BLACK, fill_opacity=1, height=0.5, width=2.8)
+        self.header.move_to([x, y + 0.6, 0])
+
+        self.nonce_label = Text(f"Nonce: {self.nonce}", font_size=30)
+        self.nonce_label.move_to([x, y + 0.6, 0])
+
         self.hash = self._nexthash()
-        self.hash.move_to([x+7,y,0])
-        scene.add(self.rect, self.H, self.lpar, self.rpar, self.eq, self.header, self.nonce_label, self.hash)
+        self.hash.move_to([x + 7, y, 0])
+
+        # Add all at once
+        scene.add(self.rect, self.H, self.lpar, self.rpar, self.eq,
+                  self.header, self.nonce_label, self.hash)
         scene.wait(0.5)
 
     def _nexthash(self, win=False, color=RED):
-        nhash = Text(("0"*10 if win else fake_sha(10)) + "..." + fake_sha(), font_size = 50, color=color, font="Monospace")
-        nhash.move_to([self.x+7,self.y,0])
+        hash_text = ("0" * 10 if win else fake_sha(10)) + "..." + fake_sha()
+        nhash = Text(hash_text, font_size=36, color=color, font="Monospace")
+        nhash.move_to([self.x + 7, self.y, 0])
         return nhash
 
     def update(self):
         self.nonce += 1
         self.attempts -= 1
-        newnonce = Text("Nonce: " + str(self.nonce), font_size = 30)
-        newnonce.move_to([self.x,self.y+0.6,0])
-        self.scene.play(Unwrite(self.hash),run_time = 0.3)
-        self.scene.play(Transform(self.nonce_label, newnonce))
-        self.hash = self._nexthash(win = not bool(self.attempts),color=WHITE)
-        self.scene.play(Write(self.hash),run_time = 0.3)
-        self.scene.play(FadeToColor(self.hash, RED if self.attempts else BLUE))
+
+        # Create new mobjects
+        new_nonce = Text(f"Nonce: {self.nonce}", font_size=30)
+        new_nonce.move_to([self.x, self.y + 0.6, 0])
+
+        # Unwrite old hash
+        self.scene.play(Unwrite(self.hash), run_time=0.3)
+
+        # Transform nonce label
+        self.scene.play(Transform(self.nonce_label, new_nonce))
+
+        # Create new hash (white initially)
+        new_hash = self._nexthash(win=not bool(self.attempts), color=WHITE)
+
+        # Write new hash
+        self.scene.play(Write(new_hash), run_time=0.3)
+
+        # Fade to final color
+        self.scene.play(FadeToColor(new_hash, RED if self.attempts else BLUE))
+
+        # Update hash reference
+        self.hash = new_hash
 
     def mining(self):
         return self.attempts > 0
+# class Miner:
+#     def __init__(self, scene, x=0 , y=0, attempts = 20):
+#         self.scene = scene
+#         self.x = x
+#         self.y = y
+#         self.attempts = attempts
+#         self.nonce = randint(10000,99000)
+#         self.parts = {}
+#         self.rect = Rectangle(
+#             color=RED,
+#             fill_opacity=1,
+#             height = 2,
+#             width = 3
+#         )
+#         self.rect.move_to([x,y,0])
+#         self.lpar = Tex(r"(",font_size = 220)
+#         self.lpar.move_to([x-1.8,y,0])
+#         self.rpar = Tex(r")",font_size = 220)
+#         self.rpar.move_to([x+1.8,y,0])
+#         self.eq = Tex(r"=",font_size = 100)
+#         self.eq.move_to([x+2.7,y,0])
+#         self.H = Tex(r"\textsf{H}", font_size = 100)
+#         self.H.move_to([x-2.6,y,0])
+#         self.header = Rectangle(
+#             color=BLACK,
+#             fill_opacity=1,
+#             height = 0.5,
+#             width = 2.8
+#         )
+#         self.header.move_to([x,y+0.6,0])
+#         self.nonce_label = Text("Nonce: " + str(self.nonce), font_size = 30)
+#         self.nonce_label.move_to([x,y+0.6,0])
+#         self.hash = self._nexthash()
+#         self.hash.move_to([x+7,y,0])
+#         scene.add(self.rect, self.H, self.lpar, self.rpar, self.eq, self.header, self.nonce_label, self.hash)
+#         scene.wait(0.5)
+#
+#     def _nexthash(self, win=False, color=RED):
+#         nhash = Text(("0"*10 if win else fake_sha(10)) + "..." + fake_sha(), font_size = 50, color=color, font="Monospace")
+#         nhash.move_to([self.x+7,self.y,0])
+#         return nhash
+#
+#     def update(self):
+#         self.nonce += 1
+#         self.attempts -= 1
+#         newnonce = Text("Nonce: " + str(self.nonce), font_size = 30)
+#         newnonce.move_to([self.x,self.y+0.6,0])
+#         self.scene.play(Unwrite(self.hash),run_time = 0.3)
+#         self.scene.play(Transform(self.nonce_label, newnonce))
+#         self.hash = self._nexthash(win = not bool(self.attempts),color=WHITE)
+#         self.scene.play(Write(self.hash),run_time = 0.3)
+#         self.scene.play(FadeToColor(self.hash, RED if self.attempts else BLUE))
+#
+#     def mining(self):
+#         return self.attempts > 0
 
 def fake_sha(n=6):
     return ''.join(choice(string.ascii_lowercase[:6]+string.digits[1:]) for _ in range(n))
 
-class Node(Square):
-    def __init__(self, peers:list = []):
-        super().__init__()
-        # Create a Node with a list of peers
-
-        self.side_length = 0.8
-        self.set_fill("#0000FF", opacity=1)
-
-        if peers:
-            self.peers_list = peers
-
-    def set_blue(self):
-        self.set_fill("0000FF", opacity=1, family=False)
-
-    def set_red(self):
-        self.set_fill("#FF0000", opacity=1, family=False)
-
-# TODO incomplete, not yet started
-
-class PHANTOM:
-    def __init__(self, blocks:int = 0):
-        self.blocks_to_create = blocks
-        self.all_blocks = [] #all blocks added to the chain
-        self.narration_text_mobject = NarrationMathTex()
-
-        # Create Genesis
-        block = BlockMob(None, "Gen")
-        self.all_blocks.append(block)
-
-        self.create_blocks_and_pointers(self.blocks_to_create - 1)
-
-    def create_blocks_and_pointers(self, number_of_blocks_to_create:int = 0):
-        # Create chain of BlockMob
-        i = 0
-
-        while i < number_of_blocks_to_create:
-            parent = self.all_blocks[-1]
-
-            block = BlockMob(parent)
-            self.all_blocks.append(block)
-
-            pointer = Pointer(block, parent)
-            block.pointers.append(pointer)
-
-            i += 1
-
-    # returns animations for adding all blocks and pointers
-    def add_chain(self, scene):
-        add_chain_one_by_one_with_fade_in = []
-
-        for each in self.all_blocks:
-
-            add_chain_one_by_one_with_fade_in.append(
-                AnimationGroup(
-                    scene.camera.frame.animate.move_to(each.get_center()),
-                    FadeIn(each),
-                )
-            )
-
-            for pointer in each.pointers:
-                add_chain_one_by_one_with_fade_in.append(
-                    AnimationGroup(
-                        FadeIn(pointer)
-                    )
-            )
-
-            add_chain_one_by_one_with_fade_in.extend(
-                [Wait(0.5)],
-            )
-
-        add_chain_one_by_one_with_fade_in.append(
-            AnimationGroup(
-                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
-            )
-        )
-
-        add_chain_one_by_one_with_fade_in.append(Wait(run_time=0))
-        return Succession(*add_chain_one_by_one_with_fade_in)
-
-    def add_blocks(self, scene, how_many_blocks_to_add:int = 1):
-        add_blocks_one_by_one_with_fade_in = []
-
-        # Create blocks to add
-        self.create_blocks_and_pointers(how_many_blocks_to_add)
-
-        for each in self.all_blocks[-how_many_blocks_to_add:]:
-
-            add_blocks_one_by_one_with_fade_in.append(
-                AnimationGroup(
-                    scene.camera.frame.animate.move_to(each.get_center()),
-                    FadeIn(each),
-                )
-            )
-
-            for pointer in each.pointers:
-                add_blocks_one_by_one_with_fade_in.append(
-                    AnimationGroup(
-                        FadeIn(pointer)
-                    )
-            )
-
-            add_blocks_one_by_one_with_fade_in.extend(
-                [Wait(0.5)],
-            )
-
-        add_blocks_one_by_one_with_fade_in.append(
-            AnimationGroup(
-                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
-            )
-        )
-
-        add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
-        return Succession(*add_blocks_one_by_one_with_fade_in)
-
-    def create_fork(self, scene, how_many_blocks_to_add:int = 1, from_depth:int = 1):
-        add_blocks_one_by_one_with_fade_in = []
-
-        # Create forked blocks to add
-        fork = [self.all_blocks[-from_depth -1]]
-
-        i = 0
-        while i < how_many_blocks_to_add:
-            parent = fork[-1]
-
-            block = BlockMob(parent)
-            fork.append(block)
-
-            pointer = Pointer(block, parent)
-            block.pointers.append(pointer)
-
-            i += 1
-
-        self.all_blocks = list(set(self.all_blocks + fork))
-
-        fork[1].shift_fork() # TODO Replace with position handling based on rounds_from_genesis
-
-        for each in fork[1:]:
-
-            add_blocks_one_by_one_with_fade_in.append(
-                AnimationGroup(
-                    scene.camera.frame.animate.move_to(each.get_center()),
-                    FadeIn(each),
-                )
-            )
-
-            for pointer in each.pointers:
-                add_blocks_one_by_one_with_fade_in.append(
-                    AnimationGroup(
-                        FadeIn(pointer)
-                    )
-            )
-
-            add_blocks_one_by_one_with_fade_in.extend(
-                [Wait(0.5)],
-            )
-
-        add_blocks_one_by_one_with_fade_in.append(
-            AnimationGroup(
-                scene.camera.auto_zoom(self.all_blocks, margin= 1.0),
-            )
-        )
-
-        add_blocks_one_by_one_with_fade_in.append(Wait(run_time=0))
-        return Succession(*add_blocks_one_by_one_with_fade_in)
-
-    ####################
-    # Get past/future/anticone and blink
-    ####################
-
-    # returns group of blink animations on past of block at selected round
-    def blink_past_of_random_block(self):
-        random_block: 'Mobject' = choice(self.all_blocks)
-        blink_past_animations = []
-        current_list_to_blink = random_block.get_past()
-        blink_past_animations.append(random_block.highlight_self())
-
-        for each in current_list_to_blink:
-            blink_past_animations.append(each.blink())
-
-        blink_past_animations.append(Wait(run_time=0.1)) # added to prevent random block not having past and breaking animation with no runtime
-        return AnimationGroup(*blink_past_animations)
-
-    # returns group of blink animations on future of block at selected round
-    def blink_future_of_random_block(self):
-        random_block: 'Mobject' = choice(self.all_blocks)
-        blink_future_animations = []
-        current_list_to_blink = random_block.get_future()
-        blink_future_animations.append(random_block.highlight_self())
-
-        for each in current_list_to_blink:
-            blink_future_animations.append(each.blink())
-
-        blink_future_animations.append(Wait(run_time=0.1)) # added to prevent random block not having future and breaking animation with no runtime
-        return AnimationGroup(*blink_future_animations)
-
-    # returns group of blink animations on anticone of block at selected round
-    def blink_anticone_of_random_block(self):
-        random_block: 'Mobject' = choice(self.all_blocks)
-        blink_anticone_animations = []
-
-        # need to get past and get future, need to get all blocks from all_blocks, and compare
-#        list_of_blocks_not_in_past = list(set(self.all_blocks) - set(random_block.get_past()))
-#        list_of_blocks_not_in_past_or_future = list(set(list_of_blocks_not_in_past) - set(random_block.get_future()))
-#        anticone = list(set(list_of_blocks_not_in_past_or_future) - set(random_block))
-        list_of_blocks_reachable = list(set(self.all_blocks) - set(random_block.get_reachable()))
-        anticone = list(set(list_of_blocks_reachable) - set(random_block))
-
-        blink_anticone_animations.append(random_block.highlight_self())
-
-        for each in anticone:
-            blink_anticone_animations.append(each.blink())
-
-        blink_anticone_animations.append(Wait(run_time=0.1)) # added to prevent random block not having future and breaking animation with no runtime
-        return AnimationGroup(*blink_anticone_animations)
-
-    ####################
-    # Testing animation
-    ####################
-
-    # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
-    def smooth_genesis(self):
-        animations = []
-
-        animations.append(
-            self.all_blocks[0].animate.shift(UP*1)
-        )
-
-        return AnimationGroup(animations)
-
-    # TODO test this
-    ####################
-    # Positioning BlockMobs in DAG
-    ####################
-
-    # return an animation that adjusts the consensus rounds based on how many rounds_from_genesis for list(blocks passed)
-
-    def adjust_consensus_round(self, blocks_added:list):
-        adjust_rounds_affected_animations = []
-
-        for each in blocks_added:
-            consensus_round = each.rounds_from_genesis
-
-            all_blocks_at_this_round = list(set(self.get_all_blocks_at_this_round(consensus_round)))
-
-            # Create animations and add to animations to adjust these blocks at this depth
-
-            adjust_rounds_affected_animations.append(self.adjust_consensus_round_animations(all_blocks_at_this_round))
-
-        return AnimationGroup(adjust_rounds_affected_animations)
-
-    def adjust_consensus_round_animations(self, all_blocks_at_this_round:list):
-        animations = []
-
-        # find all y position
-        list_of_y_positions:list = []
-
-        for each in all_blocks_at_this_round:
-            position_of_each_block = each.get_center()
-            list_of_y_positions.append(position_of_each_block[1])
-
-        # Adjust their position to space them from each other and move to position from center (y = 0)
-        y_min = min(list_of_y_positions)
-        y_max = max(list_of_y_positions)
-        adjust_by = (abs(y_min) + abs(y_max)) / all_blocks_at_this_round
-
-        if abs(y_min) > abs(y_max):
-            adjust_up = True
-        else:
-            adjust_up = False
-
-        # Create the animations that move blocks in this round by + or - adjust_by
-        # TODO finish creating animations that adjust rounds for DAG
-
-
-        return AnimationGroup(animations)
-
-    def get_all_blocks_at_this_round(self, consensus_round:int):
-        all_blocks_at_this_round = []
-
-        for each in self.all_blocks:
-            if each.rounds_from_genesis == consensus_round:
-                all_blocks_at_this_round.append(each)
-
-        all_blocks_at_this_round = list(set(all_blocks_at_this_round))
-        return all_blocks_at_this_round
-
-# TODO incomplete, building
-
-class Bitcoin:
-    def __init__(
-            self,
-            scene
-    ):
-        """
-        :param scene: self
-
-        Scene is used for handling camera animations.
-        Bitcoin currently supports a chain and competing fork
-        """
-        self.scene = scene
-
-        self.all_blocks = [] # all blocks added to the chain
-#        self.narration_text_mobject = NarrationMathTex() # currently unused
-
-        # Create Genesis
-        genesis = BTCBlock(None, "Gen")
-        self.all_blocks.append(genesis)
-
-    def genesis(self):
-        """
-        Must create Genesis first.
-        If not, there will be no blocks the point to.
-        """
-        genesis = self.all_blocks[0]
-        return [Succession(
-                Wait(1.0),
-                FadeIn(genesis),
-                Wait(0.5)
-            )]
-
-# TODO change to add to longest chain
-    def add_block(self):
-        """
-        Creates a new block, a pointer, and returns an animation that adds a single block to the chain.
-        """
-        block = BTCBlock(self.all_blocks[-1])
-        self.all_blocks.append(block)
-        pointer = Pointer(block, block.parent)
-
-        return [AnimationGroup(
-                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
-                FadeIn(block),
-                FadeIn(pointer)],
-                Wait(0.5)
-            )]
-
-# TODO only one needed, add_block_to_chain or add_block
-    def add_blocks(self, number_of_blocks_to_add:int = 1):
-        """
-        :param number_of_blocks_to_add: desired number of blocks to add to the chain.
-
-        Returns an animation that plays one by one adding the desired number of blocks to the chain.
-        """
-        add_blocks_animations = []
-
-        i = 0
-        while i < number_of_blocks_to_add:
-            add_blocks_animations.extend(
-                self.add_block()
-            )
-            i += 1
-
-        return Succession(add_blocks_animations)
-
-    def add_first_fork_block(self, fork_depth):
-        """
-        :param fork_depth: desired depth to begin fork from tip.
-
-        Creates a new block, a pointer, and returns an animation that adds a single fork block to the chain.
-        """
-        block = BTCBlock(self.all_blocks[-fork_depth - 1])
-        self.all_blocks.append(block)
-        block.is_fork = True
-        pointer = Pointer(block, block.parent)
-
-        block.set_y(-2)
-
-        return [AnimationGroup(
-                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
-                FadeIn(block),
-                FadeIn(pointer)],
-                Wait(0.5)
-            )]
-
-    def add_block_to_chain(self):
-        """
-        Creates a new block, a pointer, and returns an animation that adds a single block to the longest chain.
-        """
-        tips = self.get_longest_chain_tips()
-        original_chain_tip = tips[0] # pick one, if multiple tips have same weight,
-
-        block = BTCBlock(original_chain_tip)
-        self.all_blocks.append(block)
-        pointer = Pointer(block, block.parent)
-
-        return [AnimationGroup(
-                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
-                FadeIn(block),
-                FadeIn(pointer)],
-                Wait(0.5)
-            )]
-
-    def add_block_to_fork(self):
-        """"""
-        # determine the most recent fork chain
-        fork_chain_tip = self.find_most_recent_forked_block()
-
-        block = BTCBlock(fork_chain_tip)
-        self.all_blocks.append(block)
-        pointer = Pointer(block, block.parent)
-
-        return [AnimationGroup(
-                [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
-                FadeIn(block),
-                FadeIn(pointer)],
-                Wait(0.5)
-            )]
-
-    def find_most_recent_forked_block(self):
-        tips = self.get_tips()
-
-        for each in reversed(tips):
-            if each.is_from_fork():
-                return each
-            else:
-                ...
-
-        return None
-
-    def move_camera_to(self, name_of_block:int):
-        """
-        :param name_of_block: int of block rounds from genesis
-
-        BTC blocks are named by weight,
-        except Genesis, named 'Gen',
-        move_to will adjust cameras center position to the desired round from genesis.
-
-        """
-        block = None
-
-        for each in self.all_blocks:
-            if each.name == name_of_block:
-                block = each
-                break
-
-        return AnimationGroup(
-#            self.scene.camera.frame.animate.move_to(block)
-            self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0])
-
-        )
-
-    def get_tips(self):
-        """
-        Returns a list of all tips.
-        """
-        tips = []
-
-        for each in self.all_blocks:
-            if each.is_tip():
-                tips.append(each)
-
-        return tips
-
-    def get_heaviest_two_tips(self):
-        """
-        Return a sorted list of the heaviest two tips.
-        Heaviest tip [0]
-        Lighter tip [1]
-        Unless tip weight is the same
-        """
-        tips = self.get_tips()
-        tip_1 = tips[0]
-        tip_2 = tips[1]
-
-        if tip_1.get_weight() > tip_2.get_weight():
-            sorted_tips = [tip_1, tip_2]
-        else:
-            sorted_tips = [tip_2, tip_1]
-
-        return sorted_tips
-
-    def get_longest_chain_tips(self):
-        """
-        Returns a list of blocks with the most blocks in its past.
-        If a single tip is the heaviest, list will only have one block,
-        If multiple tips exist with the same weight, list will have multiple blocks.
-        """
-        tips = self.get_tips()
-
-        weight_of_each_tip = [each.weight for each in tips]
-        most_blocks_in_past = max(weight_of_each_tip)
-
-        return [each for each in tips if each.weight == most_blocks_in_past]
-
-    def get_past_of_tips(self):
-        """
-        Returns a list of blocks in the past of the tips provided,
-        back to and excluding the most recent common ancestor.
-        """
-        tips_to_find_blocks = self.get_heaviest_two_tips()
-
-        if len(tips_to_find_blocks) == 1:
-            print("incorrect usage of get_past_of_tips")
-            return
-
-        lists_of_past_blocks = []
-
-        for each in tips_to_find_blocks:
-            lists_of_past_blocks.append(each.get_self_inclusive_past())
-
-        set_of_tip_0 = set(lists_of_past_blocks[0])
-        set_of_tip_1 = set(lists_of_past_blocks[1])
-
-        set_of_blocks_unique_to_0 = set_of_tip_0 - set_of_tip_1
-        set_of_blocks_unique_to_1 = set_of_tip_1 - set_of_tip_0
-
-        list_of_blocks_unique_to_0 = list(set_of_blocks_unique_to_0)
-        list_of_blocks_unique_to_1 = list(set_of_blocks_unique_to_1)
-
-        lists_of_past_blocks = [list_of_blocks_unique_to_0, list_of_blocks_unique_to_1]
-
-        return lists_of_past_blocks
-
-    def are_heaviest_two_tips_equal_weight(self):
-        tips = self.get_heaviest_two_tips()
-
-        if tips[0].get_weight() == tips[1].get_weight():
-            return True
-        else:
-            return False
-
-    def animate_these_blocks_blue(self, list_of_blocks:list):
-        animate_turn_blue = []
-
-        for each in list_of_blocks:
-            animate_turn_blue.extend([each.fade_blue()])
-
-        return AnimationGroup(
-            animate_turn_blue
-        )
-
-    def animate_these_blocks_red(self, list_of_blocks:list):
-        animate_turn_red = []
-
-        for each in list_of_blocks:
-            animate_turn_red.extend([each.fade_red()])
-
-        return AnimationGroup(
-            animate_turn_red
-        )
-
-
-    def adjust_block_color_by_longest_chain(self):
-        """
-        Returns animations to change block color depending on if they are part of the longest chain.
-        """
-        lists_of_past_blocks_of_tips = self.get_past_of_tips()
-        block_color_animations = []
-
-        if self.are_heaviest_two_tips_equal_weight():
-            block_color_animations.append(self.animate_these_blocks_red(lists_of_past_blocks_of_tips[0])) # TODO change back to blue, using red for testing
-            block_color_animations.append(self.animate_these_blocks_red(lists_of_past_blocks_of_tips[1]))
-            return AnimationGroup(
-                block_color_animations
-            )
-        else:
-            pass
-
-
-
-#        for each in lists_of_past_blocks_of_tips:
-#            each.sort(key=lambda x: x.weight)
-
-        return None # TODO change this to animations
-
-
-
-
-    ####################
-    # Get past/future/anticone and blink
-    ####################
-
-    def blink_these_blocks(self, blocks_to_blink:list):
-        """
-        Returns an animation that blinks all blocks in the list provided.
-        """
-        blink_these_animations = []
-        current_list_to_blink = blocks_to_blink
-
-        for each in current_list_to_blink:
-            blink_these_animations.append(each.blink())
-
-        return AnimationGroup(*blink_these_animations)
-
-    def blink_past_of_random_block(self):
-        """
-        Returns an animation,
-        picks a block at random and blinks the reachable past,
-        while highlighting the block.
-        """
-        random_block = choice(self.all_blocks)
-        blink_past_animations = []
-        current_list_to_blink = random_block.get_past()
-        blink_past_animations.append(random_block.highlight_self())
-
-        for each in current_list_to_blink:
-            blink_past_animations.append(each.blink())
-
-        return AnimationGroup(*blink_past_animations)
-
-    def blink_future_of_random_block(self):
-        """
-        Returns an animation,
-        picks a block at random and blinks the reachable future,
-        while highlighting the block.
-        """
-        random_block = choice(self.all_blocks)
-        blink_future_animations = []
-        current_list_to_blink = random_block.get_future()
-        blink_future_animations.append(random_block.highlight_self())
-
-        for each in current_list_to_blink:
-            blink_future_animations.append(each.blink())
-
-        return AnimationGroup(*blink_future_animations)
-
-    def blink_anticone_of_random_block(self):
-        """
-        Returns an animation,
-        picks a block at random and blinks the anticone(unreachable blocks),
-        while highlighting the block.
-        """
-        random_block = choice(self.all_blocks)
-        blink_anticone_animations = []
-
-        list_of_blocks_reachable = list(set(self.all_blocks) - set(random_block.get_reachable()))
-        anticone = list(set(list_of_blocks_reachable) - set(random_block))
-
-        blink_anticone_animations.append(random_block.highlight_self())
-
-        for each in anticone:
-            blink_anticone_animations.append(each.blink())
-
-        return AnimationGroup(*blink_anticone_animations)
-
-    ####################
-    # Testing animation
-    ####################
-
-    # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
-    def smooth_genesis(self):
-        animations = []
-
-        animations.append(
-            self.all_blocks[0].animate.shift(UP*1)
-        )
-
-        return AnimationGroup(animations)
-
-    # TODO rewrite this to use new functions created above
-    ####################
-    # Positioning Blocks in Bitcoin
-    ####################
-
-    # TODO test this and find a way to leave tips alone
-    def adjust_chain_position(self):
-        adjust_chain_animations = []
-
-        for each_list in self.find_forks():
-            heaviest_block = self.find_heaviest_block_looking_forward(each_list)
-            position_of_heaviest_block = heaviest_block.get_position()
-            delta_y_of_heaviest_block = abs(position_of_heaviest_block)
-
-            if position_of_heaviest_block[1] == 0:
-                ...  # do nothing
-            elif position_of_heaviest_block[1] < 0:
-                move_up_by = delta_y_of_heaviest_block
-                for each in each_list:
-                    adjust_chain_animations.append(
-                        each.animate.shift(UP*move_up_by)
-                    )
-            else:
-                move_down_by = delta_y_of_heaviest_block
-                for each in each_list:
-                    adjust_chain_animations.append(
-                        each.animate.shift(UP*move_down_by)
-                    )
-
-        return AnimationGroup(adjust_chain_animations)
-
-    def find_heaviest_block_looking_forward(self, blocks:list):
-
-        heaviest_block = blocks[0]
-
-        for each_block in blocks:
-            if len(each_block.get_future()) > len(heaviest_block.get_future()):
-                heaviest_block = each_block
-
-        return heaviest_block
-
-    def find_forks(self):
-
-        forks = [] # list[[block, block], [block, block], [block, block, block], ...]
-
-        for each in self.all_blocks:
-            if len(each.childen) > 1:
-                forks.append(each.children)
-
-        return forks
-
-    # return an animation that adjusts the consensus rounds based on how many rounds_from_genesis for list(blocks passed)
-
-    def adjust_consensus_round(self, blocks_added:list):
-        adjust_rounds_affected_animations = []
-
-        for each in blocks_added:
-            consensus_round = each.rounds_from_genesis
-
-            all_blocks_at_this_round = list(set(self.get_all_blocks_at_this_round(consensus_round)))
-
-            # Create animations and add to animations to adjust these blocks at this depth
-
-            adjust_rounds_affected_animations.append(self.adjust_consensus_round_animations(all_blocks_at_this_round))
-
-        return AnimationGroup(adjust_rounds_affected_animations)
-
-# TODO test
-    def adjust_consensus_round_animations(self, all_blocks_at_this_round:list):
-        animations = []
-
-        # find all y position
-        list_of_y_positions:list = []
-
-        for each in all_blocks_at_this_round:
-            position_of_each_block = each.get_center()
-            list_of_y_positions.append(position_of_each_block[1])
-
-        # Adjust their position to space them from each other and move to position from center (y = 0)
-        y_min = min(list_of_y_positions)
-        y_max = max(list_of_y_positions)
-        adjust_by = (abs(y_min) + abs(y_max)) / all_blocks_at_this_round
-
-        if abs(y_min) > abs(y_max):
-            adjust_up = True
-        else:
-            adjust_up = False
-
-        if adjust_up:
-            for each in all_blocks_at_this_round:
-                animations.append(each.animate.shift(UP*adjust_by))
-        else:
-            for each in all_blocks_at_this_round:
-                animations.append(each.animate.shift(DOWN*adjust_by))
-
-        return AnimationGroup(animations)
-
-    def get_all_blocks_at_this_round(self, consensus_round:int):
-        all_blocks_at_this_round = []
-
-        for each in self.all_blocks:
-            if each.rounds_from_genesis == consensus_round:
-                all_blocks_at_this_round.append(each)
-
-        all_blocks_at_this_round = list(set(all_blocks_at_this_round))
-        return all_blocks_at_this_round
-
-class SelfishMining:
-    # Class for animating each state and transition in Selfish Mining (Eyal and Sirer)
-    # For simplicity (and manim limitations) we keep forks <= 4 blocks
-    def __init__(self):
-
-        self.genesis_position = (-4, 0, 0) # when using default space, this centers the blocks.
-        self.selfish_block_offset = DOWN * 1.2
-
-        self.wait_time = 1.0
-        self.fade_in_time = 1.0
-        self.fade_out_time = 1.0
-
-        self.selfish_miner_block_opacity = 0.5
-
-        # Capture current state here for transitions
-        self.current_state = "init"
-
-        # Attempting to change narration text during compile time
-        self.narration_text = MathTex(r"\text{Default}", color=WHITE)
-        self.narration_text.to_edge(UP)
-
-        # Prebuilt Narration Text
-        self.selfish_mining = MathTex(r"\text{Selfish Mining in Bitcoin}", color=WHITE)
-        self.selfish_mining.to_edge(UP)
-        self.state0 = MathTex(r"\text{State 0}", color=WHITE)
-        self.state0.to_edge(UP)
-        self.state0prime = MathTex(r"\text{State 0'}", color=WHITE)
-        self.state0prime.to_edge(UP)
-        self.state1 = MathTex(r"\text{State 1}", color=WHITE)
-        self.state1.to_edge(UP)
-        self.state2 = MathTex(r"\text{State 2}", color=WHITE)
-        self.state2.to_edge(UP)
-        self.state3 = MathTex(r"\text{State 3}", color=WHITE)
-        self.state3.to_edge(UP)
-        self.state4 = MathTex(r"\text{State 4}", color=WHITE)
-        self.state4.to_edge(UP)
-        self.state_honest_wins = MathTex(r"\text{Honest miner finds a block}", color=WHITE)
-        self.state_honest_wins.to_edge(UP)
-        self.state_selfish_wins = MathTex(r"\text{Selfish miner finds a block}", color=WHITE)
-        self.state_selfish_wins.to_edge(UP)
-        self.state_reveal = MathTex(r"\text{Selfish miner reveals blocks}", color=WHITE)
-        self.state_reveal.to_edge(UP)
-
-        # Prebuilt Blocks, Pointers and Positioning
-        self.genesis = BlockMob(None, "Gen")
-        self.genesis.move_to(self.genesis_position)
-
-        # Create blocks with pointers - start in lower position
-
-        self.selfish_block1 = BlockMob(self.genesis, "s1")
-        self.selfish_block1.shift(self.selfish_block_offset)
-        self.selfish_block1.set_red()
-        self.selfish_block1.set_opacity(self.selfish_miner_block_opacity)
-        self.selfish_pointer1 = Pointer(self.selfish_block1, self.genesis)
-
-        self.selfish_block2 = BlockMob(self.selfish_block1, "s2")
-        self.selfish_block2.set_red()
-        self.selfish_block2.set_opacity(self.selfish_miner_block_opacity)
-        self.selfish_pointer2 = Pointer(self.selfish_block2, self.selfish_block1)
-
-        self.selfish_block3 = BlockMob(self.selfish_block2, "s3")
-        self.selfish_block3.set_red()
-        self.selfish_block3.set_opacity(self.selfish_miner_block_opacity)
-        self.selfish_pointer3 = Pointer(self.selfish_block3, self.selfish_block2)
-
-        self.selfish_block4 = BlockMob(self.selfish_block3, "s4")
-        self.selfish_block4.set_red()
-        self.selfish_block4.set_opacity(self.selfish_miner_block_opacity)
-        self.selfish_pointer4 = Pointer(self.selfish_block4, self.selfish_block3)
-
-        # Create honest blocks from genesis
-
-        self.honest_block1 = BlockMob(self.genesis, "h1")
-        self.honest_pointer1 = Pointer(self.honest_block1, self.genesis)
-        # TODO check if this is required, or if BlockMob already positions blocks
-        #honest_block1.move_to([selfish_block1.get_center()[0], genesis.get_center()[1], 0])
-
-        self.honest_block2 = BlockMob(self.honest_block1, "h2")
-        self.honest_pointer2 = Pointer(self.honest_block2, self.genesis)
-
-        self.honest_block3 = BlockMob(self.honest_block2, "h3")
-        self.honest_pointer3 = Pointer(self.honest_block3, self.genesis)
-
-        self.honest_block4 = BlockMob(self.honest_block3, "h4")
-        self.honest_pointer4 = Pointer(self.honest_block4, self.genesis)
-
-    def intro_anim(self):
-        """
-        Returns an Animation Group that displays blocks in a race similar to the state space
-        """
-        self.current_state = "intro"
-
-        intro_animation = (Succession(
-            AnimationGroup(
-                self._fade_in(self.selfish_mining),
-                self._fade_in(self.genesis),
-                self._fade_in(self.selfish_block1),
-                self._fade_in(self.selfish_pointer1),
-                self._fade_in(self.selfish_block2),
-                self._fade_in(self.selfish_pointer2),
-                self._fade_in(self.selfish_block3),
-                self._fade_in(self.selfish_pointer3),
-                self._fade_in(self.selfish_block4),
-                self._fade_in(self.selfish_pointer4),
-                self._fade_in(self.honest_block1),
-                self._fade_in(self.honest_pointer1)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_out(self.selfish_mining),
-                self._fade_out(self.selfish_block1),
-                self._fade_out(self.selfish_pointer1),
-                self._fade_out(self.selfish_block2),
-                self._fade_out(self.selfish_pointer2),
-                self._fade_out(self.selfish_block3),
-                self._fade_out(self.selfish_pointer3),
-                self._fade_out(self.selfish_block4),
-                self._fade_out(self.selfish_pointer4),
-                self._fade_out(self.honest_block1),
-                self._fade_out(self.honest_pointer1),
-                self._fade_in(self.state0)
-            )
-        ))
-        return intro_animation
-
-    ####################
-    # Internal Functions
-    ####################
-
-    def _fade_in(self, mobject_to_fade_in):
-        mobject_to_fade_in.is_visible = True
-#        return FadeIn(mobject_to_fade_in, run_time = self.fade_in_time)
-        return mobject_to_fade_in.animate(run_time = self.fade_in_time).set_opacity(1.0)
-    def _fade_out(self, mobject_to_fade_out):
-        mobject_to_fade_out.is_visible = False
-#        return FadeOut(mobject_to_fade_out, run_time = self.fade_out_time)
-        return mobject_to_fade_out.animate(run_time = self.fade_out_time).set_opacity(0.1)
-
-    # TODO figure out the best way to transition from any state to zero
-    def state_zero(self):
-        self.current_state = "zero"
-
-    ####################
-    # Selfish Miner Transitions
-    ####################
-
-    def zero_to_one(self):
-        self.current_state = "one"
-
-        zero_to_one_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.selfish_mining)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.state1),
-                self._fade_in(self.selfish_block1),
-                self._fade_in(self.selfish_pointer1),
-            )
-        )
-
-        return zero_to_one_anim
-
-    def one_to_two(self):
-        self.current_state = "two"
-
-        one_to_two_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.state1)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.state2),
-                self._fade_in(self.selfish_block2),
-                self._fade_in(self.selfish_pointer2),
-            )
-        )
-
-        return one_to_two_anim
-
-    def two_to_three(self):
-        self.current_state = "three"
-
-        two_to_three_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.state2)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.state3),
-                self._fade_in(self.selfish_block3),
-                self._fade_in(self.selfish_pointer3),
-            )
-        )
-
-        return two_to_three_anim
-
-    def three_to_four(self):
-        self.current_state = "four"
-
-        three_to_four_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.state3)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.state4),
-                self._fade_in(self.selfish_block4),
-                self._fade_in(self.selfish_pointer4),
-            )
-        )
-
-        return three_to_four_anim
-
-    ####################
-    # Honest Miner Transitions
-    ####################
-
-    # TODO add animation to add an honest block, move to zero position while fading gen block, then set to not visible,
-    #       reset moved honest block to original position
-
-    # TODO manim removes a mobject on fadeout, then problems start when fading back in.
-    def zero_to_zero(self):
-        self.current_state = "zero"
-
-        zero_to_zero_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.state0)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.honest_block1),
-                self._fade_in(self.honest_pointer1),
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.genesis.animate.move_to((-6,0,0)),
-                self.honest_block1.animate.move_to((-4,0,0))
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_out(self.genesis),
-                self._fade_out(self.honest_pointer1),
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self.genesis.animate(run_time = 0.01).move_to(self.genesis_position)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.genesis),
-                self._fade_out(self.honest_block1),
-            )
-        )
-
-        return zero_to_zero_anim
-
-    def one_to_zero_prime(self):
-        self.current_state = "zero_prime"
-
-        one_to_zero_anim = Succession(
-            AnimationGroup(
-                self._fade_out(self.state1)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in(self.state0prime),
-                self._fade_in(self.honest_block1),
-                self._fade_in(self.honest_pointer1),
-            )
-        )
-
-        return one_to_zero_anim
-
-
-class SelfishMiningSquares:
-    # Class for animating each state and transition in Selfish Mining (Eyal and Sirer)
-    # For simplicity (and manim limitations) we keep forks <= 4 blocks
-    def __init__(self, scene):
-        self.scene = scene
-
-        self.genesis_position = (-4, 0, 0)  # when using default space, this centers the blocks.
-        self.selfish_block_offset = DOWN * 1.2
-
-        self.wait_time = 1.0
-        self.fade_in_time = 1.0
-        self.fade_out_time = 1.0
-
-        self.selfish_miner_block_opacity = 0.5
-
-        # Capture current state here for transitions
-        self.current_state = "init"
-
-        # Attempting to change narration text during compile time
-        self.narration_text = MathTex(r"\text{Default}", color=WHITE)
-        self.narration_text.to_edge(UP)
-
-        # Prebuilt Narration Text
-        self.selfish_mining = MathTex(r"\text{Selfish Mining in Bitcoin}", color=WHITE)
-        self.selfish_mining.to_edge(UP)
-        self.state0 = MathTex(r"\text{State 0}", color=WHITE)
-        self.state0.to_edge(UP)
-        self.state0prime = MathTex(r"\text{State 0'}", color=WHITE)
-        self.state0prime.to_edge(UP)
-        self.state1 = MathTex(r"\text{State 1}", color=WHITE)
-        self.state1.to_edge(UP)
-        self.state2 = MathTex(r"\text{State 2}", color=WHITE)
-        self.state2.to_edge(UP)
-        self.state3 = MathTex(r"\text{State 3}", color=WHITE)
-        self.state3.to_edge(UP)
-        self.state4 = MathTex(r"\text{State 4}", color=WHITE)
-        self.state4.to_edge(UP)
-        self.state_honest_wins = MathTex(r"\text{Honest miner finds a block}", color=WHITE)
-        self.state_honest_wins.to_edge(UP)
-        self.state_selfish_wins = MathTex(r"\text{Selfish miner finds a block}", color=WHITE)
-        self.state_selfish_wins.to_edge(UP)
-        self.state_reveal = MathTex(r"\text{Selfish miner reveals blocks}", color=WHITE)
-        self.state_reveal.to_edge(UP)
-
-        # Prebuilt Blocks and Lines using pure Manim
-        self.genesis = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
-        self.genesis.move_to(self.genesis_position)
-        self.genesis_label = Text("Gen", font_size=24, color=WHITE)
-        self.genesis_label.move_to(self.genesis.get_center())
-
-        # Create selfish blocks with lines - start in lower position
-        self.selfish_block1 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
-        self.selfish_block1.move_to([-2, -1.2, 0])  # Manual positioning with offset
-        self.selfish_block1_label = Text("s1", font_size=24, color=WHITE)
-        self.selfish_block1_label.move_to(self.selfish_block1.get_center())
-        self.selfish_line1 = Line(start=self.selfish_block1.get_left(), end=self.genesis.get_right(),
-                                  buff=0.1, color=WHITE, stroke_width=2)
-
-        self.selfish_block2 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
-        self.selfish_block2.move_to([0, -1.2, 0])
-        self.selfish_block2_label = Text("s2", font_size=24, color=WHITE)
-        self.selfish_block2_label.move_to(self.selfish_block2.get_center())
-        self.selfish_line2 = Line(start=self.selfish_block2.get_left(), end=self.selfish_block1.get_right(),
-                                  buff=0.1, color=WHITE, stroke_width=2)
-
-        self.selfish_block3 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
-        self.selfish_block3.move_to([2, -1.2, 0])
-        self.selfish_block3_label = Text("s3", font_size=24, color=WHITE)
-        self.selfish_block3_label.move_to(self.selfish_block3.get_center())
-        self.selfish_line3 = Line(start=self.selfish_block3.get_left(), end=self.selfish_block2.get_right(),
-                                  buff=0.1, color=WHITE, stroke_width=2)
-
-        self.selfish_block4 = Square(side_length=0.8, color=PURE_RED, fill_opacity=0)
-        self.selfish_block4.move_to([4, -1.2, 0])
-        self.selfish_block4_label = Text("s4", font_size=24, color=WHITE)
-        self.selfish_block4_label.move_to(self.selfish_block4.get_center())
-        self.selfish_line4 = Line(start=self.selfish_block4.get_left(), end=self.selfish_block3.get_right(),
-                                  buff=0.1, color=WHITE, stroke_width=2)
-
-        # Create honest blocks from genesis - same horizontal plane as genesis
-        self.honest_block1 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
-        self.honest_block1.move_to([-2, 0, 0])  # Same y as genesis
-        self.honest_block1_label = Text("h1", font_size=24, color=WHITE)
-        self.honest_block1_label.move_to(self.honest_block1.get_center())
-        self.honest_line1 = Line(start=self.honest_block1.get_left(), end=self.genesis.get_right(),
-                                 buff=0.1, color=WHITE, stroke_width=2)
-
-        self.honest_block2 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
-        self.honest_block2.move_to([0, 0, 0])
-        self.honest_block2_label = Text("h2", font_size=24, color=WHITE)
-        self.honest_block2_label.move_to(self.honest_block2.get_center())
-        self.honest_line2 = Line(start=self.honest_block2.get_left(), end=self.honest_block1.get_right(),
-                                 buff=0.1, color=WHITE, stroke_width=2)
-
-        self.honest_block3 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
-        self.honest_block3.move_to([2, 0, 0])
-        self.honest_block3_label = Text("h3", font_size=24, color=WHITE)
-        self.honest_block3_label.move_to(self.honest_block3.get_center())
-        self.honest_line3 = Line(start=self.honest_block3.get_left(), end=self.honest_block2.get_right(),
-                                 buff=0.1, color=WHITE, stroke_width=2)
-
-        self.honest_block4 = Square(side_length=0.8, color="#0000FF", fill_opacity=0)
-        self.honest_block4.move_to([4, 0, 0])
-        self.honest_block4_label = Text("h4", font_size=24, color=WHITE)
-        self.honest_block4_label.move_to(self.honest_block4.get_center())
-        self.honest_line4 = Line(start=self.honest_block4.get_left(), end=self.honest_block3.get_right(),
-                                 buff=0.1, color=WHITE, stroke_width=2)
-
-    def intro_anim(self):
-        """
-        Returns an Animation Group that displays blocks in a race similar to the state space
-        """
-        self.current_state = "intro"
-
-        intro_animation = (Succession(
-            AnimationGroup(
-                self._fade_in_and_create(self.selfish_mining),
-                self._fade_in(self.genesis),
-                self._fade_in(self.genesis_label),
-                self._fade_in(self.selfish_block1),
-                self._fade_in(self.selfish_block1_label),
-                self._fade_in_and_create(self.selfish_line1),
-                self._fade_in(self.selfish_block2),
-                self._fade_in(self.selfish_block2_label),
-                self._fade_in_and_create(self.selfish_line2),
-                self._fade_in(self.selfish_block3),
-                self._fade_in(self.selfish_block3_label),
-                self._fade_in_and_create(self.selfish_line3),
-                self._fade_in(self.selfish_block4),
-                self._fade_in(self.selfish_block4_label),
-                self._fade_in_and_create(self.selfish_line4),
-                self._fade_in(self.honest_block1),
-                self._fade_in(self.honest_block1_label),
-                self._fade_in_and_create(self.honest_line1)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_out(self.selfish_mining),
-                self._fade_out(self.selfish_block1),
-                self._fade_out(self.selfish_block1_label),
-                self._fade_out_and_remove(self.selfish_line1),
-                self._fade_out(self.selfish_block2),
-                self._fade_out(self.selfish_block2_label),
-                self._fade_out_and_remove(self.selfish_line2),
-                self._fade_out(self.selfish_block3),
-                self._fade_out(self.selfish_block3_label),
-                self._fade_out_and_remove(self.selfish_line3),
-                self._fade_out(self.selfish_block4),
-                self._fade_out(self.selfish_block4_label),
-                self._fade_out_and_remove(self.selfish_line4),
-                self._fade_out(self.honest_block1),
-                self._fade_out(self.honest_block1_label),
-                self._fade_out_and_remove(self.honest_line1),
-            ),
-            AnimationGroup(
-                self._fade_in_and_create(self.state0)
-            )
-        ))
-        return intro_animation
-
-    #####################
-    # Internal Functions
-    #####################
-
-    def _fade_in(self, mobject_to_fade_in):
-        """
-        THIS KEEPS MOBJECTS AS PART OF THE SCENE
-        """
-        mobject_to_fade_in.is_visible = True
-        return mobject_to_fade_in.animate(run_time=self.fade_in_time).set_opacity(1.0)
-
-    def _fade_out(self, mobject_to_fade_out):
-        """
-        THIS KEEPS MOBJECTS AS PART OF THE SCENE
-        """
-        mobject_to_fade_out.is_visible = False
-        return mobject_to_fade_out.animate(run_time=self.fade_out_time).set_opacity(0)
-
-    def _fade_in_and_create(self, mobject_to_fade_in):
-        """
-        WARNING: ONLY TO BE USED FOR MOBJECTS THAT HAVE BEEN REMOVED OR INIT CREATE, THIS ADDS THE MOBJECT FROM SCENE
-        """
-        mobject_to_fade_in.is_visible = True
-        return Create(mobject_to_fade_in, run_time=self.fade_in_time)
-
-    def _fade_out_and_remove(self, mobject_to_fade_out):
-        """
-        WARNING: ONLY TO BE USED FOR MOBJECTS THAT USE A REDRAW, THIS REMOVES THE MOBJECT FROM SCENE
-        """
-        mobject_to_fade_out.is_visible = False
-        return FadeOut(mobject_to_fade_out, run_time=self.fade_out_time)
-
-    # TODO figure out the best way to transition from any state to zero
-
-    def state_zero(self):
-        self.current_state = "zero"
-
-    #####################
-    # Selfish Miner Transitions
-    #####################
-
-    def zero_to_one(self):
-        self.current_state = "one"
-
-        zero_to_one_anim = Succession(
-            AnimationGroup(
-                self._fade_out_and_remove(self.state0)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in_and_create(self.state1),
-                self._fade_in(self.selfish_block1),
-                self._fade_in(self.selfish_block1_label),
-                self._fade_in_and_create(self.selfish_line1),
-            )
-        )
-
-        return zero_to_one_anim
-
-    def one_to_two(self):
-        self.current_state = "two"
-
-        one_to_two_anim = Succession(
-            AnimationGroup(
-                self._fade_out_and_remove(self.state1)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in_and_create(self.state2),
-                self._fade_in(self.selfish_block2),
-                self._fade_in(self.selfish_block2_label),
-                self._fade_in_and_create(self.selfish_line2),
-            )
-        )
-
-        return one_to_two_anim
-
-    def two_to_three(self):
-        self.current_state = "three"
-
-        two_to_three_anim = Succession(
-            AnimationGroup(
-                self._fade_out_and_remove(self.state2)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in_and_create(self.state3),
-                self._fade_in(self.selfish_block3),
-                self._fade_in(self.selfish_block3_label),
-                self._fade_in_and_create(self.selfish_line3),
-            )
-        )
-
-        return two_to_three_anim
-
-    def three_to_four(self):
-        self.current_state = "four"
-
-        three_to_four_anim = Succession(
-            AnimationGroup(
-                self._fade_out_and_remove(self.state3)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in_and_create(self.state4),
-                self._fade_in(self.selfish_block4),
-                self._fade_in(self.selfish_block4_label),
-                self._fade_in_and_create(self.selfish_line4),
-            )
-        )
-
-        return three_to_four_anim
-
-    #####################
-    # Honest Miner Transitions
-    #####################
-
-    def zero_to_zero(self):
-        self.current_state = "zero"
-
-        self.scene.play(AnimationGroup(
-                self._fade_out_and_remove(self.state0)
-            ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        self.scene.play(AnimationGroup(
-                self._fade_in(self.honest_block1),
-                self._fade_in(self.honest_block1_label),
-                self._fade_in_and_create(self.honest_line1),
-            ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        self.scene.play(AnimationGroup(
-                self.genesis.animate.move_to((-6, 0, 0)),
-                self.genesis_label.animate.move_to((-6, 0, 0)),
-                self.honest_block1.animate.move_to((-4, 0, 0)),
-                self.honest_block1_label.animate.move_to((-4, 0, 0)),
-                self.honest_line1.animate.shift(LEFT * 2),
-            ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        self.scene.play(AnimationGroup(
-                self._fade_out(self.genesis),
-                self._fade_out(self.genesis_label),
-                self._fade_out(self.honest_block1_label),
-                self._fade_out_and_remove(self.honest_line1),
-            ))
-
-        self.scene.play(Wait(self.wait_time))
-
-        self.genesis.move_to(self.genesis_position),
-        self.genesis_label.move_to(self.genesis_position)
-
-        self.scene.play(AnimationGroup(
-                self._fade_in(self.genesis),
-                self._fade_out(self.honest_block1),
-                self._fade_out(self.honest_block1_label),
-            ))
-
-        self.scene.bring_to_front(self.genesis_label)
-        self.scene.play(self._fade_in(self.genesis_label))
-
-        return
-
-    def one_to_zero_prime(self):
-        self.current_state = "zero_prime"
-
-        one_to_zero_prime_anim = Succession(
-            AnimationGroup(
-                self._fade_out_and_remove(self.state1)
-            ),
-            Wait(self.wait_time),
-            AnimationGroup(
-                self._fade_in_and_create(self.state0prime),
-                self._fade_in(self.honest_block1),
-                self._fade_in(self.honest_block1_label),
-                self._fade_in_and_create(self.honest_line1),
-            )
-        )
-
-        return one_to_zero_prime_anim
-
-
-# Succession returns animations to be played one by one
-# AnimationGroup plays all animations together
-
-class BlockMob(Square):
-    def __init__(self,
-                 selected_parent:'BlockMob' = None,
-                 name:str = ""
-                 ):
-        super().__init__(
+class MinerDemo(Scene):
+    def construct(self):
+        m = Miner(self, x=-3.5, y=0, attempts = 5)
+        while m.mining():
+            m.update()
+
+# TODO, removed for now to ignore(selfish_mining_bitcoin.py has replaced this for now)
+# class Bitcoin:
+#     def __init__(
+#             self,
+#             scene
+#     ):
+#         """
+#         :param scene: self
+#
+#         Scene is passed so animations can be handled within Bitcoin
+#         Bitcoin currently supports a chain and competing fork
+#         """
+#         self.scene = scene
+#
+#         self.all_blocks = [] # all blocks added to the chain
+#
+#         # Create Genesis
+#         genesis = BTCBlock(None, "Gen")
+#         self.all_blocks.append(genesis)
+#
+#     def add_block(self):
+#         """
+#         Creates a new block, a pointer, and returns an animation that adds a single block to the chain.
+#         """
+#         block = BTCBlock(self.all_blocks[-1])
+#         self.all_blocks.append(block)
+#         pointer = Pointer(block, block.parent)
+#
+#         return [AnimationGroup(
+#                 [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
+#                 FadeIn(block),
+#                 FadeIn(pointer)],
+#                 Wait(0.5)
+#             )]
+#
+#     def add_blocks(self, number_of_blocks_to_add:int = 1):
+#         """
+#         :param number_of_blocks_to_add: desired number of blocks to add to the chain.
+#
+#         Returns an animation that plays one by one adding the desired number of blocks to the chain.
+#         """
+#         add_blocks_animations = []
+#
+#         i = 0
+#         while i < number_of_blocks_to_add:
+#             add_blocks_animations.extend(
+#                 self.add_block()
+#             )
+#             i += 1
+#
+#         return Succession(add_blocks_animations)
+#
+#     def add_first_fork_block(self, fork_depth):
+#         """
+#         :param fork_depth: desired depth to begin fork from tip.
+#
+#         Creates a new block, a pointer, and returns an animation that adds a single fork block to the chain.
+#         """
+#         block = BTCBlock(self.all_blocks[-fork_depth - 1])
+#         self.all_blocks.append(block)
+#         block.is_fork = True
+#         pointer = Pointer(block, block.parent)
+#
+#         block.set_y(-2)
+#
+#         return [AnimationGroup(
+#                 [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
+#                 FadeIn(block),
+#                 FadeIn(pointer)],
+#                 Wait(0.5)
+#             )]
+#
+#     def add_block_to_chain(self):
+#         """
+#         Creates a new block, a pointer, and returns an animation that adds a single block to the longest chain.
+#         """
+#         tips = self.get_longest_chain_tips()
+#         original_chain_tip = tips[0] # pick one, if multiple tips have same weight,
+#
+#         block = BTCBlock(original_chain_tip)
+#         self.all_blocks.append(block)
+#         pointer = Pointer(block, block.parent)
+#
+#         return [AnimationGroup(
+#                 [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
+#                 FadeIn(block),
+#                 FadeIn(pointer)],
+#                 Wait(0.5)
+#             )]
+#
+#     def add_block_to_fork(self):
+#         """"""
+#         # determine the most recent fork chain
+#         fork_chain_tip = self.find_most_recent_forked_block()
+#
+#         block = BTCBlock(fork_chain_tip)
+#         self.all_blocks.append(block)
+#         pointer = Pointer(block, block.parent)
+#
+#         return [AnimationGroup(
+#                 [self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0]),
+#                 FadeIn(block),
+#                 FadeIn(pointer)],
+#                 Wait(0.5)
+#             )]
+#
+#     def find_most_recent_forked_block(self):
+#         tips = self.get_tips()
+#
+#         for each in reversed(tips):
+#             if each.is_from_fork():
+#                 return each
+#             else:
+#                 ...
+#
+#         return None
+#
+#     def move_camera_to(self, name_of_block:int):
+#         """
+#         :param name_of_block: int of block rounds from genesis
+#
+#         BTC blocks are named by weight,
+#         except Genesis, named 'Gen',
+#         move_to will adjust cameras center position to the desired round from genesis.
+#
+#         """
+#         block = None
+#
+#         for each in self.all_blocks:
+#             if each.name == name_of_block:
+#                 block = each
+#                 break
+#
+#         return AnimationGroup(
+# #            self.scene.camera.frame.animate.move_to(block)
+#             self.scene.camera.frame.animate.move_to([block.get_x(), 0, 0])
+#
+#         )
+#
+#     def get_tips(self):
+#         """
+#         Returns a list of all tips.
+#         """
+#         tips = []
+#
+#         for each in self.all_blocks:
+#             if each.is_tip():
+#                 tips.append(each)
+#
+#         return tips
+#
+#     def get_heaviest_two_tips(self):
+#         """
+#         Return a sorted list of the heaviest two tips.
+#         Heaviest tip [0]
+#         Lighter tip [1]
+#         Unless tip weight is the same
+#         """
+#         tips = self.get_tips()
+#         tip_1 = tips[0]
+#         tip_2 = tips[1]
+#
+#         if tip_1.get_weight() > tip_2.get_weight():
+#             sorted_tips = [tip_1, tip_2]
+#         else:
+#             sorted_tips = [tip_2, tip_1]
+#
+#         return sorted_tips
+#
+#     def get_longest_chain_tips(self):
+#         """
+#         Returns a list of blocks with the most blocks in its past.
+#         If a single tip is the heaviest, list will only have one block,
+#         If multiple tips exist with the same weight, list will have multiple blocks.
+#         """
+#         tips = self.get_tips()
+#
+#         weight_of_each_tip = [each.weight for each in tips]
+#         most_blocks_in_past = max(weight_of_each_tip)
+#
+#         return [each for each in tips if each.weight == most_blocks_in_past]
+#
+#     def get_past_of_tips(self):
+#         """
+#         Returns a list of blocks in the past of the tips provided,
+#         back to and excluding the most recent common ancestor.
+#         """
+#         tips_to_find_blocks = self.get_heaviest_two_tips()
+#
+#         if len(tips_to_find_blocks) == 1:
+#             print("incorrect usage of get_past_of_tips")
+#             return
+#
+#         lists_of_past_blocks = []
+#
+#         for each in tips_to_find_blocks:
+#             lists_of_past_blocks.append(each.get_self_inclusive_past())
+#
+#         set_of_tip_0 = set(lists_of_past_blocks[0])
+#         set_of_tip_1 = set(lists_of_past_blocks[1])
+#
+#         set_of_blocks_unique_to_0 = set_of_tip_0 - set_of_tip_1
+#         set_of_blocks_unique_to_1 = set_of_tip_1 - set_of_tip_0
+#
+#         list_of_blocks_unique_to_0 = list(set_of_blocks_unique_to_0)
+#         list_of_blocks_unique_to_1 = list(set_of_blocks_unique_to_1)
+#
+#         lists_of_past_blocks = [list_of_blocks_unique_to_0, list_of_blocks_unique_to_1]
+#
+#         return lists_of_past_blocks
+#
+#     def are_heaviest_two_tips_equal_weight(self):
+#         tips = self.get_heaviest_two_tips()
+#
+#         if tips[0].get_weight() == tips[1].get_weight():
+#             return True
+#         else:
+#             return False
+#
+#     def animate_these_blocks_blue(self, list_of_blocks:list):
+#         animate_turn_blue = []
+#
+#         for each in list_of_blocks:
+#             animate_turn_blue.extend([each.fade_blue()])
+#
+#         return AnimationGroup(
+#             animate_turn_blue
+#         )
+#
+#     def animate_these_blocks_red(self, list_of_blocks:list):
+#         animate_turn_red = []
+#
+#         for each in list_of_blocks:
+#             animate_turn_red.extend([each.fade_red()])
+#
+#         return AnimationGroup(
+#             animate_turn_red
+#         )
+#
+#
+#     def adjust_block_color_by_longest_chain(self):
+#         """
+#         Returns animations to change block color depending on if they are part of the longest chain.
+#         """
+#         lists_of_past_blocks_of_tips = self.get_past_of_tips()
+#         block_color_animations = []
+#
+#         if self.are_heaviest_two_tips_equal_weight():
+#             block_color_animations.append(self.animate_these_blocks_red(lists_of_past_blocks_of_tips[0]))
+#             block_color_animations.append(self.animate_these_blocks_red(lists_of_past_blocks_of_tips[1]))
+#             return AnimationGroup(
+#                 block_color_animations
+#             )
+#         else:
+#             pass
+#
+#
+#
+# #        for each in lists_of_past_blocks_of_tips:
+# #            each.sort(key=lambda x: x.weight)
+#
+#         return None
+#
+#
+#
+#
+#     ####################
+#     # Get past/future/anticone and blink
+#     ####################
+#
+#     def blink_these_blocks(self, blocks_to_blink:list):
+#         """
+#         Returns an animation that blinks all blocks in the list provided.
+#         """
+#         blink_these_animations = []
+#         current_list_to_blink = blocks_to_blink
+#
+#         for each in current_list_to_blink:
+#             blink_these_animations.append(each.blink())
+#
+#         return AnimationGroup(*blink_these_animations)
+#
+#     def blink_past_of_random_block(self):
+#         """
+#         Returns an animation,
+#         picks a block at random and blinks the reachable past,
+#         while highlighting the block.
+#         """
+#         random_block = choice(self.all_blocks)
+#         blink_past_animations = []
+#         current_list_to_blink = random_block.get_past()
+#         blink_past_animations.append(random_block.highlight_self())
+#
+#         for each in current_list_to_blink:
+#             blink_past_animations.append(each.blink())
+#
+#         return AnimationGroup(*blink_past_animations)
+#
+#     def blink_future_of_random_block(self):
+#         """
+#         Returns an animation,
+#         picks a block at random and blinks the reachable future,
+#         while highlighting the block.
+#         """
+#         random_block = choice(self.all_blocks)
+#         blink_future_animations = []
+#         current_list_to_blink = random_block.get_future()
+#         blink_future_animations.append(random_block.highlight_self())
+#
+#         for each in current_list_to_blink:
+#             blink_future_animations.append(each.blink())
+#
+#         return AnimationGroup(*blink_future_animations)
+#
+#     def blink_anticone_of_random_block(self):
+#         """
+#         Returns an animation,
+#         picks a block at random and blinks the anticone(unreachable blocks),
+#         while highlighting the block.
+#         """
+#         random_block = choice(self.all_blocks)
+#         blink_anticone_animations = []
+#
+#         list_of_blocks_reachable = list(set(self.all_blocks) - set(random_block.get_reachable()))
+#         anticone = list(set(list_of_blocks_reachable) - set(random_block))
+#
+#         blink_anticone_animations.append(random_block.highlight_self())
+#
+#         for each in anticone:
+#             blink_anticone_animations.append(each.blink())
+#
+#         return AnimationGroup(*blink_anticone_animations)
+#
+#     ####################
+#     # Testing animation
+#     ####################
+#
+#     # Gradually moves when called in scene, moving slowly enough allows updaters to keep up
+#     def smooth_genesis(self):
+#         animations = []
+#
+#         animations.append(
+#             self.all_blocks[0].animate.shift(UP*1)
+#         )
+#
+#         return AnimationGroup(animations)
+#
+#     ####################
+#     # Positioning Blocks in Bitcoin
+#     ####################
+#
+#     def adjust_chain_position(self):
+#         adjust_chain_animations = []
+#
+#         for each_list in self.find_forks():
+#             heaviest_block = self.find_heaviest_block_looking_forward(each_list)
+#             position_of_heaviest_block = heaviest_block.get_position()
+#             delta_y_of_heaviest_block = abs(position_of_heaviest_block)
+#
+#             if position_of_heaviest_block[1] == 0:
+#                 ...  # do nothing
+#             elif position_of_heaviest_block[1] < 0:
+#                 move_up_by = delta_y_of_heaviest_block
+#                 for each in each_list:
+#                     adjust_chain_animations.append(
+#                         each.animate.shift(UP*move_up_by)
+#                     )
+#             else:
+#                 move_down_by = delta_y_of_heaviest_block
+#                 for each in each_list:
+#                     adjust_chain_animations.append(
+#                         each.animate.shift(UP*move_down_by)
+#                     )
+#
+#         return AnimationGroup(adjust_chain_animations)
+#
+#     def find_heaviest_block_looking_forward(self, blocks:list):
+#
+#         heaviest_block = blocks[0]
+#
+#         for each_block in blocks:
+#             if len(each_block.get_future()) > len(heaviest_block.get_future()):
+#                 heaviest_block = each_block
+#
+#         return heaviest_block
+#
+#     def find_forks(self):
+#
+#         forks = [] # list[[block, block], [block, block], [block, block, block], ...]
+#
+#         for each in self.all_blocks:
+#             if len(each.childen) > 1:
+#                 forks.append(each.children)
+#
+#         return forks
+#
+#     # return an animation that adjusts the consensus rounds based on how many rounds_from_genesis for list(blocks passed)
+#
+#     def adjust_consensus_round(self, blocks_added:list):
+#         adjust_rounds_affected_animations = []
+#
+#         for each in blocks_added:
+#             consensus_round = each.rounds_from_genesis
+#
+#             all_blocks_at_this_round = list(set(self.get_all_blocks_at_this_round(consensus_round)))
+#
+#             # Create animations and add to animations to adjust these blocks at this depth
+#
+#             adjust_rounds_affected_animations.append(self.adjust_consensus_round_animations(all_blocks_at_this_round))
+#
+#         return AnimationGroup(adjust_rounds_affected_animations)
+#
+#     def adjust_consensus_round_animations(self, all_blocks_at_this_round:list):
+#         animations = []
+#
+#         # find all y position
+#         list_of_y_positions:list = []
+#
+#         for each in all_blocks_at_this_round:
+#             position_of_each_block = each.get_center()
+#             list_of_y_positions.append(position_of_each_block[1])
+#
+#         # Adjust their position to space them from each other and move to position from center (y = 0)
+#         y_min = min(list_of_y_positions)
+#         y_max = max(list_of_y_positions)
+#         adjust_by = (abs(y_min) + abs(y_max)) / all_blocks_at_this_round
+#
+#         if abs(y_min) > abs(y_max):
+#             adjust_up = True
+#         else:
+#             adjust_up = False
+#
+#         if adjust_up:
+#             for each in all_blocks_at_this_round:
+#                 animations.append(each.animate.shift(UP*adjust_by))
+#         else:
+#             for each in all_blocks_at_this_round:
+#                 animations.append(each.animate.shift(DOWN*adjust_by))
+#
+#         return AnimationGroup(animations)
+#
+#     def get_all_blocks_at_this_round(self, consensus_round:int):
+#         all_blocks_at_this_round = []
+#
+#         for each in self.all_blocks:
+#             if each.rounds_from_genesis == consensus_round:
+#                 all_blocks_at_this_round.append(each)
+#
+#         all_blocks_at_this_round = list(set(all_blocks_at_this_round))
+#         return all_blocks_at_this_round
+
+class BTCBlock:
+    square: Square
+    name: str | int
+    parent: BTCBlock | None
+    weight: int
+    rounds_from_genesis: int
+    is_fork: bool
+    children: list[BTCBlock]
+    pointers: list
+    label: Text
+    def __init__(self, parent_ref:BTCBlock = None, name:str = ""):
+        """name should never be more than 3 characters, anything more than 5 will cause unexpected behavior"""
+        self.square = Square(
             color="#0000FF",
             fill_opacity=1,
             side_length=0.8,
-            background_stroke_color=WHITE,
-            background_stroke_width=10,
-            background_stroke_opacity=1.0
+            stroke_color=WHITE,
+            stroke_width=10
         )
-        self.set_blue()
-
-        # set instance variables
-        self.name = name
-        self.parent = selected_parent
-        self.weight = 1
-        self.rounds_from_genesis = 0
-
-        self.mergeset = []
-        self.children = []
-        self.pointers = []
-
-        if self.parent:
-            self.mergeset.append(self.parent)
-            self.weight = self.get_number_of_blue_blocks_in_past() + 1 # Change to mergeset weight +1 # Does not account for k yet
-            self.rounds_from_genesis = selected_parent.rounds_from_genesis + 1
-            self.shift_position_to_parent() # Initial positioning only for locating relative to parent
-
-        if self.mergeset:
-            for each in self.mergeset:
-                each.add_self_to_children(self)
-
-        # name instead displays weight of the block
-        if self.name != "Gen":
-            self.name = self.rounds_from_genesis
-
-        # TODO testing to use with selfish mining
-#        # changed label to text mobject, will attempt to create a latex mobject at a later date
-#        if self.name:
-#            self.label = Text(str(self.weight), font_size=24, color=WHITE, weight=BOLD)
-#            self.label.move_to(self.get_center())
-#            self.add(self.label)
-
-
-    # Setters and getters
-
-    def get_number_of_blue_blocks_in_past(self):
-        return len(self.get_past())
-
-    def fade_in(self):
-        return AnimationGroup(
-            self.animate(runtime=0.5).set_opacity(1)
-        )
-
-    def add_self_to_children(self, mobject):
-        self.children.append(mobject)
-
-    def is_tip(self):
-        return bool(self.children)
-
-    def set_label(self, to_label:str = ""):
-        if self.label:
-            self.remove(self.label)
-        self.label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
-        self.label.move_to(self.get_center())
-        self.add(self.label)
-
-    # TODO test this
-    def fade_to_next_label(self, to_label: str = ""):
-        animations = []
-
-        # Fade out existing label if it exists
-        if self.label:
-            animations.append(FadeOut(self.label))
-
-            # Create new label
-        new_label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
-        new_label.move_to(self.get_center())
-
-        # Fade in new label
-        animations.append(FadeIn(new_label))
-
-        # Update the label reference
-        self.label = new_label
-
-        # Return animation sequence
-        return Succession(*animations) if len(animations) > 1 else animations[0]
-
-    ####################
-    # Color Setters
-    ####################
-    # TODO test if adding run_time to setters will make them change color slowly
-    def set_blue(self):
-        self.set_color("#0000FF", family=False)
-
-    def set_red(self):
-        self.set_color("#FF0000", family=False)
-
-    def set_to_color(self, to_color):
-        self.set_color(to_color, family=False)
-
-    def fade_blue(self):
-        return self.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
-
-    def fade_red(self):
-        return self.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
-
-    # fade_to_color ONLY works with ManimColor, does not work with hex format str
-    def fade_to_color(self, to_color:ManimColor = WHITE):
-        return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
-
-    ####################
-    # Pointers Handling
-    ####################
-
-    def attach_pointer(self, pointer):
-        self.pointers.append(pointer)
-
-    ####################
-    # Position Handling (Updaters leave position at [0,0,0])
-    ####################
-
-    # immediately changes position relative to self.parent, no animation, for setting initial position
-    def shift_position_to_parent(self):
-        self.next_to(self.parent, RIGHT * 4)
-        if self.children:
-            self.children[0].shift_position_to_parent()
-
-    def shift_fork(self):
-        self.next_to(self.parent, RIGHT * 4 + DOWN * 4)
-        if self.children:
-            self.children[0].shift_position_to_parent()
-
-    ####################
-    # Blink Animations
-    ####################
-
-    def blink(self):
-        return Succession(
-            ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
-            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
-        )
-        # Using ApplyMethod directly bypasses limitations of Manim FadeToColor
-
-    def highlight_self(self):
-        return Succession(
-            ApplyMethod(self.set_color, GREEN, False, run_time=0.8),
-            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
-        )
-
-    ####################
-    # Determine past/future/anticone
-    ####################
-
-    def get_future(self):
-        future_of_this_block = []
-        future_of_this_block.extend(self.children)
-
-        for each in self.children:
-            future_of_this_block.extend(each.get_future())
-
-        duplicates_removed = list(set(future_of_this_block))
-        return duplicates_removed
-
-    def get_past(self):
-        past_of_this_block = []
-        past_of_this_block.extend(self.mergeset)
-
-        for each in self.mergeset:
-            past_of_this_block.extend(each.get_past())
-
-        duplicates_removed = list(set(past_of_this_block))
-        return duplicates_removed
-
-    def get_reachable(self):
-        reachable = []
-
-        reachable.extend(self.get_past())
-        reachable.extend(self.get_future())
-
-        return reachable
-
-class BTCBlock(Square):
-    def __init__(self,
-                 selected_parent:'BTCBlock' = None,
-                 name:str = ""
-                 ):
-        super().__init__(
-            color="#0000FF",
-            fill_opacity=1,
-            side_length=0.8,
-            background_stroke_color=WHITE,
-            background_stroke_width=10,
-            background_stroke_opacity=1.0
-        )
-        self.set_blue()
 
         self.name = name
-        self.parent = selected_parent
-        self.mergeset = [] # Mergeset will only have one(parent) or none in BTC
-        self.weight = 1
+        self.parent = None
         self.rounds_from_genesis = 0
-        self.is_fork = False
 
         self.children = []
-        self.pointers = []
+        self.pointers = []  # TODO instead of tracking pointers manually, see if possible to automatically return an update_from_func anim when block.square OR block.parent.square is moved
 
-        if selected_parent is not None:
-            self.mergeset.append(self.parent)
-            self.weight = self.get_number_of_blocks_in_past() + 1
-            self.rounds_from_genesis = selected_parent.rounds_from_genesis + 1
-            self.shift_position_to_parent() # Only used to initially position blocks relative to parent along y axis
+        if parent_ref is not None:
+            self.parent = parent_ref
+            self.rounds_from_genesis = self.parent.rounds_from_genesis + 1
+            self._shift_position_to_parent()
             self.parent.add_self_to_children(self)
 
-        # name instead displays weight of the block
-        if self.name != "Gen":
-            self.name = self.weight
-
-        # changed label to text mobject, will attempt to create a latex mobject at a later date
         if self.name:
             self.label = Text(str(self.name), font_size=24, color=WHITE, weight=BOLD)
-            self.label.move_to(self.get_center())
-            self.add(self.label)
+        else:
+            # Create invisible black label as placeholder
+            self.label = Text(".....", font_size=24, color=BLACK, weight=BOLD)
+
+        self.label.move_to(self.square.get_center())
+        self.square.add(self.label)
 
 
     def add_self_to_children(self, mobject):
@@ -3245,105 +2059,53 @@ class BTCBlock(Square):
     def is_tip(self):
         return not bool(self.children)
 
-
     ####################
-    # Color Setters
+    # Color
+    # Each returns and animation
     ####################
-    # TODO test if adding run_time to setters will make them change color slowly
-    def set_blue(self):
-        self.set_color("#0000FF", family=False)
-
-    def set_red(self):
-        self.set_color("#FF0000", family=False)
-
-    def set_to_color(self, to_color):
-        self.set_color(to_color, family=False)
 
     def fade_blue(self):
-        return self.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
+        return self.square.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
 
     def fade_red(self):
-        return self.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
+        return self.square.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
 
-    # fade_to_color ONLY works with ManimColor, does not work with hex format str
+    # this is supposed to work with hex string, test
     def fade_to_color(self, to_color:ManimColor = WHITE):
-        return self.animate.fade_to(color=to_color, alpha=1.0, family=False)
+        return self.square.animate.fade_to(color=to_color, alpha=1.0, family=False)
 
     ####################
-    # Label Handling
+    # Label
+    # Returns an animation that changes the text only
     ####################
 
-    def set_label(self, to_label:str = ""):
-        if self.label:
-            self.remove(self.label)
-        self.label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
-        self.label.move_to(self.get_center())
-        self.add(self.label)
-
-    # TODO test this
     def fade_to_next_label(self, to_label: str = ""):
-        animations = []
-
-        # Fade out existing label if it exists
-        if self.label:
-            animations.append(FadeOut(self.label))
-
-            # Create new label
+        """blocks always have a label, as a submobject of the square"""
         new_label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
-        new_label.move_to(self.get_center())
+        new_label.move_to(self.square.get_center())
 
-        # Fade in new label
-        animations.append(FadeIn(new_label))
-
-        # Update the label reference
-        self.label = new_label
-
-        # Return animation sequence
-        return Succession(*animations) if len(animations) > 1 else animations[0]
+        return Transform(self.label, new_label)
 
     ####################
-    # Pointers Handling
+    # Pointers
     ####################
 
     def attach_pointer(self, pointer):
         self.pointers.append(pointer)
 
     ####################
-    # Position Handling (Updaters leave position at [0,0,0])
+    # Position
     ####################
 
-    # immediately changes position relative to self.parent, no animation, for setting initial position
-    def shift_position_to_parent(self):
-        self.next_to(self.parent, RIGHT * 4)
-        if self.children:
-            self.children[0].shift_position_to_parent()
+    def _shift_position_to_parent(self):
+        self.square.next_to(self.parent.square, RIGHT * 4)
 
     ####################
     # Animations
     ####################
 
-    def fade_in(self):
-        return AnimationGroup(
-            self.animate(runtime=0.5).set_opacity(1)
-        )
-
-    ####################
-    # Blink Animations
-    ####################
-
-    # Using ApplyMethod directly bypasses limitations of Manim FadeToColor
-
-    def blink(self):
-        return Succession(
-            ApplyMethod(self.set_color, YELLOW, False, run_time=0.8),
-            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
-        )
-
-    def highlight_self(self):
-        return Succession(
-            ApplyMethod(self.set_color, GREEN, False, run_time=0.8),
-            ApplyMethod(self.set_color, self.color, False, run_time=0.8),
-        )
+    def draw(self):
+        return Create(self.square)
 
     ####################
     # Determine past/future/anticone
@@ -3369,133 +2131,102 @@ class BTCBlock(Square):
         """
         Returns an ordered list of the past blocks, sorted by weight
         """
-        past_of_this_block = []
-        past_of_this_block.extend(self.mergeset)
+        if self.parent is None:
+            return []
 
-        for each in self.mergeset:
-            past_of_this_block.extend(each.get_past())
+        past_of_this_block = [self.parent]
 
-        duplicates_removed = list(set(past_of_this_block))
+        past_of_this_block.extend(self.parent.get_past())
 
-        ordered_past = self.order_list_by_weight(duplicates_removed)
-
-        return ordered_past
-
-    def get_self_inclusive_past(self):
-        """
-        Returns an ordered list of the past, self inclusive, blocks, sorted by weight
-        """
-        past_of_this_block = [self]
-        past_of_this_block.extend(self.mergeset)
-
-        for each in self.mergeset:
-            past_of_this_block.extend(each.get_past())
-
-        duplicates_removed = list(set(past_of_this_block))
-
-        ordered_past = self.order_list_by_weight(duplicates_removed)
+        ordered_past = self.order_list_by_weight(past_of_this_block, descending=True)
 
         return ordered_past
 
-
-    def order_list_by_weight(self, list_to_order:list):
-        list_to_order.sort(key=lambda x: x.weight)
+    @staticmethod
+    def order_list_by_weight(list_to_order: list, descending=False):
+        """Returns an ascending list by default, set descending=True if descending list is desired"""
+        list_to_order.sort(key=lambda x: x.weight, reverse=descending)
 
         return list_to_order
 
     def get_reachable(self):
         """
-        Returns an ordered list of the reachable blocks, sorted by weight
+        Returns an ordered list of the reachable blocks, sorted by ascending weight
         """
         reachable = []
 
         reachable.extend(self.get_past())
         reachable.extend(self.get_future())
 
+        reachable.sort(key=lambda x: x.weight)
+
         return reachable
-
-    def get_number_of_blocks_in_future(self):
-        return len(self.get_future())
-
-    def get_number_of_blocks_in_past(self):
-        return len(self.get_past())
-
-    def get_number_of_blocks_in_reachable(self):
-        return len(self.get_reachable())
-
-    def is_from_fork(self):
-        if self.is_fork:
-            return True
-
-        list_of_past_blocks = self.get_past()
-
-        for each in reversed(list_of_past_blocks):
-            print(each.is_fork)
-            if each.is_fork:
-                return True
-            else:
-                pass
-
-        return False
-
-class Pointer(Line):
-    def __init__(self, this_block, parent_block):
-        # Initialize with proper start/end points
+# verified BTCBlock and ParentLine does not chew through ram, builds anims very fast, will apply the same fix to DAGs
+class ParentLine(Line):
+    """Uses no updater, update from func during movement anims on either parent or child block.square"""
+    def __init__(self, this_block, parent_block, line_color=WHITE):
+        """REQUIREMENT pass the blocks square NOT the block"""
         super().__init__(
             start=this_block.get_left(),
             end=parent_block.get_right(),
             buff=0.1,
-            color=BLUE,
-            stroke_width=5,  # Set stroke width directly
+            color=line_color,
+            stroke_width=5,
             cap_style = CapStyleType.ROUND
         )
 
         self.this_block = this_block
         self.parent_block = parent_block
-
-        # Store fixed stroke width (no tip needed for Line)
         self._fixed_stroke_width = 5
 
-        # Add updater for continuous tracking
-        self.add_updater(self._update_position_and_size)
-
     def _update_position_and_size(self, mobject):
-        # Get the raw endpoints from the blocks
         new_start = self.this_block.get_left()
         new_end = self.parent_block.get_right()
-
-        # Maintain fixed stroke width
         self.set_stroke(width=self._fixed_stroke_width)
-
-        # Use set_points_by_ends which respects buff
         self.set_points_by_ends(new_start, new_end, buff=self.buff)
 
-# TODO check if useful using MovingCameraFixedLayerScene, if not destroy this
-class Narration(Text):
-    def __init__(self):
-        super().__init__(
-            text="empty narration Text",
-            color=WHITE
+    def create_update_animation(self):
+        return UpdateFromFunc(
+            self,
+            update_function=self._update_position_and_size,
+            suspend_mobject_updating=False
         )
 
-    def fade_to_next_narration(self, to_text: str = ""):
-        # Store current properties
-        current_pos = self.get_center()
-        current_color = self.color
+#TODO network simulation for visualizing block propagation
+class Node(Square):
+    def __init__(self, peers:list):
+        super().__init__()
+        # Create a Node with a list of peers
 
-        # Create new text object
-        new_text_obj = Text(to_text, color=current_color)
-        new_text_obj.move_to(current_pos)
+        self.side_length = 0.8
+        self.set_fill("#0000FF", opacity=1)
 
-        # Update this object to become the new text
-        self.become(new_text_obj)
+        self.peers_list = peers
 
-        return Succession(
-            self.animate.set_opacity(0),
-            self.animate.set_opacity(1)
-        )
+# class Narration(Text):
+#     def __init__(self):
+#         super().__init__(
+#             text="empty narration Text",
+#             color=WHITE
+#         )
+#
+#     def fade_to_next_narration(self, to_text: str = ""):
+#         # Store current properties
+#         current_pos = self.get_center()
+#         current_color = self.color
+#
+#         # Create new text object
+#         new_text_obj = Text(to_text, color=current_color)
+#         new_text_obj.move_to(current_pos)
+#
+#         # Update this object to become the new text
+#         self.become(new_text_obj)
+#
+#         return Succession(
+#             self.animate.set_opacity(0),
+#             self.animate.set_opacity(1)
+#         )
 
-# TODO test each of these
 class NarrationText(Text):
     def __init__(self):
         super().__init__(
@@ -3522,7 +2253,7 @@ class NarrationText(Text):
             self.animate(runtime = 1).set_opacity(0),
             self.animate(runtime = 1).set_opacity(1)
         )
-
+# TODO ALL Narration to change to HUD layer, use primer mobject(bg colored text, small font, preloaded characters), use Transform to retain original primer mobject.
 class NarrationTex(Tex):
     def __init__(self):
         super().__init__(
@@ -3587,5 +2318,3 @@ class NarrationMathTex(MathTex):
 #  COMPLETE     ghostdag, function that computes k cluster and blueset for each block, # pretty sure this is functional and correct
 #               refactor layerdag/blockdag/blocks/ghostdag for clear separation of functionality
 #  NEXT         output a transcript that has each step eg. added to blue set, appended children,
-
-# TODO please list priorities here
