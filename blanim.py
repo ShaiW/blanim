@@ -2208,4 +2208,4 @@ class Node(Square):
 #  ...
 #  CURRENT      Clean up and restart blockDAG progress, solved problems preventing progress already
 #                   should build for HUD2DScene, Narration and Camera w/chaining complete.
-#  NEXT         output a transcript that has each step eg. added to blue set, appended children,
+#  Ability added to HUD2DScene         output a transcript that has each step eg. added to blue set, appended children,

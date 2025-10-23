@@ -4581,28 +4581,31 @@ class SelfishMiningManualExample(HUD2DScene):
         sm = SelfishMiningSquares(self, 0.30, 0.1, enable_narration=True)
 
         # Add blocks with optional captions
-        sm.advance_selfish_chain("A Block")
-        sm.advance_selfish_chain()
-        sm.update_caption("Narration without Block")  # Update caption independently
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
-        sm.advance_honest_chain("Another Block")  # ← This triggers race resolution (selfish wins)
+#        sm.advance_selfish_chain("A Block")
+        sm.advance_selfish_chain("Selfish miners create a secret chain")
+        sm.advance_selfish_chain("this is a short example video")
+#        sm.update_caption("Narration without Block")  # Update caption independently
+        sm.advance_selfish_chain("that explains Eyal-Sirer")
+        sm.advance_honest_chain("Majority is not enough")
+        sm.advance_selfish_chain("showing states and transitions")
+        sm.advance_honest_chain("while mining a secret chain")
+#        sm.advance_honest_chain("Another Block")  # ← This triggers race resolution (selfish wins)
+        sm.advance_honest_chain("it shows the strategy")  # ← This triggers race resolution (selfish wins)
 
         # New race starts from winning block as genesis
-        sm.advance_honest_chain()  # ← First block of new race
+        sm.advance_honest_chain("presented in the paper")  # ← First block of new race
 
         # Automatic tiebreak resolution (uses probability)
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        sm.advance_selfish_chain("and uses probability")
+        sm.advance_honest_chain("for tie resolution")
 
         # Continue building - automatic resolution when needed
-        sm.advance_selfish_chain()
-        sm.advance_selfish_chain()
-        sm.advance_honest_chain()
+        sm.advance_selfish_chain("selfish miners always mine in secret")
+        sm.advance_selfish_chain("creating an unknown competing chain")
+        sm.advance_honest_chain("and displacing honest blocks")
 
         # Zoom out to show multiple races
+        sm.update_caption("earning disproportionate rewards")
         sm.zoom_out_to_show_races()
         self.wait(1)
 

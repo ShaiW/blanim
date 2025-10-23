@@ -304,6 +304,7 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
 
 #####START everything related to HUD2DScene#####
 #TODO properly document all this AND create examples in common_examples.py for everything added
+#TODO test everything in examples AND then correct the documentation here
 class HUD2DScene(ThreeDScene):
     """A 2D scene with heads-up display (HUD) support using ThreeDScene's fixed-in-frame system.
 
@@ -434,7 +435,7 @@ class HUD2DScene(ThreeDScene):
         in :meth:`setup` with default settings. Provides access to primer mobjects
         and text generation methods.
     """
-    narration_text_type: Literal["Text", "MathTex", "Tex"] = "Text"
+    narration_text_type: Literal["Tex", "MathTex", "Text"] = "Tex"
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the HUD2DScene.
@@ -518,16 +519,40 @@ class HUD2DScene(ThreeDScene):
                 processed_args.append(arg)
         return super().play(*processed_args, **kwargs)
 
-    def narrate(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
+    def narrate(self,
+                text: str,  # Removed Annotated
+                run_time: float = 0.5,
+                **kwargs: Any
+                ) -> None:
         """Update upper narration text with animation.
 
         Uses the primer pattern to transform the upper narration text. The primer
         mobject is mutated to display the new text while remaining fixed in frame.
 
+        .. warning::
+            **Raw Strings Required for Tex/MathTex**
+
+            When using ``narration_text_type = "Tex"`` or ``"MathTex"``, you MUST use
+            raw strings (``r"..."``) to prevent Python from interpreting backslashes.
+
+            **Special Characters Requiring Escape in LaTeX:**
+
+            - ``\\`` → ``\\\\`` (backslash)
+            - ``$`` → ``\\$`` (dollar sign)
+            - ``%`` → ``\\%`` (percent)
+            - ``&`` → ``\\&`` (ampersand)
+            - ``#`` → ``\\#`` (hash)
+            - ``_`` → ``\\_`` (underscore)
+            - ``^`` → ``\\^`` (caret)
+            - ``{`` → ``\\{`` (left brace)
+            - ``}`` → ``\\}`` (right brace)
+            - ``~`` → ``\\~`` (tilde)
+
         Parameters
         ----------
         text : str
-            Narration text to display at the top of the screen
+            Narration text to display at the top of the screen.
+            See warning above for LaTeX requirements.
         run_time : float
             Duration of the transform animation in seconds
         **kwargs
@@ -544,11 +569,11 @@ class HUD2DScene(ThreeDScene):
                     self.add(square)
 
                     # Basic usage
-                    self.narrate("Step 1: Create square")
+                    self.narrate(r"Step 1: Create square")
                     self.wait(1)
 
                     # With custom animation timing
-                    self.narrate("Step 2: Transform", run_time=1.0)
+                    self.narrate(r"Step 2: Transform", run_time=1.0)
                     self.play(square.animate.scale(2))
 
         See Also
@@ -564,6 +589,8 @@ class HUD2DScene(ThreeDScene):
         - Text remains fixed in frame during camera movements
         - Character count (excluding spaces) must not exceed ``max_narration_chars``
         - The primer mobject is mutated, not replaced
+        - **Default text type**: Tex (text mode with ``$...$`` for math expressions)
+        - **Always use raw strings** (``r"..."``) when using Tex or MathTex
         """
         narration = self.narration.get_narration(text)
         self.play(
@@ -572,16 +599,40 @@ class HUD2DScene(ThreeDScene):
             **kwargs
         )
 
-    def caption(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
+    def caption(self,
+                text: str,  # Removed Annotated
+                run_time: float = 0.5,
+                **kwargs: Any
+                ) -> None:
         """Update lower caption text with animation.
 
         Uses the primer pattern to transform the lower caption text. The primer
         mobject is mutated to display the new text while remaining fixed in frame.
 
+        .. warning::
+            **Raw Strings Required for Tex/MathTex**
+
+            When using ``narration_text_type = "Tex"`` or ``"MathTex"``, you MUST use
+            raw strings (``r"..."``) to prevent Python from interpreting backslashes.
+
+            **Special Characters Requiring Escape in LaTeX:**
+
+            - ``\\`` → ``\\\\`` (backslash)
+            - ``$`` → ``\\$`` (dollar sign)
+            - ``%`` → ``\\%`` (percent)
+            - ``&`` → ``\\&`` (ampersand)
+            - ``#`` → ``\\#`` (hash)
+            - ``_`` → ``\\_`` (underscore)
+            - ``^`` → ``\\^`` (caret)
+            - ``{`` → ``\\{`` (left brace)
+            - ``}`` → ``\\}`` (right brace)
+            - ``~`` → ``\\~`` (tilde)
+
         Parameters
         ----------
         text : str
-            Caption text to display at the bottom of the screen
+            Caption text to display at the bottom of the screen.
+            See warning above for LaTeX requirements.
         run_time : float
             Duration of the transform animation in seconds
         **kwargs
@@ -597,13 +648,17 @@ class HUD2DScene(ThreeDScene):
                     circle = Circle()
                     self.add(circle)
 
-                    # Basic usage
-                    self.caption("Detailed explanation here")
+                    # Basic usage with Tex (default)
+                    self.caption(r"Detailed explanation here")
+                    self.wait(1)
+
+                    # With math notation
+                    self.caption(r"The radius is $r = 5$")
                     self.wait(1)
 
                     # With custom rate function
                     from manim import smooth
-                    self.caption("Smooth transition", run_time=1.0, rate_func=smooth)
+                    self.caption(r"Smooth transition", run_time=1.0, rate_func=smooth)
 
         See Also
         --------
@@ -618,6 +673,8 @@ class HUD2DScene(ThreeDScene):
         - Text remains fixed in frame during camera movements
         - Character count (excluding spaces) must not exceed ``max_caption_chars``
         - The primer mobject is mutated, not replaced
+        - **Default text type**: Tex (text mode with ``$...$`` for math expressions)
+        - **Always use raw strings** (``r"..."``) when using Tex or MathTex
         """
         caption = self.narration.get_caption(text)
         self.play(
@@ -863,11 +920,11 @@ class UniversalNarrationManager:
     def __init__(
             self,
             scene: ThreeDScene,
-            text_type: Literal["Text", "MathTex", "Tex"] = "Text",
+            text_type: Literal["Tex", "MathTex", "Text"] = "Tex",
     ) -> None:
         self.scene = scene
-        self.narration_font_size: int = 28
-        self.caption_font_size: int = 24
+        self.narration_font_size: int = 32
+        self.caption_font_size: int = 26
         self.narration_color = WHITE
         self.caption_color = WHITE
         self.narration_position = UP
@@ -884,10 +941,10 @@ class UniversalNarrationManager:
         else:
             # Default to Text for invalid text_type
             logger.warning(
-                f"Invalid text_type '{text_type}'. Defaulting to 'Text'. "
-                f"Valid options are: 'Text', 'MathTex', 'Tex'"
+                f"Invalid text_type '{text_type}'. Defaulting to 'Tex'. "
+                f"Valid options are: 'Tex', 'MathTex', 'Text'"
             )
-            self.text_class = Text
+            self.text_class = Tex
 
         # Create invisible primer mobjects for narration and caption
         # Use "0" * max_chars to ensure consistent width for primer
@@ -911,6 +968,10 @@ class UniversalNarrationManager:
         self.current_caption_text = caption_primer
 
     def get_narration(self, text: str) -> Mobject:
+        """Creates a narration Mobject with validation."""
+        if self.text_class in (MathTex, Tex):
+            self._validate_latex_string(text, "narration")
+
         narration = self.text_class(
             text,
             font_size=self.narration_font_size,
@@ -920,6 +981,10 @@ class UniversalNarrationManager:
         return narration
 
     def get_caption(self, text: str) -> Mobject:
+        """Creates a caption Mobject with validation."""
+        if self.text_class in (MathTex, Tex):
+            self._validate_latex_string(text, "caption")
+
         caption = self.text_class(
             text,
             font_size=self.caption_font_size,
@@ -927,6 +992,21 @@ class UniversalNarrationManager:
         )
         caption.move_to(self.current_caption_text.get_center())
         return caption
+
+    @staticmethod
+    def _validate_latex_string(text: str, type_name: str) -> None:
+        """Internal method to validate LaTeX strings for common issues."""
+        # Check for unescaped backslashes that might be Python escape sequences
+        # This is a heuristic, not foolproof, but catches common mistakes.
+        if '\\' in text:
+            # Common Python escape sequences that would break LaTeX commands
+            python_escapes = ['\\n', '\\t', '\\r', '\\b', '\\f', '\\v', '\\a']
+            if any(seq in text for seq in python_escapes):
+                logger.warning(
+                    f"[{type_name}] String '{text[:50]}...' contains Python escape sequences. "
+                    f"Did you forget to use a raw string (r'...')? "
+                    f"This can lead to LaTeX compilation errors or incorrect rendering."
+                )
 
     def get_empty_narration(self) -> Mobject:
         empty = self.text_class(".....", color=BLACK, font_size=self.narration_font_size)
