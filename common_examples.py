@@ -2,6 +2,79 @@
 
 from common import *
 
+"""    
+Camera Animation Patterns - Common Mistakes    
+    
+This file demonstrates correct and incorrect ways to animate the camera in HUD2DScene.    
+The behavior matches Manim's MovingCameraScene exactly.    
+    
+GOLDEN RULE: Use method chaining on a SINGLE .animate call    
+    ✓ CORRECT: self.play(camera.frame.animate.move_to(pos).shift(vec).scale(factor))    
+    ✗ WRONG:   self.play(camera.frame.animate.move_to(pos), camera.frame.animate.shift(vec))    
+    
+See TestSeparateVsChained for detailed examples and explanations.    
+"""
+
+##########Transcript Usage##########
+
+class TranscriptExample(HUD2DScene):
+    # This is how to add a transcript (.txt) to the output folder next to your video (mp4) output of the same name
+    def construct(self):
+        # Create objects
+        square = Square(color=BLUE)
+        circle = Circle(color=RED, radius=1.5)
+
+        # Introduction
+        self.narrate("Geometric Transformations")
+        self.transcript.add_transcript("Scene opens with title 'Geometric Transformations'")
+        self.wait(1)
+
+        # Create square
+        self.caption("Creating a square")
+        self.transcript.add_transcript("A blue square appears at the origin using Create animation")
+        self.play(Create(square))
+        self.wait(0.5)
+
+        # Rotate square
+        self.caption("Rotating 90 degrees")
+        self.transcript.add_transcript("The square rotates 90 degrees clockwise over 1.5 seconds")
+        self.play(Rotate(square, angle=PI / 2), run_time=1.5)
+        self.wait(0.5)
+
+        # Scale square
+        self.caption("Scaling up")
+        self.transcript.add_transcript("The square scales up by a factor of 1.5")
+        self.play(square.animate.scale(1.5))
+        self.wait(0.5)
+
+        # Transform to circle
+        self.caption("Morphing shape")
+        self.transcript.add_transcript("The blue square transforms into a red circle using Transform animation")
+        self.play(Transform(square, circle))
+        self.wait(0.5)
+
+        # Move circle
+        self.caption("Moving right")
+        self.transcript.add_transcript("The circle shifts 3 units to the right")
+        self.play(square.animate.shift(RIGHT * 3))
+        self.wait(0.5)
+
+        # Fade out
+        self.clear_caption()
+        self.transcript.add_transcript("The circle fades out and the scene ends")
+        self.play(FadeOut(square))
+        self.clear_narrate()
+        self.wait(1)
+
+class NoTranscriptExample(HUD2DScene):
+    """Example showing that scenes without transcript calls don't create files."""
+    def construct(self):
+        # Visual elements only, no transcript documentation
+        self.narrate("No Transcript")
+        square = Square()
+        self.play(Create(square))
+        # No .txt file will be created since add_transcript() was never called
+
 ##########
 # PART 1: INDIVIDUAL OPERATIONS (NO CHAINING)
 ##########
@@ -402,15 +475,36 @@ class TestDirectOperations(HUD2DScene):
         self.camera.frame.move_to(ORIGIN).shift(UP * 1).scale(1.5)
         self.wait(1.0)
 
+
 ##########
 # PART 6: COMPARISON WITH SEPARATE ANIMATIONS
-# NOTE the output animation differs(exactly as in MovingCameraScene), camera movements are intended to be chained.
+# This example demonstrates CORRECT vs INCORRECT camera animation patterns.
+# Tests 2-4 show common mistakes that produce unexpected results.
 ##########
 
 class TestSeparateVsChained(HUD2DScene):
     """Compare chained operations vs separate animations in same play().
 
-    Expected: Both should produce identical visual results.
+    IMPORTANT: This example demonstrates both correct and incorrect usage patterns.
+
+    **Correct Usage (Test 1):**
+    - Chain multiple operations on a single .animate call
+    - Example: `camera.frame.animate.move_to(pos).shift(vec).scale(factor)`
+
+    **Incorrect Usage (Tests 2-4):**
+    - Multiple separate .animate calls for the same mobject in one play()
+    - Example: `play(obj.animate.move(), obj.animate.scale())`  # DON'T DO THIS
+
+    **Why It Fails:**
+    Manim's .animate system creates separate Animation objects for each .animate call.
+    When multiple animations target the same mobject in a single play() call, only
+    the LAST animation executes - all previous animations are discarded.
+
+    This matches MovingCameraScene behavior and is documented in Manim's warning:
+    "Passing multiple animations for the same Mobject in one call to Scene.play
+    is discouraged and will most likely not work properly."
+
+    See: manim/mobject/mobject.py:313-324 for the official warning.
     """
 
     def construct(self):
@@ -420,9 +514,9 @@ class TestSeparateVsChained(HUD2DScene):
 
         self.add(grid, square, circle)
 
-        # Test 1: Chained panning operations
+        # ========== TEST 1: CORRECT USAGE ==========
         self.narrate("camera.frame.animate.move_to(square).shift(RIGHT * 2)")
-        self.caption("Camera moves to square then shifts right (chained)")
+        self.caption("✓ CORRECT: Chained operations create single animation")
 
         self.play(
             self.camera.frame.animate.move_to(square).shift(RIGHT * 2),
@@ -437,10 +531,99 @@ class TestSeparateVsChained(HUD2DScene):
         )
         self.wait(1.0)
 
-        # Test 2: Same operations as separate animations
+        # ========== TEST 2: INCORRECT USAGE - Multiple Position Animations ==========
         self.narrate("camera.frame.animate.move_to(square), camera.frame.animate.shift(RIGHT * 2)")
-        self.caption("Camera moves to square AND shifts right simultaneously (separate)")
+        self.caption("✗ WRONG: Only shift executes, move_to is ignored (last animation wins)")
 
+        # ANTI-PATTERN: Two separate .animate calls for same mobject
+        # Expected: Camera moves to square THEN shifts right
+        # Actual: Only the shift(RIGHT * 2) executes, move_to(square) is discarded
+        self.play(
+            self.camera.frame.animate.move_to(square),  # ← This is IGNORED
+            self.camera.frame.animate.shift(RIGHT * 2),  # ← Only this executes
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        # Reset camera
+        self.play(
+            self.camera.frame.animate.move_to(ORIGIN),
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        # ========== TEST 3: INCORRECT USAGE - Position + Scale Animations ==========
+        self.narrate("camera.frame.animate.move_to(circle).shift(UP), camera.frame.animate.scale(0.5)")
+        self.caption("✗ WRONG: Only scale executes, chained position ops are ignored")
+
+        # ANTI-PATTERN: Chained position ops + separate scale animation
+        # Expected: Camera moves to circle+up AND zooms in
+        # Actual: Only scale(0.5) executes, move_to().shift() is discarded
+        # Note: Even though move_to/shift are chained, they're still part of the
+        # FIRST .animate call, which gets overridden by the SECOND .animate call
+        self.play(
+            self.camera.frame.animate.move_to(circle).shift(UP * 1),  # ← IGNORED
+            self.camera.frame.animate.scale(0.5),  # ← Only this executes
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        # Reset camera
+        # NOTE: This reset also demonstrates the problem - move_to(ORIGIN) is ignored!
+        # The camera stays at ORIGIN only because Test 3's position change was ignored,
+        # so we're accidentally already at ORIGIN. This is NOT reliable behavior.
+        self.play(
+            self.camera.frame.animate.move_to(ORIGIN),  # ← IGNORED
+            self.camera.frame.animate.scale(2.0),  # ← Only this executes
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        # ========== TEST 4: INCORRECT USAGE - Three Separate Animations ==========
+        self.narrate(
+            "camera.frame.animate.move_to(circle), camera.frame.animate.shift(UP), camera.frame.animate.scale(0.5)")
+        self.caption("✗ WRONG: Only scale executes, all position anims ignored")
+
+        # ANTI-PATTERN: Three separate .animate calls
+        # Expected: Camera moves to circle, shifts up, AND zooms in
+        # Actual: Only scale(0.5) executes, both position animations are discarded
+        self.play(
+            self.camera.frame.animate.move_to(circle),  # ← IGNORED
+            self.camera.frame.animate.shift(UP * 1),  # ← IGNORED
+            self.camera.frame.animate.scale(0.5),  # ← Only this executes
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        self.narrate("Comparison complete!")
+        self.caption("Remember: Chain operations on ONE .animate call, not multiple separate calls")
+        self.wait(1.0)
+# Compare to movingcamerascene
+class MovingCameraComparison(MovingCameraScene):
+    """Compare with standard MovingCameraScene behavior."""
+
+    def construct(self):
+        square = Square(color=BLUE, side_length=2).shift(LEFT * 3)
+        circle = Circle(color=RED, radius=1).shift(RIGHT * 3)
+        grid = NumberPlane(x_range=[-7, 7], y_range=[-4, 4])
+
+        self.add(grid, square, circle)
+
+        # Test 1: Chained panning operations
+        self.play(
+            self.camera.frame.animate.move_to(square).shift(RIGHT * 2),
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        # Reset camera
+        self.play(
+            self.camera.frame.animate.move_to(ORIGIN),
+            run_time=2.0
+        )
+        self.wait(1.0)
+
+        # Test 2: Same operations as separate animations
         self.play(
             self.camera.frame.animate.move_to(square),
             self.camera.frame.animate.shift(RIGHT * 2),
@@ -456,9 +639,6 @@ class TestSeparateVsChained(HUD2DScene):
         self.wait(1.0)
 
         # Test 3: Chained panning + separate zoom
-        self.narrate("camera.frame.animate.move_to(circle).shift(UP), camera.frame.animate.scale(0.5)")
-        self.caption("Camera moves to circle+up AND zooms in simultaneously")
-
         self.play(
             self.camera.frame.animate.move_to(circle).shift(UP * 1),
             self.camera.frame.animate.scale(0.5),
@@ -475,10 +655,6 @@ class TestSeparateVsChained(HUD2DScene):
         self.wait(1.0)
 
         # Test 4: All separate animations
-        self.narrate(
-            "camera.frame.animate.move_to(circle), camera.frame.animate.shift(UP), camera.frame.animate.scale(0.5)")
-        self.caption("Camera moves to circle, shifts up, AND zooms in (all separate, all simultaneous)")
-
         self.play(
             self.camera.frame.animate.move_to(circle),
             self.camera.frame.animate.shift(UP * 1),
@@ -487,6 +663,21 @@ class TestSeparateVsChained(HUD2DScene):
         )
         self.wait(1.0)
 
-        self.narrate("Comparison complete!")
-        self.caption("Chained panning + separate zoom = all separate animations (visually identical)")
+
+class TestHeightParameter(HUD2DScene):
+    """Test height parameter in set() method."""
+
+    def construct(self):
+        grid = NumberPlane(x_range=[-7, 7], y_range=[-4, 4])
+        self.add(grid)
+
+        # Test height alone
+        self.narrate("camera.frame.animate.set(height=6)")
+        self.play(self.camera.frame.animate.set(height=6), run_time=2.0)
+        self.wait(1.0)
+
+        # Test width and height (width takes precedence)
+        self.narrate("camera.frame.animate.set(width=10, height=6)")
+        self.caption("Width takes precedence when both specified")
+        self.play(self.camera.frame.animate.set(width=10, height=6), run_time=2.0)
         self.wait(1.0)

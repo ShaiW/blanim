@@ -4,7 +4,6 @@ from typing import Optional, Any, Literal, Type
 
 from manim import *
 
-
 ##all sort of stuff that manim should have but doesn't
 
 ##########START Properly Documented Stuff##########
@@ -187,7 +186,8 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
         return list(filter(lambda x: not (hasattr(x, 'fixedLayer') and x.fixedLayer),
                            super().get_moving_mobjects(*animations)))
 
-    def fix(self, mob):
+    @staticmethod
+    def fix(mob):
         """Mark a mobject as fixed in the camera frame (HUD element).
 
         Fixed mobjects maintain constant screen position and size regardless of
@@ -228,7 +228,8 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
         mob.fixedLayer = True
         return mob
 
-    def unfix(self, mob):
+    @staticmethod
+    def unfix(mob):
         """Remove fixed status from a mobject.
 
         After calling this method, the mobject will move and scale normally
@@ -256,7 +257,8 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
         mob.fixedLayer = False
         return mob
 
-    def toggle_fix(self, mob):
+    @staticmethod
+    def toggle_fix(mob):
         """Toggle the fixed status of a mobject.
 
         If the mobject is currently fixed, it becomes unfixed, and vice versa.
@@ -300,6 +302,7 @@ class MovingCameraFixedLayerScene(MovingCameraScene):
         mob.fixedLayer = (not mob.fixedLayer) if hasattr(mob, "fixedLayer") else True
         return mob
 
+#####START everything related to HUD2DScene#####
 #TODO properly document all this AND create examples in common_examples.py for everything added
 class HUD2DScene(ThreeDScene):
     """A 2D scene with heads-up display (HUD) support using ThreeDScene's fixed-in-frame system.
@@ -449,6 +452,7 @@ class HUD2DScene(ThreeDScene):
         super().__init__(**kwargs)
 
         self.narration: Optional[UniversalNarrationManager] = None # manim warns against overriding init
+        self.transcript: Optional[TranscriptManager] = None # manim warns against overriding init
 
     def setup(self) -> None:
         """Set up the scene with 2D orthographic camera orientation.
@@ -493,7 +497,16 @@ class HUD2DScene(ThreeDScene):
             text_type=self.narration_text_type
         )
 
-    def play(self, *args, **kwargs):
+        self.transcript = TranscriptManager(self)
+
+    def tear_down(self) -> None:
+        """Write transcript before tearing down."""
+        if self.transcript:
+            # noinspection PyProtectedMember
+            self.transcript._write_transcript()  # type: ignore[attr-defined]  # noqa: SLF001
+        super().tear_down()
+
+    def play(self, *args, **kwargs) -> None:
         """Override play to handle Frame2DAnimateWrapper."""
         processed_args = []
         for arg in args:
@@ -970,6 +983,12 @@ class Frame2DWrapper:
 
     Supports: move_to, shift, scale, set, get_center
     Does NOT support: save_state, restore (use manual positioning instead)
+
+    .. note::
+        Unlike MovingCamera.frame, negative scale factors are not supported
+        and will produce undefined behavior. Use positive scale factors only.
+        Similarly, setting width or height to zero or negative values is not
+        recommended.
     """
 
     def __init__(self, camera):
@@ -982,12 +1001,14 @@ class Frame2DWrapper:
 
     def move_to(self, point):
         """Move frame center to point (mimics ScreenRectangle.move_to)."""
-        self.camera._frame_center.move_to(point)
+        # noinspection PyProtectedMember
+        self.camera._frame_center.move_to(point) # type: ignore[attr-defined]  # noqa: SLF001
         return self
 
     def shift(self, vector):
         """Shift frame center by vector (mimics ScreenRectangle.shift)."""
-        self.camera._frame_center.shift(vector)
+        # noinspection PyProtectedMember
+        self.camera._frame_center.shift(vector) # type: ignore[attr-defined]  # noqa: SLF001
         return self
 
     def scale(self, scale_factor: float):
@@ -997,87 +1018,145 @@ class Frame2DWrapper:
         return self
 
     def set(self, width: float = None, height: float = None):
-        """Set frame dimensions (mimics ScreenRectangle.set via zoom)."""
+        """Set frame dimensions (mimics ScreenRectangle.set via zoom).
+
+        If both width and height are specified, width takes precedence.
+        """
         if width is not None:
             from manim import config
             zoom_factor = config["frame_width"] / width
+            self.camera.zoom_tracker.set_value(zoom_factor)
+        elif height is not None:
+            from manim import config
+            zoom_factor = config["frame_height"] / height
             self.camera.zoom_tracker.set_value(zoom_factor)
         return self
 
     def get_center(self):
         """Get frame center (mimics ScreenRectangle.get_center)."""
-        return self.camera._frame_center.get_center()
+        # noinspection PyProtectedMember
+        return self.camera._frame_center.get_center() # type: ignore[attr-defined]  # noqa: SLF001
 
 class Frame2DAnimateWrapper:
     """Animation builder that mimics Manim's _AnimationBuilder pattern."""
 
-    def __init__(self, frame):
-        self.frame = frame
+    def __init__(self, frame_wrapper: Frame2DWrapper):
+        self.frame = frame_wrapper
         # Store initial state
-        self.target_center = self.frame.camera._frame_center.copy()
+        # noinspection PyProtectedMember
+        self.target_center = self.frame.camera._frame_center.copy() # type: ignore[attr-defined]  # noqa: SLF001
         self.target_zoom = self.frame.camera.zoom_tracker.get_value()
-        self.operations = []
+#        self.operations = []
 
     def move_to(self, point):
         """Apply move_to to target center."""
         self.target_center.move_to(point)
-        self.operations.append(('move_to', point))
+#        self.operations.append(('move_to', point))
         return self
 
     def shift(self, vector):
         """Apply shift to target center."""
         self.target_center.shift(vector)
-        self.operations.append(('shift', vector))
+#        self.operations.append(('shift', vector))
         return self
 
     def scale(self, scale_factor: float):
         """Apply scale to target zoom."""
         self.target_zoom = self.target_zoom / scale_factor
-        self.operations.append(('scale', scale_factor))
+#        self.operations.append(('scale', scale_factor))
         return self
 
     def set(self, width: float = None, height: float = None):
-        """Apply set to target zoom."""
+        """Apply set to target zoom.
+
+        If both width and height are specified, width takes precedence.
+        """
         if width is not None:
             from manim import config
             self.target_zoom = config["frame_width"] / width
-            self.operations.append(('set', width))
+#            self.operations.append(('set', {'width': width}))
+        elif height is not None:
+            from manim import config
+            self.target_zoom = config["frame_height"] / height
+#            self.operations.append(('set', {'height': height}))
         return self
 
+    # noinspection PyProtectedMember
     def build(self):
-        from manim import AnimationGroup
-
-        animations = []
-
-        # Always create animation for frame center (even if unchanged)
-        animations.append(
-            self.frame.camera._frame_center.animate.move_to(
+        animations = [
+            # Always create animation for frame center (even if unchanged)
+            self.frame.camera._frame_center.animate.move_to( # type: ignore[attr-defined]  # noqa: SLF001
                 self.target_center.get_center()
-            )
-        )
+            ),
+            # Always create animation for zoom (even if unchanged)
+            self.frame.camera.zoom_tracker.animate.set_value(self.target_zoom),
+        ]
 
-        # Always create animation for zoom (even if unchanged)
-        animations.append(
-            self.frame.camera.zoom_tracker.animate.set_value(self.target_zoom)
-        )
-
-        if len(animations) == 1:
-            return animations[0]
         return AnimationGroup(*animations)
 
+class TranscriptManager:
+    """Manages transcript output independently from visual display.
+
+    This class handles verbose descriptions of scene events, separate from
+    the narration/caption text shown on screen. Transcript lines are automatically
+    written to a .txt file during scene teardown.
+    """
+
+    def __init__(self, scene: Scene) -> None:
+        self.scene = scene
+        self.transcript_lines: list[str] = []
+
+    def add_transcript(self, content: str) -> None:
+        """Add a line to the transcript file.
+
+        Each call adds the content as a new line in the transcript.
+        """
+        self.transcript_lines.append(content)
+
+    def _write_transcript(self) -> None:
+        """Write accumulated transcript to file with appropriate logging."""
+        if not self.transcript_lines:
+            logger.debug("No transcript lines to write, skipping transcript file creation.")
+            return
+
+        if not hasattr(self.scene.renderer, 'file_writer'):
+            logger.warning("Cannot write transcript: renderer has no file_writer attribute.")
+            return
+
+        file_writer = self.scene.renderer.file_writer
+        if not hasattr(file_writer, 'movie_file_path'):
+            logger.warning("Cannot write transcript: file_writer has no movie_file_path attribute.")
+            return
+
+        transcript_path = None
+        try:
+            transcript_path = file_writer.movie_file_path.with_suffix('.txt')
+            transcript_path.write_text('\n'.join(self.transcript_lines), encoding='utf-8')
+            logger.info(
+                "\nTranscript file has been written as %(path)s\n",
+                {"path": f"'{transcript_path}'"}  # ← Added single quotes here
+            )
+        except Exception as e:
+            path_str = str(transcript_path) if transcript_path else "unknown path"
+            logger.error(
+                "\nFailed to write transcript to %(path)s: %(error)s\n",
+                {"path": f"'{path_str}'", "error": str(e)}  # ← Added single quotes here too
+            )
+
 ##########END Properly Documented Stuff##########
+
 
 """  
 BASELINE ALIGNMENT PLAN FOR TEXT/MATHTEX/TEX MOBJECTS  
   
 Goal: Ensure consistent baseline alignment across text changes by aligning to a reference vowel character.  
   
-Approach:  
+Approach:  #could simplify to not use a reference mobject and just pick an arbitrary point like align up shift DOWN instead.
 1. Create an invisible reference mobject (e.g., Text("a", color=BLACK) or MathTex(r"\text{a}", color=BLACK))  
    positioned at a fixed location to serve as the "baseline ruler"  
   
 2. Before each text change:  
-   - Find the first vowel (a, e, i, o, u) in the new text mobject's submobjects  
+   - Find the first vowel (a, e, i, o, u) in the new text mobject's submobjects
    - Get its baseline using get_critical_point(DOWN)[1]   
    - Calculate y-offset needed to align that vowel's baseline to the reference  
    - Apply shift(UP * offset) to the entire text mobject  
