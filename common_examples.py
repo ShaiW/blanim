@@ -1,18 +1,23 @@
 # blanim/common_examples.py
 
 from common import *
-#TODO run and verify these tests work as expected, if yes, organize for user demonstrations, then properly document common.py
-"""      
-Camera Animation Patterns - Common Mistakes      
 
-This file demonstrates correct and incorrect ways to animate the camera in HUD2DScene.      
-The behavior matches Manim's MovingCameraScene exactly.      
-
-GOLDEN RULE: Use method chaining on a SINGLE .animate call      
-    ✓ CORRECT: self.play(camera.frame.animate.move_to(pos).shift(vec).scale(factor))      
-    ✗ WRONG:   self.play(camera.frame.animate.move_to(pos), camera.frame.animate.shift(vec))      
-
-See TestSeparateVsChained for detailed examples and explanations.      
+"""        
+Camera Animation Patterns - Common Mistakes        
+  
+This file demonstrates correct and incorrect ways to animate the camera in HUD2DScene.        
+The behavior matches Manim's MovingCameraScene exactly.        
+  
+.. note::  
+    **Work in Progress**: This examples file is not yet comprehensive. Additional examples  
+    for custom colors, plain text handling, and character capacity limits are planned.  
+    All examples should be verified before use in production.  
+  
+GOLDEN RULE: Use method chaining on a SINGLE .animate call        
+    ✓ CORRECT: self.play(camera.frame.animate.move_to(pos).shift(vec).scale(factor))        
+    ✗ WRONG:   self.play(camera.frame.animate.move_to(pos), camera.frame.animate.shift(vec))        
+  
+See TestSeparateVsChained for detailed examples and explanations.        
 """
 
 class TestNarrateAndClear(HUD2DScene):
@@ -23,7 +28,7 @@ class TestNarrateAndClear(HUD2DScene):
         self.add(square)
 
         # Shows narration for 2 seconds, then clears it automatically
-        self.narrate_and_clear(r"This text will disappear", wait_time=2.0)
+        self.narrate_and_clear(r"This text will disappear", display_time=2.0)
 
         # Continue with animation after narration is cleared
         self.caption(r"Narration cleared, caption remains")
