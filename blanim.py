@@ -22,56 +22,62 @@ may contain errors or evolve as project takes shape
 Planned architecture for blockchain animation project supporting  
 multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).  
 
-blanim/  
-├── __init__.py  
-├── core/  
-│   ├── __init__.py  
-│   ├── base_visual_block.py      (BaseVisualBlock class)  
-│   ├── parent_line.py             (ParentLine class)  
-│   └── dag_structures.py          (Base DAG/Chain classes)  
-│  
-├── blockchains/  
-│   ├── __init__.py  
-│   ├── bitcoin/  
+blanim/                                    # ← Project root directory                                         #Exists
+├── blanim/                                # ← Python package directory                                       #Exists
+│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE
+│   ├── core/                                                                                                 #Exists
 │   │   ├── __init__.py  
-│   │   ├── visual_block.py        (BitcoinVisualBlock)  
-│   │   ├── logical_block.py       (BitcoinBlock with chain logic)  
-│   │   ├── chain.py               (Bitcoin chain structure)  
-│   │   └── utils/                 (Bitcoin-specific utilities)  
-│   │       ├── __init__.py  
-│   │       ├── colors.py          (Bitcoin color scheme)  
-│   │       └── layouts.py         (Linear chain layout algorithms)  
+│   │   ├── base_visual_block.py          (BaseVisualBlock class)  
+│   │   ├── parent_line.py                (ParentLine class)  
+│   │   ├── dag_structures.py             (Base DAG/Chain classes)  
+│   │   └── common.py                     (HUD2DScene, things Manim should have)  
 │   │  
-│   ├── kaspa/  
+│   ├── blockDAGs/  
 │   │   ├── __init__.py  
-│   │   ├── visual_block.py        (KaspaVisualBlock)  
-│   │   ├── logical_block.py       (KaspaBlock with DAG logic)  
-│   │   ├── dag.py                 (Kaspa DAG structure)  
-│   │   ├── ghostdag.py            (GHOSTDAG ordering/tree logic)  
-│   │   └── utils/                 (Kaspa-specific utilities)  
+│   │   ├── bitcoin/  
+│   │   │   ├── __init__.py  
+│   │   │   ├── visual_block.py           (BitcoinVisualBlock)  
+│   │   │   ├── logical_block.py          (BitcoinBlock with chain logic)  
+│   │   │   ├── chain.py                  (Bitcoin chain structure)  
+│   │   │   └── utils/                    (Bitcoin-specific utilities)  
+│   │   │       ├── __init__.py  
+│   │   │       ├── colors.py             (Bitcoin color scheme)  
+│   │   │       └── layouts.py            (Linear chain layout algorithms)  
+│   │   │  
+│   │   ├── kaspa/  
+│   │   │   ├── __init__.py  
+│   │   │   ├── visual_block.py           (KaspaVisualBlock)  
+│   │   │   ├── logical_block.py          (KaspaBlock with DAG logic)  
+│   │   │   ├── dag.py                    (Kaspa DAG structure)  
+│   │   │   ├── ghostdag.py               (GHOSTDAG ordering/tree logic)  
+│   │   │   └── utils/                    (Kaspa-specific utilities)  
+│   │   │       ├── __init__.py  
+│   │   │       ├── colors.py             (Kaspa color scheme)  
+│   │   │       └── layouts.py            (DAG layout algorithms)  
+│   │   │  
+│   │   └── ethereum/                     (Future blockchain example)  
 │   │       ├── __init__.py  
-│   │       ├── colors.py          (Kaspa color scheme)  
-│   │       └── layouts.py         (DAG layout algorithms)  
+│   │       ├── visual_block.py  
+│   │       ├── logical_block.py  
+│   │       └── utils/                    (Ethereum-specific utilities)  
+│   │           ├── __init__.py  
+│   │           ├── colors.py  
+│   │           └── layouts.py  
 │   │  
-│   └── ethereum/                  (Future blockchain example)  
+│   └── utils/                            (Core/default utilities - optional)  
 │       ├── __init__.py  
-│       ├── visual_block.py  
-│       ├── logical_block.py  
-│       └── utils/                 (Ethereum-specific utilities)  
-│           ├── __init__.py  
-│           ├── colors.py  
-│           └── layouts.py  
+│       ├── colors.py                     (Default color schemes)  
+│       └── layouts.py                    (Default layout algorithms)  
 │  
-├── scenes/  
+├── examples/                              # ← Example/demo scenes  
 │   ├── __init__.py  
-│   ├── bitcoin_scenes.py          (Bitcoin-specific animations)  
-│   ├── kaspa_scenes.py            (Kaspa-specific animations)  
-│   └── comparison_scenes.py       (Cross-blockchain comparisons)  
+│   ├── common_examples.py                (HUD2DScene examples)  
+│   ├── bitcoin_examples.py               (Bitcoin animation examples)  
+│   └── kaspa_examples.py                 (Kaspa animation examples)  
 │  
-└── utils/                         (Core/default utilities - optional)  
-    ├── __init__.py  
-    ├── colors.py                  (Default color schemes)  
-    └── layouts.py                 (Default layout algorithms)  
+├── pyproject.toml                         # ← Package configuration                                          #COMPLETE
+├── README.md                              # ← Project documentation                                          #Could Update Soon
+└── .gitignore                             # ← Git ignore file                                                #Exists
 
 ARCHITECTURE PRINCIPLES:  
 ------------------------  

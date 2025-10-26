@@ -1,0 +1,63 @@
+# ============================================================================
+# BLANIM PACKAGE CONFIGURATION
+# ============================================================================
+#
+# NOTE: This pyproject.toml is configured for LOCAL DEVELOPMENT and GITHUB
+# distribution. It is NOT intended for PyPI publication at this time.
+#
+# PURPOSE:
+# --------
+# This file enables:
+# 1. Local editable installs: `pip install -e .`
+# 2. Building from source: Users can clone and build the package themselves
+# 3. Dependency management: Ensures manim>=0.19.0 is installed
+#
+# PLACEHOLDER VALUES:
+# -------------------
+# The author information and URLs contain placeholder values. These are
+# acceptable for GitHub distribution and local development. If you decide
+# to publish to PyPI in the future, replace:
+# - "Your Name" and "your.email@example.com" with real contact info
+# - "yourusername" in URLs with actual GitHub username
+# - Documentation URL (if ReadTheDocs is not set up)
+#
+# CURRENT STATUS: Development/GitHub distribution only
+# ============================================================================
+[project]
+name = "blanim"
+version = "0.1.0"
+description = "Blockchain animation library extending Manim"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "manim>=0.19.0",
+]
+
+[project.scripts]
+# Optional: Add CLI commands if you want a blanim executable
+# "blanim" = "blanim.__main__:main"
+
+[project.urls]
+repository = "https://github.com/yourusername/blanim"
+documentation = "https://blanim.readthedocs.io/"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+    "/blanim"
+]
+
+# Optional: Make blanim discoverable as a Manim plugin
+[project.entry-points."manim.plugins"]
+"blanim" = "blanim"
+
+# Suppress linter warnings for re-export pattern in __init__.py
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
