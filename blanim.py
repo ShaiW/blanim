@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import string
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -8,8 +9,204 @@ from typing import Dict, List
 from itertools import chain
 from abc import ABC, abstractmethod
 
+from manim.typing import Point3DLike
+
 from common import *
-import string
+
+#TODO changed to using BaseVisualBlock, have not updated anything beyond BaseVisualBlock, BitcoinVisualBlock, or KaspaVisualBlock
+"""
+PLANNED BLANIM PROJECT FILE STRUCTURE
+may contain errors or evolve as project takes shape
+==============================  
+
+Planned architecture for blockchain animation project supporting  
+multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).  
+
+blanim/  
+├── __init__.py  
+├── core/  
+│   ├── __init__.py  
+│   ├── base_visual_block.py      (BaseVisualBlock class)  
+│   ├── parent_line.py             (ParentLine class)  
+│   └── dag_structures.py          (Base DAG/Chain classes)  
+│  
+├── blockchains/  
+│   ├── __init__.py  
+│   ├── bitcoin/  
+│   │   ├── __init__.py  
+│   │   ├── visual_block.py        (BitcoinVisualBlock)  
+│   │   ├── logical_block.py       (BitcoinBlock with chain logic)  
+│   │   ├── chain.py               (Bitcoin chain structure)  
+│   │   └── utils/                 (Bitcoin-specific utilities)  
+│   │       ├── __init__.py  
+│   │       ├── colors.py          (Bitcoin color scheme)  
+│   │       └── layouts.py         (Linear chain layout algorithms)  
+│   │  
+│   ├── kaspa/  
+│   │   ├── __init__.py  
+│   │   ├── visual_block.py        (KaspaVisualBlock)  
+│   │   ├── logical_block.py       (KaspaBlock with DAG logic)  
+│   │   ├── dag.py                 (Kaspa DAG structure)  
+│   │   ├── ghostdag.py            (GHOSTDAG ordering/tree logic)  
+│   │   └── utils/                 (Kaspa-specific utilities)  
+│   │       ├── __init__.py  
+│   │       ├── colors.py          (Kaspa color scheme)  
+│   │       └── layouts.py         (DAG layout algorithms)  
+│   │  
+│   └── ethereum/                  (Future blockchain example)  
+│       ├── __init__.py  
+│       ├── visual_block.py  
+│       ├── logical_block.py  
+│       └── utils/                 (Ethereum-specific utilities)  
+│           ├── __init__.py  
+│           ├── colors.py  
+│           └── layouts.py  
+│  
+├── scenes/  
+│   ├── __init__.py  
+│   ├── bitcoin_scenes.py          (Bitcoin-specific animations)  
+│   ├── kaspa_scenes.py            (Kaspa-specific animations)  
+│   └── comparison_scenes.py       (Cross-blockchain comparisons)  
+│  
+└── utils/                         (Core/default utilities - optional)  
+    ├── __init__.py  
+    ├── colors.py                  (Default color schemes)  
+    └── layouts.py                 (Default layout algorithms)  
+
+ARCHITECTURE PRINCIPLES:  
+------------------------  
+
+1. Separation by Blockchain: Each blockchain gets its own package under  
+   blockchains/ with visual, logical, structure, AND utils components.  
+
+2. Shared Core: Common base classes in core/ to avoid duplication.  
+   - BaseVisualBlock: Visual rendering (square, label, lines)  
+   - ParentLine: Line connections between blocks  
+   - Base DAG/Chain structures  
+
+3. Visual vs Logical Separation:  
+   - visual_block.py: Handles rendering, animations, Manim integration  
+   - logical_block.py: Handles consensus logic, parent selection, DAG traversal  
+   - Visual classes inherit from BaseVisualBlock (VMobject)  
+   - Logical classes inherit from visual classes and add domain logic  
+
+4. Utils Organization:  
+   - Each blockchain has its own utils/ subdirectory  
+   - Complete isolation - blockchain-specific colors, layouts, and helpers  
+   - No cross-imports between blockchain utils packages  
+   - Optional: Keep blanim/utils/ for shared defaults that blockchains can  
+     reference if needed, but each blockchain defines its own  
+
+5. Scene Organization:  
+   - Animations grouped by blockchain type in scenes/  
+   - Cross-blockchain comparisons in comparison_scenes.py  
+
+IMPORT PATTERNS:  
+----------------  
+
+In your scene file:  
+    from blanim.blockchains.bitcoin import BitcoinVisualBlock, BitcoinBlock
+    from blanim.blockchains.kaspa import KaspaVisualBlock, KaspaBlock
+    from blanim.core import BaseVisualBlock
+    from blanim.blockchains.bitcoin.utils.colors import BITCOIN_ORANGE  
+    from blanim.blockchains.kaspa.utils.colors import KASPA_BLUE, KASPA_RED  
+    from blanim.blockchains.kaspa.utils.layouts import dag_layout, ghostdag_tree_layout  
+
+No cross-imports between blockchain utils - complete isolation  
+
+EXAMPLE BLOCKCHAIN-SPECIFIC UTILS:  
+-----------------------------------  
+
+blanim/blockchains/bitcoin/utils/colors.py:  
+    from manim import ManimColor  
+
+    BITCOIN_ORANGE = ManimColor("#F7931A")  
+    SELECTED_PARENT_BLUE = ManimColor("#0000FF")  
+    BLOCK_DEFAULT = BITCOIN_ORANGE  
+
+blanim/blockchains/kaspa/utils/colors.py:  
+    from manim import ManimColor  
+
+    KASPA_BLUE = ManimColor("#70C7BA")  
+    KASPA_RED = ManimColor("#FF6B6B")  
+    SELECTED_PARENT_COLOR = KASPA_BLUE  
+    NON_SELECTED_PARENT_COLOR = ManimColor("#FFFFFF")  
+
+blanim/blockchains/bitcoin/utils/layouts.py:  
+    def linear_chain_layout(blocks, spacing=2.0):  
+        Layout blocks in a linear chain (Bitcoin-specific)  
+        positions = []  
+        for i, block in enumerate(blocks):  
+            positions.append([i * spacing, 0, 0])  
+        return positions  
+
+blanim/blockchains/kaspa/utils/layouts.py:  
+    def dag_layout(blocks, layer_spacing=2.0, block_spacing=1.5):  
+        Layout blocks in DAG structure (Kaspa-specific)  
+        (Kaspa-specific DAG layout algorithm implementation here)  
+        pass  
+
+    def GHOSTDAG_tree_layout(blocks, blue_set):  
+        Layout blocks according to GHOSTDAG ordering  
+        (GHOSTDAG-specific layout implementation here)  
+        pass  
+
+ADDING NEW BLOCKCHAINS:  
+-----------------------  
+
+To add a new blockchain (e.g., Ethereum):  
+
+1. Create blanim/blockchains/ethereum/ directory  
+2. Implement EthereumVisualBlock inheriting from BaseVisualBlock  
+3. Implement EthereumBlock inheriting from EthereumVisualBlock  
+4. Create ethereum/utils/ subdirectory with:  
+   - colors.py: Ethereum-specific colors (ETH purple, etc.)  
+   - layouts.py: Ethereum-specific layouts (uncle blocks, etc.)  
+5. Add consensus-specific logic (e.g., uncle blocks, gas)  
+6. Create ethereum_scenes.py for animations  
+
+BENEFITS OF THIS ARCHITECTURE:  
+-------------------------------  
+
+1. Complete Isolation: No risk of one blockchain's utils affecting another  
+2. Clear Ownership: Each blockchain owns its visual style completely  
+3. Easy Discovery: Developers know exactly where to find blockchain-specific code  
+4. No Import Conflicts: No need to worry about overriding shared utilities  
+5. Parallel Development: Multiple developers can work on different blockchains  
+   without touching shared code  
+
+OPTIONAL CENTRAL UTILS:  
+-----------------------  
+
+The top-level blanim/utils/ is optional and should only contain truly shared  
+utilities that multiple blockchains might reference (e.g., common mathematical  
+functions, shared animation helpers). Each blockchain should define its own  
+colors and layouts in its utils/ subdirectory for complete independence.  
+
+KASPA GHOSTDAG EXAMPLE:  
+----------------------  
+
+For Kaspa's GHOSTDAG ordering (DAG to Tree conversion):  
+
+blanim/blockchains/kaspa/ghostdag.py:  
+    class GHOSTDAGTree:
+        def __init__(self, dag):  
+            self.dag = dag  
+            self.blue_set = self._compute_blue_set()  
+            self.ordering = self._compute_ordering()  
+
+        def as_visual_tree(self):  
+            Convert DAG to tree visualization  
+            pass  
+
+Usage in scene:  
+    Show DAG structure  
+    self.play(kaspa_dag.create_with_lines())  
+
+    Transform to tree  
+    ghostdag_tree = GHOSTDAGTree(kaspa_dag)  
+    self.play(Transform(kaspa_dag, ghostdag_tree.as_visual_tree()))  
+"""
 
 BLOCK_H = 0.4
 BLOCK_W = 0.4
@@ -56,60 +253,124 @@ class Parent:
     name: str
     is_selected_parent: bool
 
-#TODO removed visual block from Block, started adding automatic parent lines
-class VisualBlock:
-    """Base class handling only visual elements and animations"""
+#TODO change label to follow primer pattern
+class BaseVisualBlock(VMobject):
+    """
+    Base class handling only visual elements and animations for blockchain blocks.
 
-    def __init__(self, pos, label_text=None, block_color=BLUE, h=BLOCK_H, w=BLOCK_W):
-        self.width = w
-        self.height = h
+    IMPORTANT: Lines are NOT submobjects and must be added to the scene separately:
+        block = VisualBlock("Label", [0,0,0], selected_parent=parent)
+        self.add(block)  # Adds square and label only
+        self.add(*block.parent_lines)  # Must manually add lines
 
-        # Visual components only
-        self.rect = Rectangle(
+    Lines update independently using UpdateFromFunc to avoid automatic movement
+    propagation. Use create_with_lines() or create_movement_animation() to handle
+    line animations properly.
+
+    Attributes:
+        square: The main square visual element
+        label: Text label displayed on the square
+        parent_lines: List of ParentLine objects (NOT submobjects)
+
+    Note: The children list should be managed at the logical Block level,
+    not in VisualBlock. This class handles only visual rendering.
+    """
+    def __init__(self, label_text: str, position: Point3DLike, block_color: ParsableManimColor = BLUE) -> None:
+        super().__init__()
+
+        #####Sqaure#####
+        self.square = Square(
             color=block_color,
             fill_opacity=1,
-            height=h,
-            width=w,
+            side_length=0.7
         )
-        self.rect.move_to(pos)
+        self.square.move_to(position)
+        self.add(self.square)
 
-        # Label creation
-        if label_text:
-            self.label = Tex(label_text).set_z_index(1).scale(0.7)
-        else:
-            self.label = None
+        #####Label#####
+        self.label = Text(
+            label_text,
+            font_size=24,
+            color=WHITE
+        )
+        self.label.move_to(self.square.get_center())
+        self._label_text = label_text
+        self.add(self.label)
 
-        if self.label:
-            self.label.move_to(self.rect.get_center())
-            self.rect.add(self.label)
-
-        # Visual connections (lines to other blocks)
+        #####Parent Relationship#####
         self.parent_lines = []
 
-    def add_parent_line(self, parent_rect, line_color=WHITE):
-        """Add a visual line to a parent block's rectangle"""
-        line = ParentLine(
-            this_block=self.rect,
-            parent_block=parent_rect,
-            line_color=line_color
-        )
-        self.parent_lines.append(line)
-        return line
+    def create_with_lines(self, **kwargs):
+        """Create animation including block and all lines"""
+        block_creation = Create(self, **kwargs)
+        line_creations = [Create(line, **kwargs) for line in self.parent_lines]
+        return AnimationGroup(block_creation, *line_creations)
 
-    def get_mobjects(self):
-        """Return all visual mobjects for rendering"""
-        mobjects = [self.rect]
-        mobjects.extend(self.parent_lines)
-        return mobjects
+    def create_movement_animation(self, animation):
+        """
+        Wrap movement animation with line updates.
 
-    def move_to(self, pos):
-        """Move block to new position"""
-        self.rect.move_to(pos)
-        if self.label:
-            self.label.move_to(self.rect.get_center())
+        Usage:
+            self.play(block.create_movement_animation(block.animate.shift(RIGHT)))
+        """
+        line_updates = [line.create_update_animation() for line in self.parent_lines]
+        return AnimationGroup(animation, *line_updates)
+
+class BitcoinVisualBlock(BaseVisualBlock):
+    """
+    Bitcoin block visualization with single-parent chain structure.
+
+    Bitcoin uses a longest-chain consensus where each block has exactly
+    one parent, forming a linear chain. The parent line is colored BLUE.
+
+    Attributes:
+        parent_line: Single ParentLine to the parent block (if exists)
+    """
+    def __init__(self, label_text: str, position: Point3DLike,
+                 block_color: ParsableManimColor = BLUE,
+                 parent: Optional[BitcoinVisualBlock] = None) -> None:
+        super().__init__(label_text, position, block_color)
+
+        if parent:
+            self.parent_line = ParentLine(
+                this_block=self.square,
+                parent_block=parent.square,
+                line_color=BLUE
+            )
+            self.parent_lines = [self.parent_line]
+
+class KaspaVisualBlock(BaseVisualBlock):
+    """
+    Kaspa block visualization with multi-parent DAG structure.
+
+    Kaspa uses GHOSTDAG consensus where blocks can have multiple parents.
+    The first parent in the list is the selected parent (BLUE line),
+    while other parents have WHITE lines.
+
+    Attributes:
+        parent_lines: List of ParentLine objects to all parent blocks
+
+    Note: First parent in constructor's parents list is the selected parent.
+    """
+    def __init__(self, label_text: str, position: Point3DLike,
+                 block_color: ParsableManimColor = BLUE,
+                 parents: Optional[list[KaspaVisualBlock]] = None) -> None:
+        super().__init__(label_text, position, block_color)
+
+        if parents:
+            for i, parent in enumerate(parents):
+                is_selected = (i == 0)  # First parent is selected
+                line_color = BLUE if is_selected else WHITE
+                line = ParentLine(
+                    this_block=self.square,
+                    parent_block=parent.square,
+                    line_color=line_color
+                )
+                self.parent_lines.append(line)
 
 #todo remove dag dependency
-class Block(VisualBlock, ABC):
+#TODO fix this since changing to BaseVisualBlock(or remome logical block to bitcoin/kaspa subfolders)
+class Block(BaseVisualBlock, ABC):
     """Multiple Inheritance Pattern"""
     DEFAULT_COLOR = BLUE
 
