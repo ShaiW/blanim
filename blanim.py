@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import string
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from random import choice, randint
-from typing import Dict, List
 from itertools import chain
-from abc import ABC, abstractmethod
+from random import choice, randint
+from typing import List, Dict, Optional
 
 from manim.typing import Point3DLike
 
-from common import *
+from blanim import *
 
 #TODO changed to using BaseVisualBlock, have not updated anything beyond BaseVisualBlock, BitcoinVisualBlock, or KaspaVisualBlock
 """
@@ -22,62 +22,78 @@ may contain errors or evolve as project takes shape
 Planned architecture for blockchain animation project supporting  
 multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).  
 
-blanim/                                    # ← Project root directory                                         #Exists
-├── blanim/                                # ← Python package directory                                       #Exists
-│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE
-│   ├── core/                                                                                                 #Exists
-│   │   ├── __init__.py  
-│   │   ├── base_visual_block.py          (BaseVisualBlock class)  
-│   │   ├── parent_line.py                (ParentLine class)  
-│   │   ├── dag_structures.py             (Base DAG/Chain classes)  
-│   │   └── common.py                     (HUD2DScene, things Manim should have)  
-│   │  
-│   ├── blockDAGs/  
-│   │   ├── __init__.py  
-│   │   ├── bitcoin/  
-│   │   │   ├── __init__.py  
-│   │   │   ├── visual_block.py           (BitcoinVisualBlock)  
-│   │   │   ├── logical_block.py          (BitcoinBlock with chain logic)  
-│   │   │   ├── chain.py                  (Bitcoin chain structure)  
-│   │   │   └── utils/                    (Bitcoin-specific utilities)  
-│   │   │       ├── __init__.py  
-│   │   │       ├── colors.py             (Bitcoin color scheme)  
-│   │   │       └── layouts.py            (Linear chain layout algorithms)  
-│   │   │  
-│   │   ├── kaspa/  
-│   │   │   ├── __init__.py  
-│   │   │   ├── visual_block.py           (KaspaVisualBlock)  
-│   │   │   ├── logical_block.py          (KaspaBlock with DAG logic)  
-│   │   │   ├── dag.py                    (Kaspa DAG structure)  
-│   │   │   ├── ghostdag.py               (GHOSTDAG ordering/tree logic)  
-│   │   │   └── utils/                    (Kaspa-specific utilities)  
-│   │   │       ├── __init__.py  
-│   │   │       ├── colors.py             (Kaspa color scheme)  
-│   │   │       └── layouts.py            (DAG layout algorithms)  
-│   │   │  
-│   │   └── ethereum/                     (Future blockchain example)  
-│   │       ├── __init__.py  
-│   │       ├── visual_block.py  
-│   │       ├── logical_block.py  
-│   │       └── utils/                    (Ethereum-specific utilities)  
-│   │           ├── __init__.py  
-│   │           ├── colors.py  
-│   │           └── layouts.py  
-│   │  
-│   └── utils/                            (Core/default utilities - optional)  
-│       ├── __init__.py  
-│       ├── colors.py                     (Default color schemes)  
-│       └── layouts.py                    (Default layout algorithms)  
-│  
-├── examples/                              # ← Example/demo scenes  
-│   ├── __init__.py  
-│   ├── common_examples.py                (HUD2DScene examples)  
-│   ├── bitcoin_examples.py               (Bitcoin animation examples)  
-│   └── kaspa_examples.py                 (Kaspa animation examples)  
-│  
-├── pyproject.toml                         # ← Package configuration                                          #COMPLETE
-├── README.md                              # ← Project documentation                                          #Could Update Soon
-└── .gitignore                             # ← Git ignore file                                                #Exists
+blanim/                                    # ← Project root directory                                         #Exists  
+├── blanim/                                # ← Python package directory                                       #Exists  
+│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE  
+│   ├── core/                                                                                                 #Exists  
+│   │   ├── __init__.py                                                                                       #COMPLETE
+│   │   ├── base_visual_block.py          (BaseVisualBlock class)                                             #COMPLETE  
+│   │   ├── parent_line.py                (ParentLine class)                                                  #COMPLETE  
+│   │   ├── dag_structures.py             (Base DAG/Chain classes)                                            #Exists  Need to determine what/if is part of base DAGs  
+│   │   └── hud_2d_scene.py               (HUD2DScene, Scene/engine)                                          #COMPLETE  
+│   │    
+│   ├── blockDAGs/                                                                                            #Exists
+│   │   ├── __init__.py                                                                                       #Exists and Empty
+│   │   ├── bitcoin/                                                                                          #Exists
+│   │   │   ├── __init__.py                                                                                   #Exists
+│   │   │   ├── visual_block.py           (BitcoinVisualBlock)                                                #Exists
+│   │   │   ├── logical_block.py          (BitcoinBlock with chain logic)                                     #Exists
+│   │   │   ├── chains/                   (Different chain mode implementations)                              #COMPLETE
+│   │   │   │   ├── __init__.py                                                                               #Exists
+│   │   │   │   ├── base_chain.py        (BaseBitcoinChain - shared logic)                                    #Exists and Empty
+│   │   │   │   ├── free_chain.py        (FreeChain - no validation mode)                                     #Exists and Empty
+│   │   │   │   ├── standard_chain.py    (StandardChain - normal consensus)                                   #Exists and Empty
+│   │   │   │   ├── selfish_mining.py    (SelfishMiningChain - attack demo)                                   #Exists and Empty
+│   │   │   │   └── simulation.py        (SimulationChain - realistic sim)                                    #Exists and Empty
+│   │   │   └── utils/                    (Bitcoin-specific utilities)                                        #Exists
+│   │   │       ├── __init__.py                                                                               #Exists and Empty
+│   │   │       ├── colors.py             (Bitcoin color scheme)                                              #Exists and Empty
+│   │   │       └── layouts.py            (Linear chain layout algorithms - may be empty)                     #exists and Empty
+│   │   │    
+│   │   ├── kaspa/                                                                                            #Exists and Empty
+│   │   │   ├── __init__.py                                                                                   #Exists and Empty
+│   │   │   ├── visual_block.py           (KaspaVisualBlock)                                                  #Exists
+│   │   │   ├── logical_block.py          (KaspaBlock with DAG logic)                                         #Exists and Empty
+│   │   │   ├── dags/                     (Different DAG mode implementations)                                #Exists
+│   │   │   │   ├── __init__.py                                                                               #Exists and Empty
+│   │   │   │   ├── base_dag.py          (BaseKaspaDAG - shared logic)                                        #Exists and Empty
+│   │   │   │   ├── free_dag.py          (FreeDAG - no validation mode)                                       #Exists and Empty
+│   │   │   │   ├── standard_dag.py      (StandardDAG - normal GHOSTDAG consensus)                            #Exists and Empty
+│   │   │   │   ├── ghostdag_demo.py     (GHOSTDAGDemo - visualize GHOSTDAG ordering)                         
+│   │   │   │   └── simulation.py        (SimulationDAG - realistic DAG sim)                                  #Exists and Empty
+│   │   │   ├── ghostdag/                 (GHOSTDAG-specific logic)                                           #Exists
+│   │   │   │   ├── __init__.py                                                                               #Exists and Empty
+│   │   │   │   ├── ordering.py          (GHOSTDAG ordering algorithm)                                        #Exists and Empty
+│   │   │   │   ├── tree_conversion.py   (DAG to tree visualization)                                          #Exists and Empty
+│   │   │   │   └── blue_set.py          (Blue set computation)                                               #Exists and Empty
+│   │   │   └── utils/                    (Kaspa-specific utilities)                                          #Exists  
+│   │   │       ├── __init__.py                                                                               #Exists and Empty  
+│   │   │       ├── colors.py             (Kaspa color scheme)                                                #Exists and Empty  
+│   │   │       └── layouts.py            (DAG layout algorithms)                                             #Exists and Empty
+│   │   │    
+│   │   └── ethereum/                     (Future blockchain example)    
+│   │       ├── __init__.py    
+│   │       ├── visual_block.py    
+│   │       ├── logical_block.py    
+│   │       └── utils/                    (Ethereum-specific utilities)    
+│   │           ├── __init__.py    
+│   │           ├── colors.py    
+│   │           └── layouts.py    
+│   │    
+│   └── utils/                            (Core/default utilities - optional)                                 #Exists and Empty
+│       ├── __init__.py                                                                                       #COMPLETE  
+│       ├── colors.py                     (Default color schemes)                                             #Exist and Empty  
+│       └── layouts.py                    (Default layout algorithms)                                         #Exist and Empty  
+│    
+├── examples/                              # ← Example/demo scenes                                            #Exists
+│   ├── __init__.py                                                                                           #COMPLETE  
+│   ├── hud_2d_scene_examples.py          (HUD2DScene examples)                                               #COMPLETE (renamed from common_examples.py)  
+│   ├── bitcoin_examples.py               (Bitcoin animation examples)                                        #Exist and Empty  
+│   └── kaspa_examples.py                 (Kaspa animation examples)                                          #Exist and Empty  
+│    
+├── pyproject.toml                         # ← Package configuration                                          #COMPLETE  
+├── README.md                              # ← Project documentation                                          #Could Update Soon  
+└── .gitignore                             # ← Git ignore file                                                #Exists  
 
 ARCHITECTURE PRINCIPLES:  
 ------------------------  
@@ -258,121 +274,6 @@ class ColoringOutput:
 class Parent:
     name: str
     is_selected_parent: bool
-
-#TODO change label to follow primer pattern
-class BaseVisualBlock(VMobject):
-    """
-    Base class handling only visual elements and animations for blockchain blocks.
-
-    IMPORTANT: Lines are NOT submobjects and must be added to the scene separately:
-        block = VisualBlock("Label", [0,0,0], selected_parent=parent)
-        self.add(block)  # Adds square and label only
-        self.add(*block.parent_lines)  # Must manually add lines
-
-    Lines update independently using UpdateFromFunc to avoid automatic movement
-    propagation. Use create_with_lines() or create_movement_animation() to handle
-    line animations properly.
-
-    Attributes:
-        square: The main square visual element
-        label: Text label displayed on the square
-        parent_lines: List of ParentLine objects (NOT submobjects)
-
-    Note: The children list should be managed at the logical Block level,
-    not in VisualBlock. This class handles only visual rendering.
-    """
-    def __init__(self, label_text: str, position: Point3DLike, block_color: ParsableManimColor = BLUE) -> None:
-        super().__init__()
-
-        #####Sqaure#####
-        self.square = Square(
-            color=block_color,
-            fill_opacity=1,
-            side_length=0.7
-        )
-        self.square.move_to(position)
-        self.add(self.square)
-
-        #####Label#####
-        self.label = Text(
-            label_text,
-            font_size=24,
-            color=WHITE
-        )
-        self.label.move_to(self.square.get_center())
-        self._label_text = label_text
-        self.add(self.label)
-
-        #####Parent Relationship#####
-        self.parent_lines = []
-
-    def create_with_lines(self, **kwargs):
-        """Create animation including block and all lines"""
-        block_creation = Create(self, **kwargs)
-        line_creations = [Create(line, **kwargs) for line in self.parent_lines]
-        return AnimationGroup(block_creation, *line_creations)
-
-    def create_movement_animation(self, animation):
-        """
-        Wrap movement animation with line updates.
-
-        Usage:
-            self.play(block.create_movement_animation(block.animate.shift(RIGHT)))
-        """
-        line_updates = [line.create_update_animation() for line in self.parent_lines]
-        return AnimationGroup(animation, *line_updates)
-
-class BitcoinVisualBlock(BaseVisualBlock):
-    """
-    Bitcoin block visualization with single-parent chain structure.
-
-    Bitcoin uses a longest-chain consensus where each block has exactly
-    one parent, forming a linear chain. The parent line is colored BLUE.
-
-    Attributes:
-        parent_line: Single ParentLine to the parent block (if exists)
-    """
-    def __init__(self, label_text: str, position: Point3DLike,
-                 block_color: ParsableManimColor = BLUE,
-                 parent: Optional[BitcoinVisualBlock] = None) -> None:
-        super().__init__(label_text, position, block_color)
-
-        if parent:
-            self.parent_line = ParentLine(
-                this_block=self.square,
-                parent_block=parent.square,
-                line_color=BLUE
-            )
-            self.parent_lines = [self.parent_line]
-
-class KaspaVisualBlock(BaseVisualBlock):
-    """
-    Kaspa block visualization with multi-parent DAG structure.
-
-    Kaspa uses GHOSTDAG consensus where blocks can have multiple parents.
-    The first parent in the list is the selected parent (BLUE line),
-    while other parents have WHITE lines.
-
-    Attributes:
-        parent_lines: List of ParentLine objects to all parent blocks
-
-    Note: First parent in constructor's parents list is the selected parent.
-    """
-    def __init__(self, label_text: str, position: Point3DLike,
-                 block_color: ParsableManimColor = BLUE,
-                 parents: Optional[list[KaspaVisualBlock]] = None) -> None:
-        super().__init__(label_text, position, block_color)
-
-        if parents:
-            for i, parent in enumerate(parents):
-                is_selected = (i == 0)  # First parent is selected
-                line_color = BLUE if is_selected else WHITE
-                line = ParentLine(
-                    this_block=self.square,
-                    parent_block=parent.square,
-                    line_color=line_color
-                )
-                self.parent_lines.append(line)
 
 #todo remove dag dependency
 #TODO fix this since changing to BaseVisualBlock(or remome logical block to bitcoin/kaspa subfolders)
@@ -2429,35 +2330,7 @@ class BTCBlock:
 
         return reachable
 # verified BTCBlock and ParentLine does not chew through ram, builds anims very fast, will apply the same fix to DAGs
-class ParentLine(Line):
-    """Uses no updater, update from func during movement anims on either parent or child block.square"""
-    def __init__(self, this_block, parent_block, line_color=WHITE):
-        """REQUIREMENT pass the blocks square NOT the block"""
-        super().__init__(
-            start=this_block.get_left(),
-            end=parent_block.get_right(),
-            buff=0.1,
-            color=line_color,
-            stroke_width=5,
-            cap_style = CapStyleType.ROUND
-        )
 
-        self.this_block = this_block
-        self.parent_block = parent_block
-        self._fixed_stroke_width = 5
-
-    def _update_position_and_size(self, mobject):
-        new_start = self.this_block.get_left()
-        new_end = self.parent_block.get_right()
-        self.set_stroke(width=self._fixed_stroke_width)
-        self.set_points_by_ends(new_start, new_end, buff=self.buff)
-
-    def create_update_animation(self):
-        return UpdateFromFunc(
-            self,
-            update_function=self._update_position_and_size,
-            suspend_mobject_updating=False
-        )
 
 #TODO network simulation for visualizing block propagation
 class Node(Square):

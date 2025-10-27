@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from manim.typing import Point3DLike
-from common import *
+from blanim import *
 import random
 from typing import TYPE_CHECKING, Literal
 
@@ -3077,12 +3076,12 @@ class SelfishMiningSquares:
         --------
         :meth:`_calculate_block_position` : Uses parent to calculate position
         """
-        chain = self.selfish_chain if chain_type == "selfish" else self.honest_chain
+        chain_stub = self.selfish_chain if chain_type == "selfish" else self.honest_chain
 
-        if not chain.blocks:
+        if not chain_stub.blocks:
             return self.genesis
         else:
-            return chain.blocks[-1]
+            return chain_stub.blocks[-1]
 
     def _calculate_block_position(self, parent: Block, chain_type: str) -> Point3DLike:
         """Calculate position for new block based on parent and chain type.
@@ -4382,8 +4381,8 @@ class SelfishMiningSquares:
         :meth:`Block.has_line` : Checks if block has a connecting line
         """
         anims = []
-        for chain in chains:
-            for block in chain.blocks:
+        for chain_stub in chains:
+            for block in chain_stub.blocks:
                 if block.has_line() and isinstance(block.line, FollowLine):
                     anims.append(block.line.create_update_animation())
         return anims

@@ -1,6 +1,8 @@
-# blanim/common_examples.py
+# blanim/examples/common_examples.py
 
-from common import *
+from blanim import *
+
+#TODO this should be renamed to be hud_2d_scene_examples since common is marked for deletion
 
 """        
 Camera Animation Patterns - Common Mistakes        
