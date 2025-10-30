@@ -1,8 +1,12 @@
-# blanim/blanim/blockDAGs/kaspa/visual_block.py
+# blanim\blanim\blockDAGs\kaspa\visual_block.py
 
 from __future__ import annotations
 
+__all__ = ["KaspaVisualBlock"]
+
 from typing import Optional
+
+from .config import KaspaBlockConfig, DEFAULT_KASPA_CONFIG
 
 from manim.typing import Point3DLike
 
@@ -67,30 +71,53 @@ class KaspaVisualBlock(BaseVisualBlock):
     """
     parent_lines: list[ParentLine]
 
-    def __init__(self, label_text: str, position: Point3DLike,
-                 block_color: ParsableManimColor = BLUE,
-                 parents: Optional[list[KaspaVisualBlock]] = None) -> None:
-        super().__init__(label_text, position, block_color)
+    def __init__(
+            self,
+            label_text: str,
+            position: Point3DLike,
+            parents: list[KaspaVisualBlock] | None = None,
+            block_config: KaspaBlockConfig = DEFAULT_KASPA_CONFIG
+    ) -> None:
+        # Store config
+        self.config = block_config
 
-        self.parent_lines = []
+        # Pass config values to BaseVisualBlock
+        super().__init__(
+            label_text=label_text,
+            position=position,
+            block_color=self.config.block_color,
+            fill_opacity=self.config.fill_opacity,
+            stroke_color=self.config.stroke_color,
+            stroke_width=self.config.stroke_width,
+            side_length=self.config.side_length,
+            label_font_size=self.config.label_font_size,
+            label_color=self.config.label_color,
+            create_run_time=self.config.create_run_time,
+            label_change_run_time=self.config.label_change_run_time
+        )
 
+        # Handle parent lines with config
+        self.children = []
         if parents:
+            self.parent_lines = []
             for i, parent in enumerate(parents):
-                is_selected = (i == 0)  # First parent is selected
-                line_color = BLUE if is_selected else WHITE
-                line = ParentLine(
-                    this_block=self.square,
-                    parent_block=parent.square,
+                line_color = self.config.selected_parent_color if i == 0 else self.config.other_parent_color
+                parent_line = ParentLine(
+                    self.square,
+                    parent.square,
                     line_color=line_color
                 )
-                self.parent_lines.append(line)
+                self.parent_lines.append(parent_line)
+                parent.children.append(self)
+        else:
+            self.parent_lines = []
 
     def create_with_lines(self, **kwargs):
         """Create animation for block, label, and parent lines."""
         base_animation_group = super().create_with_label(**kwargs)
 
         if self.parent_lines:
-            run_time = kwargs.get('run_time', 1.0)
+            run_time = kwargs.get('run_time', self.config.create_run_time)
             animations = list(base_animation_group.animations)
 
             # Add all parent line creations
@@ -133,5 +160,16 @@ class KaspaVisualBlock(BaseVisualBlock):
         propagation. This is critical for DAG structures where blocks may
         have complex parent-child relationships.
         """
-        line_updates = [line.create_update_animation() for line in self.parent_lines]
-        return AnimationGroup(animation, *line_updates)
+        animations = [animation]
+
+        # Update this block's parent lines
+        animations.extend([line.create_update_animation() for line in self.parent_lines])
+
+        # Update child lines (lines from children pointing to this block)
+        for child in self.children:
+            for line in child.parent_lines:
+                # Only update lines that point to this block
+                if line.parent_block == self.square:
+                    animations.append(line.create_update_animation())
+
+        return AnimationGroup(*animations) if len(animations) > 1 else animation

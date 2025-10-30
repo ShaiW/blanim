@@ -14,6 +14,7 @@ from manim.typing import Point3DLike
 from blanim import *
 
 #TODO changed to using BaseVisualBlock, have not updated anything beyond BaseVisualBlock, BitcoinVisualBlock, or KaspaVisualBlock
+#TODO update the structure, since we have removed "utils" and now have a config in Kaspa and Bitcoin
 """
 PLANNED BLANIM PROJECT FILE STRUCTURE
 may contain errors or evolve as project takes shape
@@ -45,10 +46,6 @@ blanim/                                    # ← Project root directory         
 │   │   │   │   ├── standard_chain.py    (StandardChain - normal consensus)                                   #Exists and Empty
 │   │   │   │   ├── selfish_mining.py    (SelfishMiningChain - attack demo)                                   #Exists and Empty
 │   │   │   │   └── simulation.py        (SimulationChain - realistic sim)                                    #Exists and Empty
-│   │   │   └── utils/                    (Bitcoin-specific utilities)                                        #Exists
-│   │   │       ├── __init__.py                                                                               #Exists and Empty
-│   │   │       ├── colors.py             (Bitcoin color scheme)                                              #Exists and Empty
-│   │   │       └── layouts.py            (Linear chain layout algorithms - may be empty)                     #exists and Empty
 │   │   │    
 │   │   ├── kaspa/                                                                                            #Exists and Empty
 │   │   │   ├── __init__.py                                                                                   #Exists and Empty
@@ -66,24 +63,12 @@ blanim/                                    # ← Project root directory         
 │   │   │   │   ├── ordering.py          (GHOSTDAG ordering algorithm)                                        #Exists and Empty
 │   │   │   │   ├── tree_conversion.py   (DAG to tree visualization)                                          #Exists and Empty
 │   │   │   │   └── blue_set.py          (Blue set computation)                                               #Exists and Empty
-│   │   │   └── utils/                    (Kaspa-specific utilities)                                          #Exists  
-│   │   │       ├── __init__.py                                                                               #Exists and Empty  
-│   │   │       ├── colors.py             (Kaspa color scheme)                                                #Exists and Empty  
-│   │   │       └── layouts.py            (DAG layout algorithms)                                             #Exists and Empty
 │   │   │    
 │   │   └── ethereum/                     (Future blockchain example)    
 │   │       ├── __init__.py    
 │   │       ├── visual_block.py    
 │   │       ├── logical_block.py    
-│   │       └── utils/                    (Ethereum-specific utilities)    
-│   │           ├── __init__.py    
-│   │           ├── colors.py    
-│   │           └── layouts.py    
 │   │    
-│   └── utils/                            (Core/default utilities - optional)                                 #Exists and Empty
-│       ├── __init__.py                                                                                       #COMPLETE  
-│       ├── colors.py                     (Default color schemes)                                             #Exist and Empty  
-│       └── layouts.py                    (Default layout algorithms)                                         #Exist and Empty  
 │    
 ├── examples/                              # ← Example/demo scenes                                            #Exists
 │   ├── __init__.py                                                                                           #COMPLETE  

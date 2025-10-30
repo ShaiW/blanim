@@ -1,8 +1,12 @@
-# blanim/blanim/blockDAGs/bitcoin/visual_block.py
+# blanim\blanim\blockDAGs\bitcoin\visual_block.py
 
 from __future__ import annotations
 
+__all__ = ["BitcoinVisualBlock"]
+
 from typing import Optional
+
+from .config import BitcoinBlockConfig, DEFAULT_BITCOIN_CONFIG
 
 from manim.typing import Point3DLike
 
@@ -53,19 +57,45 @@ class BitcoinVisualBlock(BaseVisualBlock):
     KaspaVisualBlock : Multi-parent DAG alternative
     BaseVisualBlock : Base class for all visual blocks
     """
-    def __init__(self, label_text: str, position: Point3DLike,
-                 block_color: ParsableManimColor = BLUE,
-                 parent: Optional[BitcoinVisualBlock] = None) -> None:
-        super().__init__(label_text, position, block_color)
 
-        self.parent_line = None
+    def __init__(
+            self,
+            label_text: str,
+            position: Point3DLike,
+            parent: Optional[BitcoinVisualBlock] = None,
+            block_config: BitcoinBlockConfig = DEFAULT_BITCOIN_CONFIG
+    ) -> None:
+        # Store config
+        self.config = block_config
 
+        # Pass config values to BaseVisualBlock
+        super().__init__(
+            label_text=label_text,
+            position=position,
+            block_color=self.config.block_color,
+            fill_opacity=self.config.fill_opacity,
+            stroke_color=self.config.stroke_color,
+            stroke_width=self.config.stroke_width,
+            side_length=self.config.side_length,
+            label_font_size=self.config.label_font_size,
+            label_color=self.config.label_color,
+            create_run_time=self.config.create_run_time,
+            label_change_run_time=self.config.label_change_run_time
+        )
+
+        self.children = []
+
+        # Handle parent line with config
         if parent:
             self.parent_line = ParentLine(
-                this_block=self.square,
-                parent_block=parent.square,
-                line_color=BLUE
+                self.square,
+                parent.square,
+                line_color=self.config.line_color
             )
+            parent.children.append(self)
+        else:
+            self.parent_line = None
+
 
     def create_with_lines(self, **kwargs):
         """Create animation for block, label, and parent line.
@@ -114,7 +144,7 @@ class BitcoinVisualBlock(BaseVisualBlock):
 
         # If there's a parent line, add it to the animations
         if self.parent_line:
-            run_time = kwargs.get('run_time', 1.0)
+            run_time = kwargs.get('run_time', self.config.create_run_time)
             # Extract animations from base group and add line creation
             animations = list(base_animation_group.animations)
             animations.append(Create(self.parent_line, run_time=run_time))
@@ -155,7 +185,15 @@ class BitcoinVisualBlock(BaseVisualBlock):
         The line update uses UpdateFromFunc to avoid automatic movement
         propagation that would occur if lines were submobjects.
         """
+        animations = [animation]
+
+        # Update this block's parent line
         if self.parent_line:
-            line_update = self.parent_line.create_update_animation()
-            return AnimationGroup(animation, line_update)
-        return animation
+            animations.append(self.parent_line.create_update_animation())
+
+        # Update child lines (lines from children pointing to this block)
+        for child in self.children:
+            if child.parent_line:
+                animations.append(child.parent_line.create_update_animation())
+
+        return AnimationGroup(*animations) if len(animations) > 1 else animation

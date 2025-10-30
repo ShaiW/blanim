@@ -345,7 +345,7 @@ class HUD2DScene(ThreeDScene):
         return super().play(*processed_args, **kwargs)
 
     def narrate(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
-        """Update upper narration text with animation.
+        r"""Update upper narration text with animation.
 
         Uses the primer pattern to transform the upper narration text. The primer
         mobject is mutated to display the new text while remaining fixed in frame.
@@ -457,7 +457,7 @@ class HUD2DScene(ThreeDScene):
         )
 
     def caption(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
-        """Update lower caption text with animation.
+        r"""Update lower caption text with animation.
 
         Uses the primer pattern to transform the lower caption text. The primer
         mobject is mutated to display the new text while remaining fixed in frame.
