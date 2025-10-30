@@ -14,7 +14,6 @@ from manim.typing import Point3DLike
 from blanim import *
 
 #TODO changed to using BaseVisualBlock, have not updated anything beyond BaseVisualBlock, BitcoinVisualBlock, or KaspaVisualBlock
-#TODO update the structure, since we have removed "utils" and now have a config in Kaspa and Bitcoin
 """
 PLANNED BLANIM PROJECT FILE STRUCTURE
 may contain errors or evolve as project takes shape
@@ -23,62 +22,58 @@ may contain errors or evolve as project takes shape
 Planned architecture for blockchain animation project supporting  
 multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).  
 
-blanim/                                    # ← Project root directory                                         #Exists  
-├── blanim/                                # ← Python package directory                                       #Exists  
-│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE  
-│   ├── core/                                                                                                 #Exists  
-│   │   ├── __init__.py                                                                                       #COMPLETE
-│   │   ├── base_visual_block.py          (BaseVisualBlock class)                                             #COMPLETE  
-│   │   ├── parent_line.py                (ParentLine class)                                                  #COMPLETE  
-│   │   ├── dag_structures.py             (Base DAG/Chain classes)                                            #Exists  Need to determine what/if is part of base DAGs  
-│   │   └── hud_2d_scene.py               (HUD2DScene, Scene/engine)                                          #COMPLETE  
-│   │    
-│   ├── blockDAGs/                                                                                            #Exists
-│   │   ├── __init__.py                                                                                       #Exists and Empty
-│   │   ├── bitcoin/                                                                                          #Exists
-│   │   │   ├── __init__.py                                                                                   #Exists
-│   │   │   ├── visual_block.py           (BitcoinVisualBlock)                                                #Exists
-│   │   │   ├── logical_block.py          (BitcoinBlock with chain logic)                                     #Exists
-│   │   │   ├── chains/                   (Different chain mode implementations)                              #COMPLETE
-│   │   │   │   ├── __init__.py                                                                               #Exists
-│   │   │   │   ├── base_chain.py        (BaseBitcoinChain - shared logic)                                    #Exists and Empty
-│   │   │   │   ├── free_chain.py        (FreeChain - no validation mode)                                     #Exists and Empty
-│   │   │   │   ├── standard_chain.py    (StandardChain - normal consensus)                                   #Exists and Empty
-│   │   │   │   ├── selfish_mining.py    (SelfishMiningChain - attack demo)                                   #Exists and Empty
-│   │   │   │   └── simulation.py        (SimulationChain - realistic sim)                                    #Exists and Empty
-│   │   │    
-│   │   ├── kaspa/                                                                                            #Exists and Empty
-│   │   │   ├── __init__.py                                                                                   #Exists and Empty
-│   │   │   ├── visual_block.py           (KaspaVisualBlock)                                                  #Exists
-│   │   │   ├── logical_block.py          (KaspaBlock with DAG logic)                                         #Exists and Empty
-│   │   │   ├── dags/                     (Different DAG mode implementations)                                #Exists
-│   │   │   │   ├── __init__.py                                                                               #Exists and Empty
-│   │   │   │   ├── base_dag.py          (BaseKaspaDAG - shared logic)                                        #Exists and Empty
-│   │   │   │   ├── free_dag.py          (FreeDAG - no validation mode)                                       #Exists and Empty
-│   │   │   │   ├── standard_dag.py      (StandardDAG - normal GHOSTDAG consensus)                            #Exists and Empty
-│   │   │   │   ├── ghostdag_demo.py     (GHOSTDAGDemo - visualize GHOSTDAG ordering)                         
-│   │   │   │   └── simulation.py        (SimulationDAG - realistic DAG sim)                                  #Exists and Empty
-│   │   │   ├── ghostdag/                 (GHOSTDAG-specific logic)                                           #Exists
-│   │   │   │   ├── __init__.py                                                                               #Exists and Empty
-│   │   │   │   ├── ordering.py          (GHOSTDAG ordering algorithm)                                        #Exists and Empty
-│   │   │   │   ├── tree_conversion.py   (DAG to tree visualization)                                          #Exists and Empty
-│   │   │   │   └── blue_set.py          (Blue set computation)                                               #Exists and Empty
-│   │   │    
-│   │   └── ethereum/                     (Future blockchain example)    
-│   │       ├── __init__.py    
-│   │       ├── visual_block.py    
-│   │       ├── logical_block.py    
-│   │    
-│    
-├── examples/                              # ← Example/demo scenes                                            #Exists
-│   ├── __init__.py                                                                                           #COMPLETE  
-│   ├── hud_2d_scene_examples.py          (HUD2DScene examples)                                               #COMPLETE (renamed from common_examples.py)  
-│   ├── bitcoin_examples.py               (Bitcoin animation examples)                                        #Exist and Empty  
-│   └── kaspa_examples.py                 (Kaspa animation examples)                                          #Exist and Empty  
-│    
-├── pyproject.toml                         # ← Package configuration                                          #COMPLETE  
-├── README.md                              # ← Project documentation                                          #Could Update Soon  
-└── .gitignore                             # ← Git ignore file                                                #Exists  
+blanim/                                    # ← Project root directory                                         #Exists    
+├── blanim/                                # ← Python package directory                                       #Exists    
+│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE    
+│   ├── core/                                                                                                 #Exists    
+│   │   ├── __init__.py                                                                                       #COMPLETE  
+│   │   ├── base_visual_block.py          # BaseVisualBlock class                                             #COMPLETE    
+│   │   ├── parent_line.py                # ParentLine class                                                  #COMPLETE    
+│   │   ├── dag_structures.py             # Base DAG/Chain classes                                            #Exists - Need to determine what/if is part of base DAGs    
+│   │   └── hud_2d_scene.py               # HUD2DScene, Scene/engine                                          #COMPLETE    
+│   │      
+│   └── blockDAGs/                                                                                            #Exists  
+│       ├── __init__.py                                                                                       #Exists and Empty  
+│       ├── bitcoin/                                                                                          #Exists  
+│       │   ├── __init__.py                                                                                   #Exists  
+│       │   ├── config.py                 # Bitcoin configuration                                             #NEW  
+│       │   ├── visual_block.py           # BitcoinVisualBlock                                                #Exists  
+│       │   ├── logical_block.py          # BitcoinBlock with chain logic                                     #Exists  
+│       │   └── chains/                   # Different chain mode implementations                              #COMPLETE  
+│       │       ├── __init__.py                                                                               #Exists  
+│       │       ├── base_chain.py         # BaseBitcoinChain - shared logic                                   #Exists and Empty  
+│       │       ├── free_chain.py         # FreeChain - no validation mode                                    #Exists and Empty  
+│       │       ├── standard_chain.py     # StandardChain - normal consensus                                  #Exists and Empty  
+│       │       ├── selfish_mining.py     # SelfishMiningChain - attack demo                                  #Exists and Empty  
+│       │       └── simulation.py         # SimulationChain - realistic sim                                   #Exists and Empty  
+│       │      
+│       └── kaspa/                                                                                            #Exists  
+│           ├── __init__.py                                                                                   #Exists and Empty  
+│           ├── config.py                 # Kaspa configuration                                               #NEW  
+│           ├── visual_block.py           # KaspaVisualBlock                                                  #Exists  
+│           ├── logical_block.py          # KaspaBlock with DAG logic                                         #Exists and Empty  
+│           ├── dags/                     # Different DAG mode implementations                                #Exists  
+│           │   ├── __init__.py                                                                               #Exists and Empty  
+│           │   ├── base_dag.py           # BaseKaspaDAG - shared logic                                       #Exists and Empty  
+│           │   ├── free_dag.py           # FreeDAG - no validation mode                                      #Exists and Empty  
+│           │   ├── standard_dag.py       # StandardDAG - normal GHOSTDAG consensus                           #Exists and Empty  
+│           │   ├── ghostdag_demo.py      # GHOSTDAGDemo - visualize GHOSTDAG ordering                        #Exists and Empty  
+│           │   └── simulation.py         # SimulationDAG - realistic DAG sim                                 #Exists and Empty  
+│           └── ghostdag/                 # GHOSTDAG-specific logic                                           #Exists  
+│               ├── __init__.py                                                                               #Exists and Empty  
+│               ├── ordering.py           # GHOSTDAG ordering algorithm                                       #Exists and Empty  
+│               ├── tree_conversion.py    # DAG to tree visualization                                         #Exists and Empty  
+│               └── blue_set.py           # Blue set computation                                              #Exists and Empty  
+│      
+├── examples/                              # ← Example/demo scenes                                            #Exists  
+│   ├── __init__.py                                                                                           #COMPLETE    
+│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                               #COMPLETE (renamed from common_examples.py)    
+│   ├── bitcoin_examples.py               # Bitcoin animation examples                                        #Exist and Empty    
+│   └── kaspa_examples.py                 # Kaspa animation examples                                          #Exist and Empty    
+│      
+├── pyproject.toml                         # ← Package configuration                                          #COMPLETE    
+├── README.md                              # ← Project documentation                                          #Could Update Soon    
+└── .gitignore                             # ← Git ignore file                                                #Exists
 
 ARCHITECTURE PRINCIPLES:  
 ------------------------  
@@ -97,16 +92,14 @@ ARCHITECTURE PRINCIPLES:
    - Visual classes inherit from BaseVisualBlock (VMobject)  
    - Logical classes inherit from visual classes and add domain logic  
 
-4. Utils Organization:  
-   - Each blockchain has its own utils/ subdirectory  
-   - Complete isolation - blockchain-specific colors, layouts, and helpers  
-   - No cross-imports between blockchain utils packages  
-   - Optional: Keep blanim/utils/ for shared defaults that blockchains can  
-     reference if needed, but each blockchain defines its own  
+4. Config Organization:  
+   - Each blockchain has its own config
+   - Complete isolation - blockchain-specific colors, timings, ect
+   - No cross-imports between blockchain config packages  
+   - Can be overridden at the script level for user scenes 
 
 5. Scene Organization:  
    - Animations grouped by blockchain type in scenes/  
-   - Cross-blockchain comparisons in comparison_scenes.py  
 
 IMPORT PATTERNS:  
 ----------------  
