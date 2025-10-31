@@ -2,6 +2,7 @@
 
 __all__ = [
     "BaseVisualBlock",
+    "BaseLogicalBlock",
     "ParentLine",
     "HUD2DScene",
     "UniversalNarrationManager",
@@ -11,6 +12,7 @@ __all__ = [
     # Add other core classes as you implement them
 ]
 
+from .base_logical_block import *
 from .base_visual_block import *
 from .parent_line import *
 from .hud_2d_scene import *

@@ -22,57 +22,58 @@ may contain errors or evolve as project takes shape
 Planned architecture for blockchain animation project supporting  
 multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).  
 
-blanim/                                    # ← Project root directory                                         #Exists    
-├── blanim/                                # ← Python package directory                                       #Exists    
+blanim/                                    # ← Project root directory                                         
+├── blanim/                                # ← Python package directory                                      
 │   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE    
-│   ├── core/                                                                                                 #Exists    
+│   ├── core/                                                                                                     
 │   │   ├── __init__.py                                                                                       #COMPLETE  
 │   │   ├── base_visual_block.py          # BaseVisualBlock class                                             #COMPLETE    
+│   │   ├── base_logical_block.py         # BaseLogicalBlock class                                            #COMPLETE    
 │   │   ├── parent_line.py                # ParentLine class                                                  #COMPLETE    
 │   │   ├── dag_structures.py             # Base DAG/Chain classes                                            #Exists - Need to determine what/if is part of base DAGs    
-│   │   └── hud_2d_scene.py               # HUD2DScene, Scene/engine                                          #COMPLETE    
+│   │   └── hud_2d_scene.py               # HUD2DScene, Scene/engine                                          #COMPLETE
 │   │      
-│   └── blockDAGs/                                                                                            #Exists  
-│       ├── __init__.py                                                                                       #Exists and Empty  
-│       ├── bitcoin/                                                                                          #Exists  
-│       │   ├── __init__.py                                                                                   #Exists  
-│       │   ├── config.py                 # Bitcoin configuration                                             #NEW  
-│       │   ├── visual_block.py           # BitcoinVisualBlock                                                #Exists  
-│       │   ├── logical_block.py          # BitcoinBlock with chain logic                                     #Exists  
-│       │   └── chains/                   # Different chain mode implementations                              #COMPLETE  
-│       │       ├── __init__.py                                                                               #Exists  
+│   └── blockDAGs/                                                                                              
+│       ├── __init__.py                                                                                       #Complete?  
+│       ├── bitcoin/                                                                                            
+│       │   ├── __init__.py                                                                                   #Complete?
+│       │   ├── config.py                 # Bitcoin configuration                                             #Complete?
+│       │   ├── visual_block.py           # BitcoinVisualBlock                                                #Complete?  
+│       │   ├── logical_block.py          # BitcoinBlock with chain logic                                     #Exists
+│       │   └── chains/                   # Different chain mode implementations                              
+│       │       ├── __init__.py                                                                               #Exists and Empty
 │       │       ├── base_chain.py         # BaseBitcoinChain - shared logic                                   #Exists and Empty  
 │       │       ├── free_chain.py         # FreeChain - no validation mode                                    #Exists and Empty  
 │       │       ├── standard_chain.py     # StandardChain - normal consensus                                  #Exists and Empty  
 │       │       ├── selfish_mining.py     # SelfishMiningChain - attack demo                                  #Exists and Empty  
 │       │       └── simulation.py         # SimulationChain - realistic sim                                   #Exists and Empty  
 │       │      
-│       └── kaspa/                                                                                            #Exists  
-│           ├── __init__.py                                                                                   #Exists and Empty  
-│           ├── config.py                 # Kaspa configuration                                               #NEW  
-│           ├── visual_block.py           # KaspaVisualBlock                                                  #Exists  
+│       └── kaspa/                                                                                            
+│           ├── __init__.py                                                                                   #Complete?
+│           ├── config.py                 # Kaspa configuration                                               #Complete?
+│           ├── visual_block.py           # KaspaVisualBlock                                                  #Complete?
 │           ├── logical_block.py          # KaspaBlock with DAG logic                                         #Exists and Empty  
-│           ├── dags/                     # Different DAG mode implementations                                #Exists  
+│           ├── dags/                     # Different DAG mode implementations                                  
 │           │   ├── __init__.py                                                                               #Exists and Empty  
 │           │   ├── base_dag.py           # BaseKaspaDAG - shared logic                                       #Exists and Empty  
 │           │   ├── free_dag.py           # FreeDAG - no validation mode                                      #Exists and Empty  
 │           │   ├── standard_dag.py       # StandardDAG - normal GHOSTDAG consensus                           #Exists and Empty  
 │           │   ├── ghostdag_demo.py      # GHOSTDAGDemo - visualize GHOSTDAG ordering                        #Exists and Empty  
 │           │   └── simulation.py         # SimulationDAG - realistic DAG sim                                 #Exists and Empty  
-│           └── ghostdag/                 # GHOSTDAG-specific logic                                           #Exists  
+│           └── ghostdag/                 # GHOSTDAG-specific logic                                           #MOVE TO kaspa/ghostdag.py instead?  
 │               ├── __init__.py                                                                               #Exists and Empty  
 │               ├── ordering.py           # GHOSTDAG ordering algorithm                                       #Exists and Empty  
 │               ├── tree_conversion.py    # DAG to tree visualization                                         #Exists and Empty  
 │               └── blue_set.py           # Blue set computation                                              #Exists and Empty  
 │      
-├── examples/                              # ← Example/demo scenes                                            #Exists  
-│   ├── __init__.py                                                                                           #COMPLETE    
-│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                               #COMPLETE (renamed from common_examples.py)    
-│   ├── bitcoin_examples.py               # Bitcoin animation examples                                        #Exist and Empty    
-│   └── kaspa_examples.py                 # Kaspa animation examples                                          #Exist and Empty    
+├── examples/                              # ← Example/demo scenes                                            
+│   ├── __init__.py                                                                                           #COMPLETE
+│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                               #COMPLETE
+│   ├── bitcoin_examples.py               # Bitcoin animation examples                                        #Some Examples
+│   └── kaspa_examples.py                 # Kaspa animation examples                                          #Exist and Empty
 │      
-├── pyproject.toml                         # ← Package configuration                                          #COMPLETE    
-├── README.md                              # ← Project documentation                                          #Could Update Soon    
+├── pyproject.toml                         # ← Package configuration                                          #COMPLETE
+├── README.md                              # ← Project documentation                                          #Could Update Soon
 └── .gitignore                             # ← Git ignore file                                                #Exists
 
 ARCHITECTURE PRINCIPLES:  
@@ -1574,6 +1575,14 @@ class GHOSTDAG(LayerDAG):
             tips = [name for name, block in self.blocks.items() if block.is_tip()]
             return tips
 
+
+
+
+
+
+
+
+
 #TODO revisit miner later
 class Miner:
     def __init__(self, scene, x=0, y=0, attempts=20):
@@ -1705,7 +1714,7 @@ class MinerDemo(Scene):
         while m.mining():
             m.update()
 
-# TODO, removed for now to ignore(selfish_mining_bitcoin.py has replaced this for now)
+
 # class Bitcoin:
 #     def __init__(
 #             self,
@@ -2156,173 +2165,168 @@ class MinerDemo(Scene):
 #         all_blocks_at_this_round = list(set(all_blocks_at_this_round))
 #         return all_blocks_at_this_round
 
-class BTCBlock:
-    square: Square
-    name: str | int
-    parent: BTCBlock | None
-    weight: int
-    rounds_from_genesis: int
-    is_fork: bool
-    children: list[BTCBlock]
-    pointers: list
-    label: Text
-    def __init__(self, parent_ref:BTCBlock = None, name:str = ""):
-        """name should never be more than 3 characters, anything more than 5 will cause unexpected behavior"""
-        self.square = Square(
-            color="#0000FF",
-            fill_opacity=1,
-            side_length=0.8,
-            stroke_color=WHITE,
-            stroke_width=10
-        )
-
-        self.name = name
-        self.parent = None
-        self.rounds_from_genesis = 0
-
-        self.children = []
-        self.pointers = []  # TODO instead of tracking pointers manually, see if possible to automatically return an update_from_func anim when block.square OR block.parent.square is moved
-
-        if parent_ref is not None:
-            self.parent = parent_ref
-            self.rounds_from_genesis = self.parent.rounds_from_genesis + 1
-            self._shift_position_to_parent()
-            self.parent.add_self_to_children(self)
-
-        if self.name:
-            self.label = Text(str(self.name), font_size=24, color=WHITE, weight=BOLD)
-        else:
-            # Create invisible black label as placeholder
-            self.label = Text(".....", font_size=24, color=BLACK, weight=BOLD)
-
-        self.label.move_to(self.square.get_center())
-        self.square.add(self.label)
-
-
-    def add_self_to_children(self, mobject):
-        self.children.append(mobject)
-
-    def is_tip(self):
-        return not bool(self.children)
-
-    ####################
-    # Color
-    # Each returns and animation
-    ####################
-
-    def fade_blue(self):
-        return self.square.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
-
-    def fade_red(self):
-        return self.square.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
-
-    # this is supposed to work with hex string, test
-    def fade_to_color(self, to_color:ManimColor = WHITE):
-        return self.square.animate.fade_to(color=to_color, alpha=1.0, family=False)
-
-    ####################
-    # Label
-    # Returns an animation that changes the text only
-    ####################
-
-    def fade_to_next_label(self, to_label: str = ""):
-        """blocks always have a label, as a submobject of the square"""
-        new_label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
-        new_label.move_to(self.square.get_center())
-
-        return Transform(self.label, new_label)
-
-    ####################
-    # Pointers
-    ####################
-
-    def attach_pointer(self, pointer):
-        self.pointers.append(pointer)
-
-    ####################
-    # Position
-    ####################
-
-    def _shift_position_to_parent(self):
-        self.square.next_to(self.parent.square, RIGHT * 4)
-
-    ####################
-    # Animations
-    ####################
-
-    def draw(self):
-        return Create(self.square)
-
-    ####################
-    # Determine past/future/anticone
-    ####################
-
-    def get_future(self):
-        """
-        Returns an ordered list of the future blocks, sorted by weight
-        """
-        future_of_this_block = []
-        future_of_this_block.extend(self.children)
-
-        for each in self.children:
-            future_of_this_block.extend(each.get_future())
-
-        duplicates_removed = list(set(future_of_this_block))
-
-        ordered_future = self.order_list_by_weight(duplicates_removed)
-
-        return ordered_future
-
-    def get_past(self):
-        """
-        Returns an ordered list of the past blocks, sorted by weight
-        """
-        if self.parent is None:
-            return []
-
-        past_of_this_block = [self.parent]
-
-        past_of_this_block.extend(self.parent.get_past())
-
-        ordered_past = self.order_list_by_weight(past_of_this_block, descending=True)
-
-        return ordered_past
-
-    @staticmethod
-    def order_list_by_weight(list_to_order: list, descending=False):
-        """Returns an ascending list by default, set descending=True if descending list is desired"""
-        list_to_order.sort(key=lambda x: x.weight, reverse=descending)
-
-        return list_to_order
-
-    def get_reachable(self):
-        """
-        Returns an ordered list of the reachable blocks, sorted by ascending weight
-        """
-        reachable = []
-
-        reachable.extend(self.get_past())
-        reachable.extend(self.get_future())
-
-        reachable.sort(key=lambda x: x.weight)
-
-        return reachable
+# class BTCBlock:
+#     square: Square
+#     name: str | int
+#     parent: BTCBlock | None
+#     weight: int
+#     rounds_from_genesis: int
+#     is_fork: bool
+#     children: list[BTCBlock]
+#     pointers: list
+#     label: Text
+#     def __init__(self, parent_ref:BTCBlock = None, name:str = ""):
+#         """name should never be more than 3 characters, anything more than 5 will cause unexpected behavior"""
+#         self.square = Square(
+#             color="#0000FF",
+#             fill_opacity=1,
+#             side_length=0.8,
+#             stroke_color=WHITE,
+#             stroke_width=10
+#         )
+#
+#         self.name = name
+#         self.parent = None
+#         self.rounds_from_genesis = 0
+#
+#         self.children = []
+#         self.pointers = []  # instead of tracking pointers manually, automatically return an update_from_func anim when block.square OR block.parent.square is moved
+#
+#         if parent_ref is not None:
+#             self.parent = parent_ref
+#             self.rounds_from_genesis = self.parent.rounds_from_genesis + 1
+#             self._shift_position_to_parent()
+#             self.parent.add_self_to_children(self)
+#
+#         if self.name:
+#             self.label = Text(str(self.name), font_size=24, color=WHITE, weight=BOLD)
+#         else:
+#             # Create invisible black label as placeholder
+#             self.label = Text(".....", font_size=24, color=BLACK, weight=BOLD)
+#
+#         self.label.move_to(self.square.get_center())
+#         self.square.add(self.label)
+#
+#
+#     def add_self_to_children(self, mobject):
+#         self.children.append(mobject)
+#
+#     def is_tip(self):
+#         return not bool(self.children)
+#
+#     ####################
+#     # Color
+#     # Each returns and animation
+#     ####################
+#
+#     def fade_blue(self):
+#         return self.square.animate.fade_to(color=PURE_BLUE, alpha=1.0, family=False)
+#
+#     def fade_red(self):
+#         return self.square.animate.fade_to(color=PURE_RED, alpha=1.0, family=False)
+#
+#     # this is supposed to work with hex string, test
+#     def fade_to_color(self, to_color:ManimColor = WHITE):
+#         return self.square.animate.fade_to(color=to_color, alpha=1.0, family=False)
+#
+#     ####################
+#     # Label
+#     # Returns an animation that changes the text only
+#     ####################
+#
+#     def fade_to_next_label(self, to_label: str = ""):
+#         """blocks always have a label, as a submobject of the square"""
+#         new_label = Text(to_label, font_size=24, color=WHITE, weight=BOLD)
+#         new_label.move_to(self.square.get_center())
+#
+#         return Transform(self.label, new_label)
+#
+#     ####################
+#     # Pointers
+#     ####################
+#
+#     def attach_pointer(self, pointer):
+#         self.pointers.append(pointer)
+#
+#     ####################
+#     # Position
+#     ####################
+#
+#     def _shift_position_to_parent(self):
+#         self.square.next_to(self.parent.square, RIGHT * 4)
+#
+#     ####################
+#     # Animations
+#     ####################
+#
+#     def draw(self):
+#         return Create(self.square)
+#
+#     ####################
+#     # Determine past/future/anticone
+#     ####################
+#
+#     def get_future(self):
+#         """
+#         Returns an ordered list of the future blocks, sorted by weight
+#         """
+#         future_of_this_block = []
+#         future_of_this_block.extend(self.children)
+#
+#         for each in self.children:
+#             future_of_this_block.extend(each.get_future())
+#
+#         duplicates_removed = list(set(future_of_this_block))
+#
+#         ordered_future = self.order_list_by_weight(duplicates_removed)
+#
+#         return ordered_future
+#
+#     def get_past(self):
+#         """
+#         Returns an ordered list of the past blocks, sorted by weight
+#         """
+#         if self.parent is None:
+#             return []
+#
+#         past_of_this_block = [self.parent]
+#
+#         past_of_this_block.extend(self.parent.get_past())
+#
+#         ordered_past = self.order_list_by_weight(past_of_this_block, descending=True)
+#
+#         return ordered_past
+#
+#     @staticmethod
+#     def order_list_by_weight(list_to_order: list, descending=False):
+#         """Returns an ascending list by default, set descending=True if descending list is desired"""
+#         list_to_order.sort(key=lambda x: x.weight, reverse=descending)
+#
+#         return list_to_order
+#
+#     def get_reachable(self):
+#         """
+#         Returns an ordered list of the reachable blocks, sorted by ascending weight
+#         """
+#         reachable = []
+#
+#         reachable.extend(self.get_past())
+#         reachable.extend(self.get_future())
+#
+#         reachable.sort(key=lambda x: x.weight)
+#
+#         return reachable
 # verified BTCBlock and ParentLine does not chew through ram, builds anims very fast, will apply the same fix to DAGs
 
 
 #TODO network simulation for visualizing block propagation
-class Node(Square):
-    def __init__(self, peers:list):
-        super().__init__()
-        # Create a Node with a list of peers
 
-        self.side_length = 0.8
-        self.set_fill("#0000FF", opacity=1)
-
-        self.peers_list = peers
-
-
-# TODO
-#  ...
-#  CURRENT      Clean up and restart blockDAG progress, solved problems preventing progress already
-#                   should build for HUD2DScene, Narration and Camera w/chaining complete.
+# class Node(Square):
+#     def __init__(self, peers:list):
+#         super().__init__()
+#         # Create a Node with a list of peers
+#
+#         self.side_length = 0.8
+#         self.set_fill("#0000FF", opacity=1)
+#
+#         self.peers_list = peers
