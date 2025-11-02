@@ -4,11 +4,7 @@ from __future__ import annotations
 
 __all__ = ["KaspaVisualBlock"]
 
-from typing import Optional
-
 from .config import KaspaBlockConfig, DEFAULT_KASPA_CONFIG
-
-from manim.typing import Point3DLike
 
 from blanim import *
 
@@ -17,41 +13,70 @@ class KaspaVisualBlock(BaseVisualBlock):
 
     Represents a block in Kaspa's GHOSTDAG consensus where blocks can have
     multiple parents, forming a Directed Acyclic Graph (DAG). The first
-    parent in the list is the "selected parent" (BLUE line), while other
-    parents have WHITE lines.
+    parent in the list is the "selected parent" with special visual treatment,
+    while other parents are regular parent connections.
+
+    The block uses 2D coordinates (x, y) for positioning, with the z-coordinate
+    set to 0 by the base class to align with coordinate grids. Parent lines use
+    different z_index values: the selected parent line (first in list) at z_index=1,
+    and other parent lines at z_index=0, creating a visual hierarchy where regular
+    lines (z_index=0) render behind selected parent lines (z_index=1), which render
+    behind blocks (z_index=2).
 
     Parameters
     ----------
     label_text : str
         Text to display on the block (typically blue score or block number).
-    position : Point3DLike
-        3D coordinates [x, y, z] for block placement.
-    block_color : ParsableManimColor, optional
-        Color of the block square. Default is BLUE.
+    position : tuple[float, float]
+        2D coordinates (x, y) for block placement. The z-coordinate is
+        set to 0 to align with coordinate grids. Rendering order is controlled
+        via z_index (blocks at z_index=2, selected parent line at z_index=1,
+        other parent lines at z_index=0).
     parents : list[KaspaVisualBlock], optional
         List of parent blocks. First parent is the selected parent.
         If None or empty, this is a genesis block.
+    block_config : KaspaBlockConfig, optional
+        Configuration object containing all visual and animation settings.
+        Default is DEFAULT_KASPA_CONFIG.
 
     Attributes
     ----------
+    config : KaspaBlockConfig
+        Stored configuration object for the block.
     parent_lines : list[ParentLine]
         List of ParentLine objects connecting to all parent blocks.
-        First line (to selected parent) is BLUE, others are WHITE.
+        First line (to selected parent) uses selected_parent_color and z_index=1.
+        Other lines use other_parent_color and z_index=0.
+    children : list[KaspaVisualBlock]
+        List of child blocks that have this block as one of their parents.
 
     Examples
     --------
-    Creating a DAG with multiple parents::
+    Creating a simple DAG::
 
-        genesis = KaspaVisualBlock("Gen", [0, 0, 0])
-        block1 = KaspaVisualBlock("1", [1, 1, 0], parents=[genesis])
-        block2 = KaspaVisualBlock("2", [1, -1, 0], parents=[genesis])
-
-        # Block with multiple parents (selected parent first)
-        merge = KaspaVisualBlock("3", [2, 0, 0], parents=[block1, block2])
+        genesis = KaspaVisualBlock("Gen", (0, 0))
+        block1 = KaspaVisualBlock("1", (1, 1), parents=[genesis])
+        block2 = KaspaVisualBlock("2", (1, -1), parents=[genesis])
 
         self.play(genesis.create_with_lines())
         self.play(block1.create_with_lines(), block2.create_with_lines())
-        self.play(merge.create_with_lines())  # Shows BLUE and WHITE lines
+
+    Creating a block with multiple parents::
+
+        # Block with multiple parents (selected parent first)
+        merge = KaspaVisualBlock("3", (2, 0), parents=[block1, block2])
+        self.play(merge.create_with_lines())  # Shows different colored lines
+
+    Using custom configuration::
+
+        custom_config = KaspaBlockConfig(
+            block_color=GREEN,
+            selected_parent_color=PINK,
+            other_parent_color=LIGHT_GRAY,
+            create_run_time=2.5
+        )
+        block = KaspaVisualBlock("Custom", (0, 0), block_config=custom_config)
+        self.play(block.create_with_lines())
 
     Moving a block with multiple line updates::
 
@@ -59,22 +84,34 @@ class KaspaVisualBlock(BaseVisualBlock):
             merge.animate.shift(UP)
         ))  # All parent lines update automatically
 
+    Notes
+    -----
+    The selected parent (first in list) determines the block's position in
+    the GHOSTDAG ordering and receives special visual treatment through both
+    color (configured via selected_parent_color) and z_index (z_index=1).
+
+    The z_index creates a clear visual hierarchy:
+    - Regular lines and non-selected parent lines: z_index=0 (back)
+    - Selected parent line: z_index=1 (middle)
+    - Blocks: z_index=2 (front)
+
+    All objects remain at z-coordinate 0 to avoid 3D projection issues in HUD2DScene.
+
+    The children list is automatically maintained when blocks are created
+    with parents, enabling automatic line updates when parent blocks move.
+
     See Also
     --------
     BitcoinVisualBlock : Single-parent chain alternative
     BaseVisualBlock : Base class for all visual blocks
-
-    Notes
-    -----
-    The selected parent (first in list) determines the block's position in
-    the GHOSTDAG ordering and receives special visual treatment (BLUE line).
+    KaspaBlockConfig : Configuration object for Kaspa blocks
     """
     parent_lines: list[ParentLine]
 
     def __init__(
             self,
             label_text: str,
-            position: Point3DLike,
+            position: tuple[float, float],
             parents: list[KaspaVisualBlock] | None = None,
             block_config: KaspaBlockConfig = DEFAULT_KASPA_CONFIG
     ) -> None:
@@ -107,13 +144,69 @@ class KaspaVisualBlock(BaseVisualBlock):
                     parent.square,
                     line_color=line_color
                 )
+                parent_line.set_z_index(1 if i == 0 else 0)
                 self.parent_lines.append(parent_line)
                 parent.children.append(self)
         else:
             self.parent_lines = []
 
     def create_with_lines(self, **kwargs):
-        """Create animation for block, label, and parent lines."""
+        """Create animation for block, label, and all parent lines.
+
+        Extends the base class's create_with_label() method by adding
+        animations for all parent line creations. All animations (block creation,
+        label fade-in/grow, and line drawing) run simultaneously with
+        matching run_time for synchronized visual effects.
+
+        Parameters
+        ----------
+        **kwargs
+            Keyword arguments passed to Create animations (e.g., run_time).
+            If not provided, uses self.config.create_run_time.
+
+        Returns
+        -------
+        AnimationGroup
+            Combined animation for block, label, and all line creations. If no
+            parent lines exist (genesis block), returns only the base
+            animation group.
+
+        Examples
+        --------
+        Creating a Kaspa DAG::
+
+            genesis = KaspaVisualBlock("Gen", (0, 0))
+            block1 = KaspaVisualBlock("1", (1, 1), parents=[genesis])
+            block2 = KaspaVisualBlock("2", (1, -1), parents=[genesis])
+            merge = KaspaVisualBlock("3", (2, 0), parents=[block1, block2])
+
+            # Draw blocks with their parent lines
+            self.play(genesis.create_with_lines())
+            self.play(block1.create_with_lines(), block2.create_with_lines())
+            self.play(merge.create_with_lines())  # Creates 2 parent lines
+
+        With custom run time::
+
+            self.play(merge.create_with_lines(run_time=3.0))
+
+        Notes
+        -----
+        This method demonstrates the extension pattern where child classes
+        reuse parent animation logic by calling super().create_with_label()
+        and extending the returned AnimationGroup, avoiding code duplication.
+
+        For genesis blocks (no parents), this method returns the same result
+        as create_with_label() from the base class.
+
+        All parent lines are created simultaneously, with the selected parent
+        line (first in list) using a different color and z-ordering than
+        other parent lines.
+
+        See Also
+        --------
+        BaseVisualBlock.create_with_label : Base animation method
+        create_movement_animation : Animate block movement with line updates
+        """
         base_animation_group = super().create_with_label(**kwargs)
 
         if self.parent_lines:
@@ -131,9 +224,10 @@ class KaspaVisualBlock(BaseVisualBlock):
     def create_movement_animation(self, animation):
         """Wrap movement animation with automatic updates for all parent lines.
 
-        When a block moves, all its parent lines must update to maintain
-        connections. This method wraps any movement animation with
-        UpdateFromFunc animations for each line.
+        When a block moves, all its parent lines and all child lines must update
+        to maintain their connections. This method wraps any movement animation
+        with UpdateFromFunc animations for each line, ensuring the entire DAG
+        structure remains visually connected during movement.
 
         Parameters
         ----------
@@ -142,23 +236,59 @@ class KaspaVisualBlock(BaseVisualBlock):
 
         Returns
         -------
-        AnimationGroup
-            Animation group containing the movement and all line updates.
+        AnimationGroup or Animation
+            If parent_lines or children exist, returns AnimationGroup with
+            line updates. Otherwise, returns the original animation unchanged.
 
         Examples
         --------
-        ::
+        Moving a single block::
 
-            # Move block with multiple parents
-            self.play(merge_block.create_movement_animation(
-                merge_block.animate.shift(RIGHT * 2)
+            block = KaspaVisualBlock("1", (0, 0), parents=[genesis])
+            self.play(block.create_movement_animation(
+                block.animate.shift(RIGHT * 2)
+            ))
+
+        Moving multiple blocks simultaneously::
+
+            self.play(
+                block1.create_movement_animation(block1.animate.shift(UP)),
+                block2.create_movement_animation(block2.animate.shift(DOWN))
+            )
+
+        Moving a parent block with multiple children::
+
+            # Genesis has multiple children in a DAG
+            self.play(genesis.create_movement_animation(
+                genesis.animate.shift(LEFT)
+            ))  # All child lines update automatically
+
+        Moving a merge block with multiple parents::
+
+            # Merge block has multiple parent lines
+            self.play(merge.create_movement_animation(
+                merge.animate.shift(UP * 2)
             ))  # All parent lines update simultaneously
 
         Notes
         -----
-        Each line update uses UpdateFromFunc to avoid automatic movement
-        propagation. This is critical for DAG structures where blocks may
-        have complex parent-child relationships.
+        The line update uses UpdateFromFunc to avoid automatic movement
+        propagation that would occur if lines were submobjects. This gives
+        precise control over which lines update during movement.
+
+        This method updates:
+        - All of the block's own parent lines (if they exist)
+        - All lines from children pointing to this block
+
+        This is critical for DAG structures where blocks may have complex
+        parent-child relationships with multiple connections. The method
+        ensures the entire DAG remains visually connected during any block
+        movement.
+
+        See Also
+        --------
+        create_with_lines : Initial block and line creation
+        ParentLine.create_update_animation : Line update mechanism
         """
         animations = [animation]
 

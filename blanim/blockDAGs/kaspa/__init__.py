@@ -2,9 +2,12 @@
 
 from .visual_block import KaspaVisualBlock
 from .config import KaspaBlockConfig, DEFAULT_KASPA_CONFIG
+from .layout_config import KaspaLayoutConfig, DEFAULT_KASPA_LAYOUT_CONFIG
 
 __all__ = [
     "KaspaVisualBlock",
     "KaspaBlockConfig",
-    "DEFAULT_KASPA_CONFIG"
+    "DEFAULT_KASPA_CONFIG",
+    "KaspaLayoutConfig",
+    "DEFAULT_KASPA_LAYOUT_CONFIG"
 ]

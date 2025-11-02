@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from manim import BLUE, WHITE, ParsableManimColor
 
+__all__ = ["DEFAULT_BITCOIN_CONFIG", "BitcoinBlockConfig"]
+
 @dataclass
 class BitcoinBlockConfig:
     """Configuration for Bitcoin block visualization."""

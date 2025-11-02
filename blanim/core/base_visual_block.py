@@ -4,11 +4,20 @@ from __future__ import annotations
 
 __all__ = ["BaseVisualBlock"]
 
-from manim import VMobject, ParsableManimColor, Square, Text, BLUE, WHITE, Transform, BLACK, Create, AnimationGroup, \
+from manim import (
+    VMobject,
+    ParsableManimColor,
+    Square,
+    Text,
+    BLUE,
+    WHITE,
+    Transform,
+    BLACK,
+    Create,
+    AnimationGroup,
     PURE_BLUE
-from manim.typing import Point3DLike
+)
 
-#TODO test this (base_visual_block), kaspa/visual_block, and bitcoin/visual_block to verify they work as expected
 class BaseVisualBlock(VMobject):
     """Base class for blockchain block visualization with primer pattern.
 
@@ -21,12 +30,18 @@ class BaseVisualBlock(VMobject):
     then transformed to visible text. This ensures the label reference remains
     constant across transformations.
 
+    The block is positioned using 2D coordinates (x, y), with the z-coordinate
+    set to 0 to align with the coordinate grid. Rendering order is controlled via
+    z_index (set to 2) to ensure blocks render in front of lines (z_index 0-1).
+
     Parameters
     ----------
     label_text : str
         Text to display on the block.
-    position : Point3DLike
-        3D coordinates [x, y, z] for block placement.
+    position : tuple[float, float]
+        2D coordinates (x, y) for block placement. The z-coordinate is
+        set to 0 to align with coordinate grids. Rendering order is controlled
+        via z_index (set to 2 internally).
     block_color : ParsableManimColor, optional
         DEPRECATED: Use fill_color and stroke_color instead.
         Fallback color if fill_color/stroke_color not specified.
@@ -44,6 +59,10 @@ class BaseVisualBlock(VMobject):
         Font size for the label text. Default is 24.
     label_color : ParsableManimColor, optional
         Color of the label text. Default is WHITE.
+    create_run_time : float, optional
+        Duration for block creation animation. Default is 2.0.
+    label_change_run_time : float, optional
+        Duration for label change animation. Default is 1.0.
 
     Attributes
     ----------
@@ -53,30 +72,45 @@ class BaseVisualBlock(VMobject):
         The text label (uses primer pattern).
     _label_text : str
         Current text content of the label.
+    _label_font_size : int
+        Stored font size for label generation.
+    _label_color : ParsableManimColor
+        Stored color for label generation.
+    _create_run_time : float
+        Stored duration for creation animations.
+    _label_change_run_time : float
+        Stored duration for label change animations.
 
     Examples
     --------
     Basic usage::
 
-        block = BaseVisualBlock("Genesis", [0, 0, 0])
+        block = BaseVisualBlock("Genesis", (0, 0))
         self.add(block)
 
     With custom styling::
 
         block = BaseVisualBlock(
             "Block 1",
-            [1, 0, 0],
+            (1, 0),
             fill_color=RED,
             fill_opacity=0.3,
             stroke_color=ORANGE,
             stroke_width=5
         )
+
+    Notes
+    -----
+    The label is added after the square using self.add(), ensuring it renders
+    on top of the square. The z_index is set to 2 to ensure blocks render in
+    front of lines (z_index 0-1), while all objects remain at z-coordinate 0
+    to avoid 3D projection issues in HUD2DScene.
     """
 
     def __init__(
             self,
             label_text: str,
-            position: Point3DLike,
+            position: tuple[float, float],
             block_color: ParsableManimColor = BLUE,
             fill_color: ParsableManimColor | None = None,
             fill_opacity: float = 0.2,
@@ -108,7 +142,9 @@ class BaseVisualBlock(VMobject):
             stroke_width=stroke_width,
             side_length=side_length
         )
-        self.square.move_to(position)
+        position3d = (position[0], position[1], 0)
+        self.set_z_index(2)
+        self.square.move_to(position3d)
         self.add(self.square)
 
         #####Label (Primer Pattern)#####
@@ -174,12 +210,25 @@ class BaseVisualBlock(VMobject):
         ----------
         **kwargs
             Keyword arguments passed to Create animation.
-            Supports 'run_time' to control animation duration.
+            Supports 'run_time' to control animation duration. If not provided,
+            uses self._create_run_time.
 
         Returns
         -------
         AnimationGroup
             Group containing square creation and label transformation.
+
+        Examples
+        --------
+        Basic usage::
+
+            block = BaseVisualBlock("Genesis", (0, 0))
+            self.play(block.create_with_label())
+
+        With custom run time::
+
+            block = BaseVisualBlock("Block 1", (2, 0))
+            self.play(block.create_with_label(run_time=3.0))
 
         Notes
         -----
@@ -207,6 +256,45 @@ class BaseVisualBlock(VMobject):
     def change_label(self, text: str, run_time: float | None = None, **kwargs):
         """Change the block's label text with animation.
 
+        Transforms the current label to display new text. The transformation
+        maintains the label's position at the square's center.
+
+        Parameters
+        ----------
+        text : str
+            New text to display on the label.
+        run_time : float, optional
+            Duration of the label change animation. If None, uses
+            self._label_change_run_time.
+        **kwargs
+            Additional keyword arguments passed to Transform animation.
+
+        Returns
+        -------
+        Transform
+            Transform animation that changes the label text.
+
+        Examples
+        --------
+        Basic usage::
+
+            block = BaseVisualBlock("Genesis", (0, 0))
+            self.play(block.create_with_label())
+            self.play(block.change_label("Block 0"))
+
+        With custom run time::
+
+            self.play(block.change_label("Block 1", run_time=0.5))
+
+        Notes
+        -----
+        The label text is stored in self._label_text for future reference.
+        The primer pattern ensures smooth transformations regardless of the
+        new text length (up to 5 characters).
+
+        See Also
+        --------
+        create_with_label : Initial block creation with label
         """
         if run_time is None:
             run_time = self._label_change_run_time

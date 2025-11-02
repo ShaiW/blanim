@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from manim import BLUE, WHITE, ParsableManimColor
 
+__all__ = ["DEFAULT_KASPA_CONFIG", "KaspaBlockConfig"]
+
 @dataclass
 class KaspaBlockConfig:
     """Configuration for Kaspa block visualization."""

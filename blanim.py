@@ -1,214 +1,285 @@
 from __future__ import annotations
 
-import string
+import string   # noqa: F401
 import time
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from enum import Enum
-from itertools import chain
-from random import choice, randint
-from typing import List, Dict, Optional
+from abc import ABC  # noqa: F401
+from dataclasses import dataclass, field  # noqa: F401
+from enum import Enum  # noqa: F401
+from itertools import chain  # noqa: F401
+from random import choice, randint  # noqa: F401
+from typing import List, Dict, Optional  # noqa: F401
 
-from manim.typing import Point3DLike
+from manim.typing import Point3DLike  # noqa: F401
 
 from blanim import *
 
-#TODO changed to using BaseVisualBlock, have not updated anything beyond BaseVisualBlock, BitcoinVisualBlock, or KaspaVisualBlock
-"""
-PLANNED BLANIM PROJECT FILE STRUCTURE
-may contain errors or evolve as project takes shape
-==============================  
+#TODO added base logical block, retructured, need to add a bitcoin chain, and add a kaspa dag, then examples
 
-Planned architecture for blockchain animation project supporting  
-multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).  
 
-blanim/                                    # ← Project root directory                                         
-├── blanim/                                # ← Python package directory                                      
-│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE    
-│   ├── core/                                                                                                     
-│   │   ├── __init__.py                                                                                       #COMPLETE  
-│   │   ├── base_visual_block.py          # BaseVisualBlock class                                             #COMPLETE    
-│   │   ├── base_logical_block.py         # BaseLogicalBlock class                                            #COMPLETE    
-│   │   ├── parent_line.py                # ParentLine class                                                  #COMPLETE    
-│   │   ├── dag_structures.py             # Base DAG/Chain classes                                            #Exists - Need to determine what/if is part of base DAGs    
-│   │   └── hud_2d_scene.py               # HUD2DScene, Scene/engine                                          #COMPLETE
-│   │      
-│   └── blockDAGs/                                                                                              
-│       ├── __init__.py                                                                                       #Complete?  
-│       ├── bitcoin/                                                                                            
-│       │   ├── __init__.py                                                                                   #Complete?
-│       │   ├── config.py                 # Bitcoin configuration                                             #Complete?
-│       │   ├── visual_block.py           # BitcoinVisualBlock                                                #Complete?  
-│       │   ├── logical_block.py          # BitcoinBlock with chain logic                                     #Exists
-│       │   └── chains/                   # Different chain mode implementations                              
-│       │       ├── __init__.py                                                                               #Exists and Empty
-│       │       ├── base_chain.py         # BaseBitcoinChain - shared logic                                   #Exists and Empty  
-│       │       ├── free_chain.py         # FreeChain - no validation mode                                    #Exists and Empty  
-│       │       ├── standard_chain.py     # StandardChain - normal consensus                                  #Exists and Empty  
-│       │       ├── selfish_mining.py     # SelfishMiningChain - attack demo                                  #Exists and Empty  
-│       │       └── simulation.py         # SimulationChain - realistic sim                                   #Exists and Empty  
-│       │      
-│       └── kaspa/                                                                                            
-│           ├── __init__.py                                                                                   #Complete?
-│           ├── config.py                 # Kaspa configuration                                               #Complete?
-│           ├── visual_block.py           # KaspaVisualBlock                                                  #Complete?
-│           ├── logical_block.py          # KaspaBlock with DAG logic                                         #Exists and Empty  
-│           ├── dags/                     # Different DAG mode implementations                                  
-│           │   ├── __init__.py                                                                               #Exists and Empty  
-│           │   ├── base_dag.py           # BaseKaspaDAG - shared logic                                       #Exists and Empty  
-│           │   ├── free_dag.py           # FreeDAG - no validation mode                                      #Exists and Empty  
-│           │   ├── standard_dag.py       # StandardDAG - normal GHOSTDAG consensus                           #Exists and Empty  
-│           │   ├── ghostdag_demo.py      # GHOSTDAGDemo - visualize GHOSTDAG ordering                        #Exists and Empty  
-│           │   └── simulation.py         # SimulationDAG - realistic DAG sim                                 #Exists and Empty  
-│           └── ghostdag/                 # GHOSTDAG-specific logic                                           #MOVE TO kaspa/ghostdag.py instead?  
-│               ├── __init__.py                                                                               #Exists and Empty  
-│               ├── ordering.py           # GHOSTDAG ordering algorithm                                       #Exists and Empty  
-│               ├── tree_conversion.py    # DAG to tree visualization                                         #Exists and Empty  
-│               └── blue_set.py           # Blue set computation                                              #Exists and Empty  
-│      
-├── examples/                              # ← Example/demo scenes                                            
-│   ├── __init__.py                                                                                           #COMPLETE
-│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                               #COMPLETE
-│   ├── bitcoin_examples.py               # Bitcoin animation examples                                        #Some Examples
-│   └── kaspa_examples.py                 # Kaspa animation examples                                          #Exist and Empty
-│      
-├── pyproject.toml                         # ← Package configuration                                          #COMPLETE
-├── README.md                              # ← Project documentation                                          #Could Update Soon
-└── .gitignore                             # ← Git ignore file                                                #Exists
-
-ARCHITECTURE PRINCIPLES:  
-------------------------  
-
-1. Separation by Blockchain: Each blockchain gets its own package under  
-   blockchains/ with visual, logical, structure, AND utils components.  
-
-2. Shared Core: Common base classes in core/ to avoid duplication.  
-   - BaseVisualBlock: Visual rendering (square, label, lines)  
-   - ParentLine: Line connections between blocks  
-   - Base DAG/Chain structures  
-
-3. Visual vs Logical Separation:  
-   - visual_block.py: Handles rendering, animations, Manim integration  
-   - logical_block.py: Handles consensus logic, parent selection, DAG traversal  
-   - Visual classes inherit from BaseVisualBlock (VMobject)  
-   - Logical classes inherit from visual classes and add domain logic  
-
-4. Config Organization:  
-   - Each blockchain has its own config
-   - Complete isolation - blockchain-specific colors, timings, ect
-   - No cross-imports between blockchain config packages  
-   - Can be overridden at the script level for user scenes 
-
-5. Scene Organization:  
-   - Animations grouped by blockchain type in scenes/  
-
-IMPORT PATTERNS:  
-----------------  
-
-In your scene file:  
-    from blanim.blockchains.bitcoin import BitcoinVisualBlock, BitcoinBlock
-    from blanim.blockchains.kaspa import KaspaVisualBlock, KaspaBlock
-    from blanim.core import BaseVisualBlock
-    from blanim.blockchains.bitcoin.utils.colors import BITCOIN_ORANGE  
-    from blanim.blockchains.kaspa.utils.colors import KASPA_BLUE, KASPA_RED  
-    from blanim.blockchains.kaspa.utils.layouts import dag_layout, ghostdag_tree_layout  
-
-No cross-imports between blockchain utils - complete isolation  
-
-EXAMPLE BLOCKCHAIN-SPECIFIC UTILS:  
------------------------------------  
-
-blanim/blockchains/bitcoin/utils/colors.py:  
-    from manim import ManimColor  
-
-    BITCOIN_ORANGE = ManimColor("#F7931A")  
-    SELECTED_PARENT_BLUE = ManimColor("#0000FF")  
-    BLOCK_DEFAULT = BITCOIN_ORANGE  
-
-blanim/blockchains/kaspa/utils/colors.py:  
-    from manim import ManimColor  
-
-    KASPA_BLUE = ManimColor("#70C7BA")  
-    KASPA_RED = ManimColor("#FF6B6B")  
-    SELECTED_PARENT_COLOR = KASPA_BLUE  
-    NON_SELECTED_PARENT_COLOR = ManimColor("#FFFFFF")  
-
-blanim/blockchains/bitcoin/utils/layouts.py:  
-    def linear_chain_layout(blocks, spacing=2.0):  
-        Layout blocks in a linear chain (Bitcoin-specific)  
-        positions = []  
-        for i, block in enumerate(blocks):  
-            positions.append([i * spacing, 0, 0])  
-        return positions  
-
-blanim/blockchains/kaspa/utils/layouts.py:  
-    def dag_layout(blocks, layer_spacing=2.0, block_spacing=1.5):  
-        Layout blocks in DAG structure (Kaspa-specific)  
-        (Kaspa-specific DAG layout algorithm implementation here)  
-        pass  
-
-    def GHOSTDAG_tree_layout(blocks, blue_set):  
-        Layout blocks according to GHOSTDAG ordering  
-        (GHOSTDAG-specific layout implementation here)  
-        pass  
-
-ADDING NEW BLOCKCHAINS:  
------------------------  
-
-To add a new blockchain (e.g., Ethereum):  
-
-1. Create blanim/blockchains/ethereum/ directory  
-2. Implement EthereumVisualBlock inheriting from BaseVisualBlock  
-3. Implement EthereumBlock inheriting from EthereumVisualBlock  
-4. Create ethereum/utils/ subdirectory with:  
-   - colors.py: Ethereum-specific colors (ETH purple, etc.)  
-   - layouts.py: Ethereum-specific layouts (uncle blocks, etc.)  
-5. Add consensus-specific logic (e.g., uncle blocks, gas)  
-6. Create ethereum_scenes.py for animations  
-
-BENEFITS OF THIS ARCHITECTURE:  
--------------------------------  
-
-1. Complete Isolation: No risk of one blockchain's utils affecting another  
-2. Clear Ownership: Each blockchain owns its visual style completely  
-3. Easy Discovery: Developers know exactly where to find blockchain-specific code  
-4. No Import Conflicts: No need to worry about overriding shared utilities  
-5. Parallel Development: Multiple developers can work on different blockchains  
-   without touching shared code  
-
-OPTIONAL CENTRAL UTILS:  
------------------------  
-
-The top-level blanim/utils/ is optional and should only contain truly shared  
-utilities that multiple blockchains might reference (e.g., common mathematical  
-functions, shared animation helpers). Each blockchain should define its own  
-colors and layouts in its utils/ subdirectory for complete independence.  
-
-KASPA GHOSTDAG EXAMPLE:  
-----------------------  
-
-For Kaspa's GHOSTDAG ordering (DAG to Tree conversion):  
-
-blanim/blockchains/kaspa/ghostdag.py:  
-    class GHOSTDAGTree:
-        def __init__(self, dag):  
-            self.dag = dag  
-            self.blue_set = self._compute_blue_set()  
-            self.ordering = self._compute_ordering()  
-
-        def as_visual_tree(self):  
-            Convert DAG to tree visualization  
+"""  
+PLANNED BLANIM PROJECT FILE STRUCTURE  
+may contain errors or evolve as project takes shape  
+==============================    
+  
+Planned architecture for blockchain animation project supporting    
+multiple consensus mechanisms (Bitcoin, Kaspa, future blockchains).    
+  
+blanim/                                    # ← Project root directory                                           
+├── blanim/                                # ← Python package directory                                        
+│   ├── __init__.py                        # Re-exports manim + all submodules                                #COMPLETE      
+│   ├── core/                                                                                                       
+│   │   ├── __init__.py                                                                                       #COMPLETE    
+│   │   ├── base_visual_block.py          # BaseVisualBlock class                                             #COMPLETE      
+│   │   ├── base_logical_block.py         # BaseLogicalBlock class                                            #COMPLETE      
+│   │   ├── parent_line.py                # ParentLine class                                                  #COMPLETE      
+│   │   └── hud_2d_scene.py               # HUD2DScene, Scene/engine                                          #COMPLETE  
+│   │        
+│   └── blockDAGs/                                                                                                
+│       ├── __init__.py                                                                                       #COMPLETE    
+│       ├── bitcoin/                                                                                              
+│       │   ├── __init__.py                                                                                   #COMPLETE  
+│       │   ├── config.py                 # BitcoinBlockConfig - visual block styling                         #COMPLETE  
+│       │   ├── layout_config.py          # BitcoinLayoutConfig - chain layout parameters                     #COMPLETE
+│       │   ├── visual_block.py           # BitcoinVisualBlock                                                #COMPLETE    
+│       │   ├── logical_block.py          # BitcoinBlock with chain logic                                     #TODO
+│       │   └── chains/                   # Different chain mode implementations                                
+│       │       ├── __init__.py                                                                               #TODO  
+│       │       ├── base_chain.py         # BaseBitcoinChain - shared logic (optional)                        #TODO    
+│       │       ├── free_chain.py         # FreeChain - no validation mode                                    #TODO    
+│       │       ├── standard_chain.py     # StandardChain - normal consensus                                  #TODO    
+│       │       ├── selfish_mining.py     # SelfishMiningChain - attack demo                                  #TODO    
+│       │       └── simulation.py         # SimulationChain - realistic sim                                   #TODO    
+│       │        
+│       └── kaspa/                                                                                              
+│           ├── __init__.py                                                                                   #COMPLETE  
+│           ├── config.py                 # KaspaBlockConfig - visual block styling                           #COMPLETE  
+│           ├── layout_config.py          # KaspaLayoutConfig - DAG layout parameters                         #COMPLETE
+│           ├── visual_block.py           # KaspaVisualBlock                                                  #COMPLETE  
+│           ├── logical_block.py          # KaspaBlock with DAG logic                                         #TODO/started    
+│           ├── auto_layout.py            # KaspaAutoLayoutDAG - automatic layer-based positioning            #TODO  /might need to go under dags
+│           ├── dags/                     # Different DAG mode implementations                                    
+│           │   ├── __init__.py                                                                               #TODO    
+│           │   ├── base_dag.py           # BaseKaspaDAG - shared logic (optional)                            #TODO    
+│           │   ├── free_dag.py           # FreeDAG - no validation mode                                      #TODO    
+│           │   ├── standard_dag.py       # StandardDAG - normal GHOSTDAG consensus                           #TODO    
+│           │   ├── ghostdag_demo.py      # GHOSTDAGDemo - visualize GHOSTDAG ordering                        #TODO    
+│           │   └── simulation.py         # SimulationDAG - realistic DAG sim                                 #TODO    
+│           └── ghostdag.py               # GHOSTDAG algorithm (ordering, blue set, tree conversion)          #TODO    
+│        
+├── examples/                              # ← Example/demo scenes                                              
+│   ├── __init__.py                                                                                           #COMPLETE  
+│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                               #COMPLETE  
+│   ├── bitcoin_examples.py               # Bitcoin animation examples                                        #IN PROGRESS  
+│   └── kaspa_examples.py                 # Kaspa animation examples                                          #TODO  
+│        
+├── pyproject.toml                         # ← Package configuration                                          #COMPLETE  
+├── README.md                              # ← Project documentation                                          #TODO UPDATE  
+└── .gitignore                             # ← Git ignore file                                                #COMPLETE  
+  
+ARCHITECTURE PRINCIPLES:    
+------------------------    
+  
+1. Complete Isolation by Blockchain: Each blockchain (Bitcoin, Kaspa) is completely    
+   independent with NO shared base classes for chains/DAGs. Bitcoin chains and Kaspa    
+   DAGs are fundamentally different structures that don't benefit from abstraction.  
+  
+2. Shared Core (Visual Components Only):    
+   - BaseVisualBlock: Visual rendering (square, label, animations)    
+   - ParentLine: Line connections between blocks    
+   - HUD2DScene: 2D scene with narration/caption support  
+   - BaseLogicalBlock: Minimal logical block interface (if needed)  
+     
+   NOTE: NO shared DAG/Chain base classes - these are blockchain-specific.  
+  
+3. Visual vs Logical Separation:    
+   - visual_block.py: Handles rendering, animations, Manim integration    
+   - logical_block.py: Handles consensus logic, parent selection, DAG traversal    
+   - Visual classes inherit from BaseVisualBlock (VMobject)    
+   - Logical classes inherit from visual classes and add domain logic    
+  
+4. Config Organization (Two-Level System):    
+   - Block Config: Visual styling for individual blocks (colors, sizes, timings)  
+     * BitcoinBlockConfig: Bitcoin block appearance  
+     * KaspaBlockConfig: Kaspa block appearance (with selected parent colors)  
+     
+   - Layout Config: Positioning and spacing for chains/DAGs (SEPARATE, NO SHARED BASE)  
+     * BitcoinLayoutConfig: Linear chain layout (genesis_x, horizontal_spacing)  
+     * KaspaLayoutConfig: DAG layer layout (genesis_x/y, layer_spacing, chain_spacing)  
+     
+   - Complete isolation - no cross-imports between blockchain configs  
+   - Can be overridden at the script level for user scenes  
+  
+5. Auto-Layout System (Kaspa Only):    
+   - KaspaAutoLayoutDAG: Automatic layer-based positioning for DAG structures  
+   - Uses KaspaLayoutConfig for spacing parameters  
+   - Wraps KaspaVisualBlock instances with calculated positions  
+   - Bitcoin uses simple manual positioning (no auto-layout needed for linear chains)  
+  
+6. Z-Index Rendering System:  
+   - ALL objects at z-coordinate 0 (avoids 3D projection issues in HUD2DScene)  
+   - Rendering order controlled via z_index:  
+     * Regular lines: z_index=0 (back)  
+     * Selected parent lines: z_index=1 (middle)  
+     * Blocks: z_index=2 (front)  
+  
+IMPORT PATTERNS:    
+----------------    
+  
+In your scene file:    
+    from blanim import *  # Gets Manim + all blanim classes  
+      
+    # Block configs  
+    custom_btc_config = BitcoinBlockConfig(block_color=PURPLE, ...)  
+    custom_kas_config = KaspaBlockConfig(selected_parent_color=PINK, ...)  
+      
+    # Layout configs (separate for each blockchain)  
+    btc_layout = BitcoinLayoutConfig(genesis_x=-6, horizontal_spacing=2.0)  
+    kas_layout = KaspaLayoutConfig(genesis_x=-6, layer_spacing=1.5, chain_spacing=1.0)  
+      
+    # Manual positioning (Bitcoin)  
+    genesis = BitcoinVisualBlock("G", (-6, 0), block_config=custom_btc_config)  
+    block1 = BitcoinVisualBlock("1", (-4, 0), parent=genesis)  
+      
+    # Auto-layout (Kaspa)  
+    dag = KaspaAutoLayoutDAG(layout_config=kas_layout, block_config=custom_kas_config)  
+    genesis = dag.add_block("G", parent_names=[])  
+    block1 = dag.add_block("1", parent_names=["G"])  
+  
+KEY ARCHITECTURAL DECISIONS:    
+----------------------------    
+  
+1. NO Shared Base Classes for Chains/DAGs:  
+   - Bitcoin chains and Kaspa DAGs are fundamentally different  
+   - Forcing them into a shared abstraction adds complexity without benefit  
+   - Each blockchain implements its own chain/DAG logic independently  
+  
+2. Separate Layout Configs:  
+   - BitcoinLayoutConfig and KaspaLayoutConfig are completely separate  
+   - They share some parameter names (genesis_x) but serve different purposes  
+   - Bitcoin: horizontal_spacing between consecutive blocks in a line  
+   - Kaspa: layer_spacing between vertical layers, chain_spacing within layers  
+  
+3. Auto-Layout Only for Kaspa:  
+   - KaspaAutoLayoutDAG handles complex multi-parent DAG positioning  
+   - Bitcoin uses simple manual positioning (blocks in a horizontal line)  
+   - No need for auto-layout complexity in linear chains  
+  
+4. GHOSTDAG as Single Module:  
+   - kaspa/ghostdag.py contains all GHOSTDAG logic (not a subdirectory)  
+   - Includes: ordering algorithm, blue set computation, tree conversion  
+   - Simpler structure than original multi-file ghostdag/ directory  
+  
+ADDING NEW BLOCKCHAINS:    
+-----------------------    
+  
+To add a new blockchain (e.g., Ethereum):    
+  
+1. Create blanim/blockDAGs/ethereum/ directory    
+2. Implement EthereumBlockConfig (visual styling)  
+3. Implement EthereumLayoutConfig (positioning, if auto-layout needed)  
+4. Implement EthereumVisualBlock inheriting from BaseVisualBlock    
+5. Implement EthereumBlock inheriting from EthereumVisualBlock (logical layer)  
+6. (Optional) Implement EthereumAutoLayout if complex positioning needed  
+7. Add consensus-specific logic (e.g., uncle blocks, gas)    
+8. Create ethereum_examples.py for animations    
+  
+NO shared base classes - each blockchain is independent.  
+  
+BENEFITS OF THIS ARCHITECTURE:    
+-------------------------------    
+  
+1. Complete Isolation: Bitcoin and Kaspa don't share chain/DAG logic  
+2. Clear Separation: Visual (rendering) vs Logical (consensus) vs Layout (positioning)  
+3. Flexibility: Each blockchain can evolve independently  
+4. Simplicity: No forced abstractions where they don't make sense  
+5. Maintainability: Changes to one blockchain don't affect others  
+  
+KASPA AUTO-LAYOUT EXAMPLE:    
+--------------------------    
+  
+Using KaspaAutoLayoutDAG for automatic positioning:  
+  
+    # Configure layout  
+    layout_config = KaspaLayoutConfig(  
+        genesis_x=-6.5,  
+        genesis_y=0.0,  
+        layer_spacing=1.5,  # Horizontal spacing between layers  
+        chain_spacing=1.0   # Vertical spacing within a layer  
+    )  
+      
+    # Configure block styling  
+    block_config = KaspaBlockConfig(  
+        block_color=GREEN,  
+        selected_parent_color=PINK  
+    )  
+      
+    # Create auto-layout DAG  
+    dag = KaspaAutoLayoutDAG(  
+        layout_config=layout_config,  
+        block_config=block_config  
+    )  
+      
+    # Add blocks - positions calculated automatically  
+    genesis = dag.add_block("G", parent_names=[])  
+    block1 = dag.add_block("1", parent_names=["G"])  
+    block2 = dag.add_block("2", parent_names=["G"])  
+    merge = dag.add_block("3", parent_names=["1", "2"], selected_parent="1")  
+      
+    # Animate  
+    self.play(genesis.create_with_lines())  
+    self.play(block1.create_with_lines(), block2.create_with_lines())  
+    self.play(merge.create_with_lines())  
+  
+BITCOIN SIMPLE POSITIONING EXAMPLE:    
+-----------------------------------    
+  
+Bitcoin uses manual positioning (no auto-layout needed):  
+  
+    # Configure block styling  
+    config = BitcoinBlockConfig(block_color=ORANGE)  
+      
+    # Create blocks with manual positions  
+    genesis = BitcoinVisualBlock("G", (-6, 0), block_config=config)  
+    block1 = BitcoinVisualBlock("1", (-4, 0), parent=genesis, block_config=config)  
+    block2 = BitcoinVisualBlock("2", (-2, 0), parent=block1, block_config=config)  
+      
+    # Animate  
+    self.play(genesis.create_with_lines())  
+    self.play(block1.create_with_lines())  
+    self.play(block2.create_with_lines())  
+  
+GHOSTDAG VISUALIZATION EXAMPLE:    
+-------------------------------    
+  
+For Kaspa's GHOSTDAG ordering (future implementation):  
+  
+blanim/blockDAGs/kaspa/ghostdag.py:    
+    class GHOSTDAGOrdering:  
+        def __init__(self, dag: KaspaAutoLayoutDAG):    
+            self.dag = dag    
+            self.blue_set = self._compute_blue_set()    
+            self.ordering = self._compute_ordering()    
+          
+        def visualize_coloring(self):  
+            # Color blocks based on blue/red sets  
             pass  
-
-Usage in scene:  
-    Show DAG structure  
-    self.play(kaspa_dag.create_with_lines())  
-
-    Transform to tree  
-    ghostdag_tree = GHOSTDAGTree(kaspa_dag)  
-    self.play(Transform(kaspa_dag, ghostdag_tree.as_visual_tree()))  
+          
+        def as_tree_layout(self):    
+            # Convert DAG to tree visualization based on GHOSTDAG ordering  
+            pass    
+  
+Usage in scene:    
+    # Show DAG structure    
+    self.play(dag.genesis.create_with_lines())  
+    # ... add more blocks  
+      
+    # Apply GHOSTDAG coloring  
+    ghostdag = GHOSTDAGOrdering(dag)  
+    self.play(ghostdag.visualize_coloring())  
+      
+    # Transform to tree layout  
+    self.play(ghostdag.as_tree_layout())  
 """
-
 BLOCK_H = 0.4
 BLOCK_W = 0.4
 GENESIS_POSITION = [-5,0,0]
@@ -256,102 +327,105 @@ class Parent:
 
 #todo remove dag dependency
 #TODO fix this since changing to BaseVisualBlock(or remome logical block to bitcoin/kaspa subfolders)
-class Block(BaseVisualBlock, ABC):
-    """Multiple Inheritance Pattern"""
-    DEFAULT_COLOR = BLUE
+# class Block(BaseVisualBlock, ABC):
+#     """Multiple Inheritance Pattern"""
+#     DEFAULT_COLOR = BLUE
+#
+#     def __init__(self, name=None, DAG=None, parents=None, pos=None,
+#                  label=None, block_color=None, h=BLOCK_H, w=BLOCK_W):
+#
+#         # === BLOCKCHAIN IDENTITY ===
+#         # Use provided name or generate unique ID from memory address
+#         self.name = name if name is not None else str(id(self))
+#
+#         # === DAG STRUCTURE SETUP ===
+#         # Store reference to the DAG this block belongs to
+#         self.DAG = DAG
+#
+#         # Convert parent references (from 'parents' param) to actual Block objects
+#         # by looking them up in the DAG's block registry
+#         self.parents = [DAG.blocks[p.name] for p in parents]
+#
+#         # Initialize empty children list (will be populated by child blocks)
+#         self.children = []
+#
+#         # Unique hash for this block instance
+#         self.hash = id(self)
+#
+#         # === BLOCKCHAIN WEIGHT CALCULATION ===
+#         # Calculate and cache all ancestor blocks (past blocks in the DAG)
+#         # This is done once at initialization for performance
+#         self.past_blocks = self._calculate_past_blocks()
+#
+#         # Weight = number of ancestor blocks (used for consensus/selection)
+#         self.weight = len(self.past_blocks)
+#
+#         # === PARENT SELECTION ===
+#         # Each block type (subclass) implements its own parent selection logic
+#         # This determines which parent is the "main" parent for this block
+#         self.selected_parent = self._select_parent()
+#
+#         # === VISUAL PROPERTIES DETERMINATION ===
+#         # Set default color if not provided
+#         if block_color is None:
+#             block_color = self.DEFAULT_COLOR
+#
+#             # Determine label text based on block type and weight
+#         # Genesis blocks show "Gen", others show their weight
+#         if label is None:
+#             label = "Gen" if self.name == "Gen" else str(self.weight)
+#
+#             # === VISUAL INITIALIZATION ===
+#         # Initialize visual components (rect, label) via VisualBlock base class
+#         # This separates visual concerns from blockchain logic
+#         super().__init__(pos, label, block_color, h, w)
+#
+#         # === PARENT LINE CREATION ===
+#         # Create visual lines connecting this block to all parent blocks
+#         # Selected parent gets special color (PURE_BLUE), others are WHITE
+#         for parent in self.parents:
+#             # Check if this parent is the selected parent
+#             # First check ensures selected_parent exists (not None)
+#             # Second check compares names to identify the selected parent
+#             is_selected = (self.selected_parent and
+#                            self.selected_parent.name == parent.name)
+#
+#             # Choose line color based on selection status
+#             line_color = PURE_BLUE if is_selected else WHITE
+#
+#             # Create line using VisualBlock's method (stores in self.parent_lines)
+#             self.add_parent_line(parent.rect, line_color)
+#
+#             # === DAG BIDIRECTIONAL LINKING ===
+#         # Register this block as a child in each parent's children list
+#         # This maintains bidirectional parent-child relationships in the DAG
+#         for p in parents:
+#             DAG.blocks[p.name].children.append(self.name)
+#
+#     @abstractmethod
+#     def _select_parent(self):
+#         """Each block type implements its own parent selection logic"""
+#         pass
+#
+#     def _calculate_past_blocks(self):
+#         visited = set()
+#         self._collect_past_blocks(visited)
+#         return visited
+#
+#     def _collect_past_blocks(self, visited):
+#         for parent in self.parents:
+#             if parent.name not in visited:
+#                 visited.add(parent.name)
+#                 parent._collect_past_blocks(visited)
+#
+#     def get_past_blocks(self):
+#         return self.past_blocks
+#
+#     def is_tip(self):
+#         return not bool(self.children)
 
-    def __init__(self, name=None, DAG=None, parents=None, pos=None,
-                 label=None, block_color=None, h=BLOCK_H, w=BLOCK_W):
-
-        # === BLOCKCHAIN IDENTITY ===
-        # Use provided name or generate unique ID from memory address
-        self.name = name if name is not None else str(id(self))
-
-        # === DAG STRUCTURE SETUP ===
-        # Store reference to the DAG this block belongs to
-        self.DAG = DAG
-
-        # Convert parent references (from 'parents' param) to actual Block objects
-        # by looking them up in the DAG's block registry
-        self.parents = [DAG.blocks[p.name] for p in parents]
-
-        # Initialize empty children list (will be populated by child blocks)
-        self.children = []
-
-        # Unique hash for this block instance
-        self.hash = id(self)
-
-        # === BLOCKCHAIN WEIGHT CALCULATION ===
-        # Calculate and cache all ancestor blocks (past blocks in the DAG)
-        # This is done once at initialization for performance
-        self.past_blocks = self._calculate_past_blocks()
-
-        # Weight = number of ancestor blocks (used for consensus/selection)
-        self.weight = len(self.past_blocks)
-
-        # === PARENT SELECTION ===
-        # Each block type (subclass) implements its own parent selection logic
-        # This determines which parent is the "main" parent for this block
-        self.selected_parent = self._select_parent()
-
-        # === VISUAL PROPERTIES DETERMINATION ===
-        # Set default color if not provided
-        if block_color is None:
-            block_color = self.DEFAULT_COLOR
-
-            # Determine label text based on block type and weight
-        # Genesis blocks show "Gen", others show their weight
-        if label is None:
-            label = "Gen" if self.name == "Gen" else str(self.weight)
-
-            # === VISUAL INITIALIZATION ===
-        # Initialize visual components (rect, label) via VisualBlock base class
-        # This separates visual concerns from blockchain logic
-        super().__init__(pos, label, block_color, h, w)
-
-        # === PARENT LINE CREATION ===
-        # Create visual lines connecting this block to all parent blocks
-        # Selected parent gets special color (PURE_BLUE), others are WHITE
-        for parent in self.parents:
-            # Check if this parent is the selected parent
-            # First check ensures selected_parent exists (not None)
-            # Second check compares names to identify the selected parent
-            is_selected = (self.selected_parent and
-                           self.selected_parent.name == parent.name)
-
-            # Choose line color based on selection status
-            line_color = PURE_BLUE if is_selected else WHITE
-
-            # Create line using VisualBlock's method (stores in self.parent_lines)
-            self.add_parent_line(parent.rect, line_color)
-
-            # === DAG BIDIRECTIONAL LINKING ===
-        # Register this block as a child in each parent's children list
-        # This maintains bidirectional parent-child relationships in the DAG
-        for p in parents:
-            DAG.blocks[p.name].children.append(self.name)
-
-    @abstractmethod
-    def _select_parent(self):
-        """Each block type implements its own parent selection logic"""
-        pass
-
-    def _calculate_past_blocks(self):
-        visited = set()
-        self._collect_past_blocks(visited)
-        return visited
-
-    def _collect_past_blocks(self, visited):
-        for parent in self.parents:
-            if parent.name not in visited:
-                visited.add(parent.name)
-                parent._collect_past_blocks(visited)
-
-    def get_past_blocks(self):
-        return self.past_blocks
-
-    def is_tip(self):
-        return not bool(self.children)
+class Block:
+    pass
 
 class GhostDAGBlock(Block):
     """Block that selects parent with highest weight (GHOST-DAG algorithm)"""
@@ -1574,13 +1648,6 @@ class GHOSTDAG(LayerDAG):
             # Fallback implementation
             tips = [name for name, block in self.blocks.items() if block.is_tip()]
             return tips
-
-
-
-
-
-
-
 
 
 #TODO revisit miner later
