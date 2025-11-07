@@ -4,11 +4,15 @@ from __future__ import annotations
 
 __all__ = ["BitcoinVisualBlock"]
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+from manim import Create, AnimationGroup
 
 from .config import BitcoinBlockConfig, DEFAULT_BITCOIN_CONFIG
+from ... import BaseVisualBlock, ParentLine
 
-from blanim import *
+if TYPE_CHECKING:
+    from .logical_block import BitcoinLogicalBlock
 
 class BitcoinVisualBlock(BaseVisualBlock):
     """Bitcoin block visualization with single-parent chain structure.
@@ -33,19 +37,19 @@ class BitcoinVisualBlock(BaseVisualBlock):
         via z_index (blocks at z_index=2, parent line at z_index=1).
     parent : BitcoinVisualBlock, optional
         The parent block in the chain. If None, this is a genesis block.
-    block_config : BitcoinBlockConfig, optional
+    bitcoin_config : BitcoinBlockConfig, optional
         Configuration object containing all visual and animation settings.
         Default is DEFAULT_BITCOIN_CONFIG.
 
     Attributes
     ----------
-    config : BitcoinBlockConfig
+    bitcoin_config : BitcoinBlockConfig
         Stored configuration object for the block.
     parent_line : ParentLine or None
         Single ParentLine connecting to parent block. None for genesis blocks.
         Uses z_index=1 for rendering order (in front of regular lines at z_index=0,
         behind blocks at z_index=2).
-    children : list[BitcoinVisualBlock]
+     : list[BitcoinVisualBlock]
         List of child blocks that have this block as their parent.
 
     Examples
@@ -66,7 +70,7 @@ class BitcoinVisualBlock(BaseVisualBlock):
             line_color=YELLOW,
             create_run_time=3.0
         )
-        block = BitcoinVisualBlock("Custom", (0, 0), block_config=custom_config)
+        block = BitcoinVisualBlock("Custom", (0, 0), bitcoin_config=custom_config)
         self.play(block.create_with_lines())
 
     Moving a block with line updates::
@@ -91,48 +95,36 @@ class BitcoinVisualBlock(BaseVisualBlock):
     BaseVisualBlock : Base class for all visual blocks
     BitcoinBlockConfig : Configuration object for Bitcoin blocks
     """
+    bitcoin_config: BitcoinBlockConfig
+    parent_line: ParentLine | None
+    logical_block: BitcoinLogicalBlock
 
     def __init__(
             self,
             label_text: str,
             position: tuple[float, float],
             parent: Optional[BitcoinVisualBlock] = None,
-            block_config: BitcoinBlockConfig = DEFAULT_BITCOIN_CONFIG
+            bitcoin_config: BitcoinBlockConfig = DEFAULT_BITCOIN_CONFIG
     ) -> None:
-        # Store config
-        self.config = block_config
-
         # Pass config values to BaseVisualBlock
-        super().__init__(
-            label_text=label_text,
-            position=position,
-            block_color=self.config.block_color,
-            fill_opacity=self.config.fill_opacity,
-            stroke_color=self.config.stroke_color,
-            stroke_width=self.config.stroke_width,
-            side_length=self.config.side_length,
-            label_font_size=self.config.label_font_size,
-            label_color=self.config.label_color,
-            create_run_time=self.config.create_run_time,
-            label_change_run_time=self.config.label_change_run_time
-        )
+        super().__init__(label_text, position, bitcoin_config)
 
-        self.children = []
+#        self.children = []
 
         # Handle parent line with config
         if parent:
             self.parent_line = ParentLine(
                 self.square,
                 parent.square,
-                line_color=self.config.line_color
+                line_color=self.bitcoin_config.line_color
             )
             self.parent_line.set_z_index(1)
-            parent.children.append(self)
+#            parent.children.append(self)
         else:
             self.parent_line = None
 
 
-    def create_with_lines(self, **kwargs):
+    def create_with_lines(self):
         """Create animation for block, label, and parent line.
 
         Extends the base class's create_with_label() method by adding
@@ -142,10 +134,6 @@ class BitcoinVisualBlock(BaseVisualBlock):
 
         Parameters
         ----------
-        **kwargs
-            Keyword arguments passed to Create animations. Supports 'run_time'
-            to control animation duration. If not provided, uses
-            self.config.create_run_time.
 
         Returns
         -------
@@ -186,11 +174,11 @@ class BitcoinVisualBlock(BaseVisualBlock):
         create_movement_animation : Animate block movement with line updates
         """
         # Get the base animation group from parent class
-        base_animation_group = super().create_with_label(**kwargs)
+        base_animation_group = super().create_with_label()
 
         # If there's a parent line, add it to the animations
         if self.parent_line:
-            run_time = kwargs.get('run_time', self.config.create_run_time)
+            run_time = self.bitcoin_config.create_run_time
             # Extract animations from base group and add line creation
             animations = list(base_animation_group.animations)
             animations.append(Create(self.parent_line, run_time=run_time))
@@ -266,8 +254,14 @@ class BitcoinVisualBlock(BaseVisualBlock):
             animations.append(self.parent_line.create_update_animation())
 
         # Update child lines (lines from children pointing to this block)
-        for child in self.children:
-            if child.parent_line:
-                animations.append(child.parent_line.create_update_animation())
+#        for child in self.children:
+        for logical_child in self.logical_block.children:
+            if logical_child._visual.parent_line:
+                animations.append(logical_child._visual.parent_line.create_update_animation())
 
         return AnimationGroup(*animations) if len(animations) > 1 else animation
+
+    @property
+    def parent_lines(self):
+        """Return parent line as a list for API consistency."""
+        return [self.parent_line] if self.parent_line else []

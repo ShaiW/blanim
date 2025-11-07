@@ -4,9 +4,15 @@ from __future__ import annotations
 
 __all__ = ["KaspaVisualBlock"]
 
-from .config import KaspaBlockConfig, DEFAULT_KASPA_CONFIG
+from typing import TYPE_CHECKING
 
-from blanim import *
+from manim import AnimationGroup, Create
+
+from .config import KaspaBlockConfig, DEFAULT_KASPA_CONFIG
+from ... import BaseVisualBlock, ParentLine
+
+if TYPE_CHECKING:
+    from .logical_block import KaspaLogicalBlock
 
 class KaspaVisualBlock(BaseVisualBlock):
     """Kaspa block visualization with multi-parent DAG structure.
@@ -35,19 +41,16 @@ class KaspaVisualBlock(BaseVisualBlock):
     parents : list[KaspaVisualBlock], optional
         List of parent blocks. First parent is the selected parent.
         If None or empty, this is a genesis block.
-    block_config : KaspaBlockConfig, optional
-        Configuration object containing all visual and animation settings.
-        Default is DEFAULT_KASPA_CONFIG.
 
     Attributes
     ----------
-    config : KaspaBlockConfig
+    kaspa_config : KaspaBlockConfig
         Stored configuration object for the block.
     parent_lines : list[ParentLine]
         List of ParentLine objects connecting to all parent blocks.
         First line (to selected parent) uses selected_parent_color and z_index=1.
         Other lines use other_parent_color and z_index=0.
-    children : list[KaspaVisualBlock]
+     : list[KaspaVisualBlock]
         List of child blocks that have this block as one of their parents.
 
     Examples
@@ -75,7 +78,7 @@ class KaspaVisualBlock(BaseVisualBlock):
             other_parent_color=LIGHT_GRAY,
             create_run_time=2.5
         )
-        block = KaspaVisualBlock("Custom", (0, 0), block_config=custom_config)
+        block = KaspaVisualBlock("Custom", (0, 0), kaspa_config=custom_config)
         self.play(block.create_with_lines())
 
     Moving a block with multiple line updates::
@@ -106,39 +109,26 @@ class KaspaVisualBlock(BaseVisualBlock):
     BaseVisualBlock : Base class for all visual blocks
     KaspaBlockConfig : Configuration object for Kaspa blocks
     """
+
+    kaspa_config: KaspaBlockConfig
     parent_lines: list[ParentLine]
+    logical_block: KaspaLogicalBlock
 
     def __init__(
             self,
             label_text: str,
             position: tuple[float, float],
             parents: list[KaspaVisualBlock] | None = None,
-            block_config: KaspaBlockConfig = DEFAULT_KASPA_CONFIG
+            kaspa_config: KaspaBlockConfig = DEFAULT_KASPA_CONFIG
     ) -> None:
-        # Store config
-        self.config = block_config
-
-        # Pass config values to BaseVisualBlock
-        super().__init__(
-            label_text=label_text,
-            position=position,
-            block_color=self.config.block_color,
-            fill_opacity=self.config.fill_opacity,
-            stroke_color=self.config.stroke_color,
-            stroke_width=self.config.stroke_width,
-            side_length=self.config.side_length,
-            label_font_size=self.config.label_font_size,
-            label_color=self.config.label_color,
-            create_run_time=self.config.create_run_time,
-            label_change_run_time=self.config.label_change_run_time
-        )
+        # Pass config directly to BaseVisualBlock
+        super().__init__(label_text, position, kaspa_config)
 
         # Handle parent lines with config
-        self.children = []
         if parents:
             self.parent_lines = []
             for i, parent in enumerate(parents):
-                line_color = self.config.selected_parent_color if i == 0 else self.config.other_parent_color
+                line_color = self.kaspa_config.selected_parent_color if i == 0 else self.kaspa_config.other_parent_color
                 parent_line = ParentLine(
                     self.square,
                     parent.square,
@@ -146,11 +136,10 @@ class KaspaVisualBlock(BaseVisualBlock):
                 )
                 parent_line.set_z_index(1 if i == 0 else 0)
                 self.parent_lines.append(parent_line)
-                parent.children.append(self)
         else:
             self.parent_lines = []
 
-    def create_with_lines(self, **kwargs):
+    def create_with_lines(self):
         """Create animation for block, label, and all parent lines.
 
         Extends the base class's create_with_label() method by adding
@@ -160,9 +149,7 @@ class KaspaVisualBlock(BaseVisualBlock):
 
         Parameters
         ----------
-        **kwargs
-            Keyword arguments passed to Create animations (e.g., run_time).
-            If not provided, uses self.config.create_run_time.
+
 
         Returns
         -------
@@ -207,10 +194,10 @@ class KaspaVisualBlock(BaseVisualBlock):
         BaseVisualBlock.create_with_label : Base animation method
         create_movement_animation : Animate block movement with line updates
         """
-        base_animation_group = super().create_with_label(**kwargs)
+        base_animation_group = super().create_with_label()
 
         if self.parent_lines:
-            run_time = kwargs.get('run_time', self.config.create_run_time)
+            run_time = self.kaspa_config.create_run_time
             animations = list(base_animation_group.animations)
 
             # Add all parent line creations
@@ -296,9 +283,8 @@ class KaspaVisualBlock(BaseVisualBlock):
         animations.extend([line.create_update_animation() for line in self.parent_lines])
 
         # Update child lines (lines from children pointing to this block)
-        for child in self.children:
-            for line in child.parent_lines:
-                # Only update lines that point to this block
+        for logical_child in self.logical_block.children:
+            for line in logical_child._visual.parent_lines:
                 if line.parent_block == self.square:
                     animations.append(line.create_update_animation())
 
