@@ -24,7 +24,7 @@ class ParentLine(Line):
     def _update_position_and_size(self, mobject):
         new_start = self.this_block.get_left()
         new_end = self.parent_block.get_right()
-        self.set_stroke(width=self._fixed_stroke_width)
+#        self.set_stroke(width=self._fixed_stroke_width)
         self.set_points_by_ends(new_start, new_end, buff=self.buff)
 
     def create_update_animation(self):

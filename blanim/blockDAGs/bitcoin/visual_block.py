@@ -4,6 +4,7 @@ from __future__ import annotations
 
 __all__ = ["BitcoinVisualBlock"]
 
+import copy
 from typing import Optional, TYPE_CHECKING
 
 from manim import Create, AnimationGroup
@@ -14,6 +15,7 @@ from ... import BaseVisualBlock, ParentLine
 if TYPE_CHECKING:
     from .logical_block import BitcoinLogicalBlock
 
+# noinspection PyProtectedMember
 class BitcoinVisualBlock(BaseVisualBlock):
     """Bitcoin block visualization with single-parent chain structure.
 
@@ -116,13 +118,27 @@ class BitcoinVisualBlock(BaseVisualBlock):
             self.parent_line = ParentLine(
                 self.square,
                 parent.square,
-                line_color=self.bitcoin_config.line_color
+                line_color=bitcoin_config.line_color
             )
             self.parent_line.set_z_index(1)
 #            parent.children.append(self)
         else:
             self.parent_line = None
 
+    def __deepcopy__(self, memo):
+        logical_block = self.logical_block
+        self.logical_block = None
+
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, copy.deepcopy(v, memo))
+
+        self.logical_block = logical_block  # Restore original
+        result.logical_block = logical_block  # Set on copy
+
+        return result
 
     def create_with_lines(self):
         """Create animation for block, label, and parent line.
@@ -178,7 +194,7 @@ class BitcoinVisualBlock(BaseVisualBlock):
 
         # If there's a parent line, add it to the animations
         if self.parent_line:
-            run_time = self.bitcoin_config.create_run_time
+            run_time = self.config.create_run_time
             # Extract animations from base group and add line creation
             animations = list(base_animation_group.animations)
             animations.append(Create(self.parent_line, run_time=run_time))
@@ -261,7 +277,6 @@ class BitcoinVisualBlock(BaseVisualBlock):
 
         return AnimationGroup(*animations) if len(animations) > 1 else animation
 
-    @property
     def parent_lines(self):
         """Return parent line as a list for API consistency."""
         return [self.parent_line] if self.parent_line else []

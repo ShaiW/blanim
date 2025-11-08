@@ -44,7 +44,7 @@ blanim/                                    # ← Project root directory
 │       │   ├── layout_config.py          # BitcoinLayoutConfig - chain layout parameters                     #COMPLETE      
 │       │   ├── visual_block.py           # BitcoinVisualBlock - animation return pattern, NO children        #COMPLETE          
 │       │   ├── logical_block.py          # BitcoinLogicalBlock - proxy pattern, owns _visual                 #REFACTOR      
-│       │   ├── dag.py                    # BitcoinDAG - orchestrates all animations (standard)               #NEW    
+│       │   ├── chain.py                  # BitcoinDAG - orchestrates all animations (standard)               #NEW    
 │       │   └── dags/                     # OPTIONAL: Specialized DAG variants                                #FUTURE    
 │       │       ├── __init__.py           # Future specialized implementations                                #TODO    
 │       │       ├── standard_dag.py       # Standard longest-chain consensus                                  #TODO    
@@ -65,11 +65,15 @@ blanim/                                    # ← Project root directory
 │               ├── ghostdag_demo_dag.py  # GHOSTDAG visualization/demo mode                                  #TODO    
 │               └── simulation_dag.py     # Realistic DAG network simulation                                  #TODO    
 │            
-├── examples/                              # ← Example/demo scenes (outside package)                                                  
-│   ├── __init__.py                        # Empty or minimal                                                  #COMPLETE        
+├── examples/                             # ← Example/demo scenes (outside package)                                                  
+│   ├── __init__.py                       # Empty or minimal                                                  #COMPLETE        
 │   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                               #COMPLETE        
 │   ├── bitcoin_examples.py               # Bitcoin animation examples using DAG API                          #REFACTOR        
 │   └── kaspa_examples.py                 # Kaspa animation examples using DAG API                            #TODO        
+│
+├── tests/                                # ← Example/demo scenes (outside package)                                                  
+│   ├── __init__.py                       # Empty or minimal                                                  #COMPLETE        
+│   ├── bitcoin_tests.py                  # testing itcoin chain                                              #COMPLETE        
 │            
 ├── pyproject.toml                         # ← Package configuration for pip install                           #COMPLETE        
 ├── README.md                              # ← Project documentation                                          #TODO UPDATE        
@@ -276,25 +280,25 @@ C. User scene files (after pip install blanim):
    REASONING: After pip install, blanim is in site-packages and Python  
    finds it automatically. Users don't need to worry about sys.path.  
   
-D. CLI Usage (blanim -flags scene.py):  
-   The blanim CLI should mimic Manim's approach:  
+D. CLI Usage (blanim or manim commands):  
+   Both commands work identically after installation:  
      
-   # In blanim/cli/render.py (or wherever CLI entry point is)  
-   def render_scene(script_path, scene_name):  
-       script_path = Path(script_path).resolve()  
-         
-       # Add script's parent directory to sys.path  
-       parent_dir = script_path.parent  
-       if str(parent_dir) not in sys.path:  
-           sys.path.insert(0, str(parent_dir))  
-         
-       # Now import and render the scene  
-       module = get_module(script_path)  
-       # ... rest of rendering logic  
+   # Using blanim command (blockchain-optimized defaults)  
+   blanim -pql scene.py MyScene  
      
-   REASONING: Allows users to write "from blanim import *" in their scenes  
-   and have it work both when blanim is installed and when running from source.  
-   The CLI handles sys.path setup so users don't have to. 
+   # Using manim command (standard Manim behavior)    
+   manim -pql scene.py MyScene  
+     
+   The blanim CLI is implemented in blanim/__main__.py and delegates  
+   to manim.__main__:main(). Both commands:  
+   - Add the script's parent directory to sys.path  
+   - Import the scene file (which can use "from blanim import *")  
+   - Render the scene using Manim's rendering pipeline  
+     
+   REASONING: Users installing blanim get both commands. The blanim  
+   command provides branded CLI with optional blockchain-specific  
+   defaults, while manim command remains available for standard usage.  
+   Both work with any scene (pure Manim, pure blanim, or mixed).
 
 """
 

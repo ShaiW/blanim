@@ -39,7 +39,7 @@ dependencies = [
 
 [project.scripts]
 # Optional: Add CLI commands if you want a blanim executable
-# "blanim" = "blanim.__main__:main"
+"blanim" = "blanim.__main__:main"
 
 [project.urls]
 repository = "https://github.com/yourusername/blanim"

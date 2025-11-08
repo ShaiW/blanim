@@ -4,7 +4,7 @@ from __future__ import annotations
 
 __all__ = ["BitcoinLogicalBlock"]
 
-from typing import Optional, List, Set
+from typing import Optional, List
 
 from .config import DEFAULT_BITCOIN_CONFIG, BitcoinBlockConfig
 from .visual_block import BitcoinVisualBlock
@@ -27,13 +27,15 @@ class BitcoinLogicalBlock:
         self.parent = parent
         self.children: List[BitcoinLogicalBlock] = []
 
-        # Weight calculation
-        self.weight = self._calculate_weight()
+        # Weight = height for Bitcoin (single parent chain)
+        # Genesis has weight 1, each child adds 1
+        self.weight = 1 if parent is None else parent.weight + 1
 
         # Selected parent (always parent)
         self.selected_parent = self.parent if self.parent else None
 
         # Create visual (composition)
+        # noinspection PyProtectedMember
         parent_visual = self.parent._visual if self.parent else None
         self._visual = BitcoinVisualBlock(
             label_text=str(self.weight),
@@ -46,18 +48,6 @@ class BitcoinLogicalBlock:
         # Register as child in parents
         if parent:
             parent.children.append(self)
-
-    def _calculate_weight(self) -> int:
-        """Bitcoin weight = chain length."""
-        visited = set()
-        self._collect_past_blocks(visited)
-        return len(visited)
-
-    def _collect_past_blocks(self, visited: Set[str]) -> None:
-        """Recursive ancestor collection."""
-        if self.parent and self.parent.name not in visited:
-            visited.add(self.parent.name)
-            self.parent._collect_past_blocks(visited)
 
     def __getattr__(self, attr: str):
         """Proxy pattern: delegate to _visual."""
