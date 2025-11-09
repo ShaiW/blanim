@@ -17,7 +17,9 @@ class BaseBlockConfig:
     fill_opacity: float = 0.2
     stroke_color: ParsableManimColor = PURE_BLUE
     stroke_width: float = 3
+    stroke_opacity: float = 1.0
     side_length: float = 0.7
+    line_stroke_opacity: float = 1.0  #TODO add config support for parent lines
 
     # Label styling
     label_font_size: int = 24

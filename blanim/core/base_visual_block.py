@@ -49,6 +49,7 @@ class BaseVisualBlock(VGroup):
             fill_opacity=config.fill_opacity,
             stroke_color=config.stroke_color,
             stroke_width=config.stroke_width,
+            stroke_opacity=config.stroke_opacity,
             side_length=config.side_length,
             shade_in_3d=False
         )

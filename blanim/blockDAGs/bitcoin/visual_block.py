@@ -115,15 +115,16 @@ class BitcoinVisualBlock(BaseVisualBlock):
 
         # Handle parent line with config
         if parent:
-            self.parent_line = ParentLine(
+            self.parent_lines = []
+            parent_line = ParentLine(
                 self.square,
                 parent.square,
                 line_color=bitcoin_config.line_color
             )
-            self.parent_line.set_z_index(1)
-#            parent.children.append(self)
+            parent_line.set_z_index(1)
+            self.parent_lines.append(parent_line)
         else:
-            self.parent_line = None
+            self.parent_lines = []
 
     def __deepcopy__(self, memo):
         logical_block = self.logical_block
@@ -140,87 +141,64 @@ class BitcoinVisualBlock(BaseVisualBlock):
 
         return result
 
-    def create_with_lines(self):
-        """Create animation for block, label, and parent line.
-
-        Extends the base class's create_with_label() method by adding
-        the parent line creation animation. All animations (block creation,
-        label fade-in/grow, and line drawing) run simultaneously with
-        matching run_time for synchronized visual effects.
-
-        Parameters
-        ----------
+    def create_with_lines(self) -> AnimationGroup:
+        """Create animation for block with its parent line.
 
         Returns
         -------
-        AnimationGroup
-            Combined animation for block, label, and line creation. If no
-            parent line exists (genesis block), returns only the base
-            animation group.
+        :class:`~.AnimationGroup`
+            Animation group containing block creation and parent line creation.
 
         Examples
         --------
-        Creating a Bitcoin chain::
+        Creating a genesis block (no parent line)::
 
             genesis = BitcoinVisualBlock("Gen", (0, 0))
-            block1 = BitcoinVisualBlock("1", (2, 0), parent=genesis)
-            block2 = BitcoinVisualBlock("2", (4, 0), parent=block1)
-
-            # Draw blocks with their parent lines
             self.play(genesis.create_with_lines())
+
+        Creating a block with parent line::
+
+            block1 = BitcoinVisualBlock("1", (2, 0), parent=genesis)
             self.play(block1.create_with_lines())
-            self.play(block2.create_with_lines())
-
-        With custom run time::
-
-            self.play(block1.create_with_lines(run_time=3.0))
 
         Notes
         -----
-        This method demonstrates the extension pattern where child classes
-        reuse parent animation logic by calling super().create_with_label()
-        and extending the returned AnimationGroup, avoiding code duplication.
+        This method combines the base block creation animation with the
+        parent line creation animation. For genesis blocks (no parent),
+        only the block creation animation is returned.
 
-        For genesis blocks (no parent), this method returns the same result
-        as create_with_label() from the base class.
+        The parent line is created with the same run_time as the block
+        to ensure synchronized animation.
 
         See Also
         --------
-        BaseVisualBlock.create_with_label : Base animation method
-        create_movement_animation : Animate block movement with line updates
+        create_movement_animation : Animation for moving blocks
         """
-        # Get the base animation group from parent class
+        # Get base animation (block + label)
         base_animation_group = super().create_with_label()
 
         # If there's a parent line, add it to the animations
-        if self.parent_line:
+        if self.parent_lines:  # Fixed: check if list is non-empty
             run_time = self.config.create_run_time
             # Extract animations from base group and add line creation
             animations = list(base_animation_group.animations)
-            animations.append(Create(self.parent_line, run_time=run_time))
+            animations.append(Create(self.parent_lines[0], run_time=run_time))  # Fixed: access first element
             return AnimationGroup(*animations)
+        else:
+            return base_animation_group
 
-        # No parent line, just return base animation
-        return base_animation_group
-
-    def create_movement_animation(self, animation):
-        """Wrap movement animation with automatic line updates.
-
-        When a block moves, its parent line and all child lines must update
-        to maintain their connections. This method wraps any movement animation
-        with UpdateFromFunc animations that continuously update the line
-        endpoints during the movement.
+    def create_movement_animation(self, animation) -> AnimationGroup:
+        """Create movement animation that updates connected lines.
 
         Parameters
         ----------
-        animation : Animation
-            The movement animation to wrap (typically block.animate.shift()).
+        animation
+            The base movement animation (e.g., block.animate.shift(RIGHT))
 
         Returns
         -------
-        AnimationGroup or Animation
-            If parent_line or children exist, returns AnimationGroup with
-            line updates. Otherwise, returns the original animation unchanged.
+        :class:`~.AnimationGroup`
+            Animation group containing movement and line updates
 
         Examples
         --------
@@ -266,17 +244,13 @@ class BitcoinVisualBlock(BaseVisualBlock):
         animations = [animation]
 
         # Update this block's parent line
-        if self.parent_line:
-            animations.append(self.parent_line.create_update_animation())
+        if self.parent_lines:  # Fixed: check if list is non-empty
+            animations.append(self.parent_lines[0].create_update_animation())  # Fixed: access first element
 
         # Update child lines (lines from children pointing to this block)
-#        for child in self.children:
         for logical_child in self.logical_block.children:
-            if logical_child._visual.parent_line:
-                animations.append(logical_child._visual.parent_line.create_update_animation())
+            if logical_child._visual.parent_lines:  # Fixed: check if list is non-empty
+                animations.append(
+                    logical_child._visual.parent_lines[0].create_update_animation())  # Fixed: access first element
 
         return AnimationGroup(*animations) if len(animations) > 1 else animation
-
-    def parent_lines(self):
-        """Return parent line as a list for API consistency."""
-        return [self.parent_line] if self.parent_line else []

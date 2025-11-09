@@ -1,11 +1,65 @@
 # blanim\blanim\blockDAGs\bitcoin\chain.py
+"""
+BitcoinDAG: Blockchain Visualization System
+===========================================
+
+Architecture Overview:
+---------------------
+This class manages Bitcoin blockchain visualization using a DAG (Directed Acyclic Graph)
+structure where each block has at most one parent, forming a linear chain. The system
+uses a shared configuration pattern where all blocks reference DEFAULT_BITCOIN_CONFIG
+for consistent visual styling across the entire chain.
+
+Key Design Principles:
+- Config-driven styling: All visual properties (colors, opacities, stroke widths) are
+  read from BitcoinBlockConfig to maintain a single source of truth for "neutral state"
+- List-based parent lines: Following Kaspa's pattern, parent_lines is a list attribute
+  (containing 0-1 elements for Bitcoin) for API consistency across DAG types
+- Separation of concerns: BitcoinLogicalBlock handles graph structure/relationships,
+  BitcoinVisualBlock handles Manim rendering, and BitcoinDAG orchestrates both
+
+Highlighting System:
+-------------------
+The highlight_block_with_context() method visualizes block relationships by:
+1. Fading unrelated blocks and their parent lines to fade_opacity
+2. Highlighting context blocks (past/future cone) with colored strokes
+3. Adding a pulsing white stroke to the focused block via updater
+4. Flashing parent lines that connect blocks within the highlighted context
+
+Reset is achieved by reading original values from config, ensuring blocks always
+return to their defined neutral state without needing to store temporary state.
+
+TODO / Future Improvements:
+---------------------------
+1. **Config-driven line properties**: Currently, some line operations use hardcoded
+   parameters (e.g., opacity=1.0). These should read from config.line_stroke_opacity
+   for consistency. This requires:
+   - Ensuring all line creation/reset uses config values
+   - Adding any missing line-related config fields (already have line_stroke_opacity)
+
+2. **Label fading during highlighting**: Block labels currently don't fade with their
+   parent blocks during highlighting. To implement:
+   - In highlight_block_with_context(), add label fade animations:
+     ```python
+     block._visual.label.animate.set_fill(opacity=fade_opacity)
+     ```
+   - In reset_highlighting(), restore label opacity from config
+   - May need to add label_opacity to BitcoinBlockConfig if not present
+
+3. **Focused block parent line fading**: The focused block's parent line now correctly
+   fades when the parent is outside the context (e.g., showing B1's future doesn't
+   fade Genesis→B1 line). This was achieved by checking:
+   ```python
+   if focused_block.parent not in context_blocks:
+       fade_animations.append(focused_block._visual.parent_lines[0].animate...)
+"""
 
 from __future__ import annotations
 
 from typing import Optional, List, TYPE_CHECKING
 
 import numpy as np
-from manim import ParsableManimColor, YELLOW, ShowPassingFlash, cycle_animation, WHITE
+from manim import ParsableManimColor, YELLOW, ShowPassingFlash, cycle_animation, WHITE, Wait
 
 from .logical_block import BitcoinLogicalBlock
 from .layout_config import BitcoinLayoutConfig, DEFAULT_BITCOIN_LAYOUT_CONFIG
@@ -81,33 +135,41 @@ class BitcoinDAG:
 
         Args:
             blocks: List of blocks to move
-            positions: Target positions for each block
+            positions: Corresponding (x, y) positions
         """
         if len(blocks) != len(positions):
-            raise ValueError("blocks and positions must have same length")
-
-            # Collect all movement animations
-        animations = []
-        affected_lines = set()
-
-        for block, pos in zip(blocks, positions):
-            # Create movement animation
-            move_anim = block.animate.move_to((pos[0], pos[1], 0))
-            animations.append(move_anim)
+            raise ValueError("Number of blocks must match number of positions")
 
             # Collect affected lines (deduplicate)
-            if block._visual.parent_line:
-                affected_lines.add(block._visual.parent_line)
+        affected_lines = set()
+        for block in blocks:
+            # Collect parent line if it exists
+            if block._visual.parent_lines:  # Fixed: check if list is non-empty
+                affected_lines.add(block._visual.parent_lines[0])
 
+                # Collect child lines
             for child in block.children:
-                if child._visual.parent_line:
-                    affected_lines.add(child._visual.parent_line)
+                if child._visual.parent_lines:  # Fixed: check if list is non-empty
+                    affected_lines.add(child._visual.parent_lines[0])
 
-                    # Add deduplicated line updates
-        for line in affected_lines:
-            animations.append(line.create_update_animation())
+                    # Create movement animations
+        move_animations = []
+        for block, pos in zip(blocks, positions):
+            target = np.array([pos[0], pos[1], 0])
+            move_animations.append(
+                block._visual.animate.move_to(target)
+            )
 
-        self.scene.play(*animations)
+            # Create line update animations (deduplicated)
+        line_animations = [
+            line.create_update_animation()
+            for line in affected_lines
+        ]
+
+        # Combine and play
+        all_animations = move_animations + line_animations
+        if all_animations:
+            self.scene.play(*all_animations)
 
     @staticmethod
     def get_past_cone(block: BitcoinLogicalBlock) -> List[BitcoinLogicalBlock]:
@@ -184,7 +246,7 @@ class BitcoinDAG:
         if context_blocks is None:
             context_blocks = []
 
-            # Fade non-context blocks
+            # Fade non-context blocks (always fade unrelated blocks)
         fade_animations = []
         for block in self.all_blocks:
             if block not in context_blocks and block != focused_block:
@@ -194,6 +256,14 @@ class BitcoinDAG:
                 ])
                 for line in block._visual.parent_lines:
                     fade_animations.append(line.animate.set_stroke(opacity=fade_opacity))
+
+                    # Fade focused block's parent line if parent is not in context
+        if focused_block._visual.parent_lines:
+            parent_block = focused_block.parent
+            if parent_block and parent_block not in context_blocks:
+                fade_animations.append(
+                    focused_block._visual.parent_lines[0].animate.set_stroke(opacity=fade_opacity)
+                )
 
         if fade_animations:
             self.scene.play(*fade_animations)
@@ -214,14 +284,17 @@ class BitcoinDAG:
 
         if context_animations:
             self.scene.play(*context_animations)
+        else:
+            # Play a minimal wait to commit the fade state
+            self.scene.play(Wait(0.01))
 
             # Flash connections using cycle_animation (non-blocking)
         flash_lines = []
         if flash_connections:
             for block in context_blocks:
-                if block._visual.parent_line:
+                if block._visual.parent_lines:
                     # Create a copy of the line with highlight color
-                    flash_line = block._visual.parent_line.copy().set_color(highlight_color)
+                    flash_line = block._visual.parent_lines[0].copy().set_color(highlight_color)
                     self.scene.add(flash_line)
                     flash_lines.append(flash_line)
 
@@ -230,7 +303,16 @@ class BitcoinDAG:
                         ShowPassingFlash(flash_line, time_width=0.5, run_time=1.5)
                     )
 
-                    # Return the flash line copies (not originals) for cleanup
+                    # Flash focused block's parent line only if parent is in context
+            if focused_block._visual.parent_lines and focused_block.parent in context_blocks:
+                flash_line = focused_block._visual.parent_lines[0].copy().set_color(highlight_color)
+                self.scene.add(flash_line)
+                flash_lines.append(flash_line)
+                cycle_animation(
+                    ShowPassingFlash(flash_line, time_width=0.5, run_time=1.5)
+                )
+
+                # Return the flash line copies (not originals) for cleanup
         return flash_lines
 
     def reset_highlighting(
@@ -263,7 +345,8 @@ class BitcoinDAG:
                 ),
                 block._visual.square.animate.set_stroke(
                     block._visual.config.stroke_color,
-                    width=block._visual.config.stroke_width
+                    width=block._visual.config.stroke_width,
+                    opacity=block._visual.config.stroke_opacity
                 )
             ])
             for line in block._visual.parent_lines:
@@ -271,7 +354,7 @@ class BitcoinDAG:
                     line.animate.set_stroke(
                         block._visual.config.line_color,
                         width=block._visual.config.line_stroke_width,
-                        opacity=1.0
+                        opacity=block._visual.config.line_stroke_opacity
                     )
                 )
 

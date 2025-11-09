@@ -148,66 +148,72 @@ class TestTraversal(HUD2DScene):
 
 
 class TestHighlighting(HUD2DScene):
-    """Test visual highlighting system - with flash verification."""
+    """Test visual highlighting system - comprehensive edge case testing."""
 
     def construct(self):
         dag = BitcoinDAG(scene=self)
 
-        # Create chain
+        # Create chain with 5 blocks
         gen = dag.add_block("Gen")
         b1 = dag.add_block("B1", parent=gen)
         b2 = dag.add_block("B2", parent=b1)
         b3 = dag.add_block("B3", parent=b2)
+        b4 = dag.add_block("B4", parent=b3)
 
         dag.play(gen.create_with_lines(), b1.create_with_lines(),
-                 b2.create_with_lines(), b3.create_with_lines())
+                 b2.create_with_lines(), b3.create_with_lines(), b4.create_with_lines())
         self.wait(1)
 
-        # Test highlight_block_context with past cone
-        self.caption("Highlighting B3 with past cone (should flash lines)")
-        flash_lines = dag.highlight_block_context(b3, show_past=True)
-
-        # Debug: Check if flash_lines were created
-        if flash_lines:
-            debug_text = Text(f"Flash lines created: {len(flash_lines)}", color=YELLOW, font_size=20)
-            debug_text.to_corner(UL)
-            self.add(debug_text)
-        else:
-            debug_text = Text("WARNING: No flash lines created!", color=RED, font_size=20)
-            debug_text.to_corner(UL)
-            self.add(debug_text)
-
-        self.wait(3)  # Longer wait to see flashing
-        self.remove(debug_text)
-
-        # Test reset_highlighting
-        self.caption("Resetting highlighting")
-        dag.reset_highlighting(b3, flash_lines=flash_lines)
+        # Test 1: Genesis past (edge case - should be empty)
+        self.caption("Test 1: Genesis past cone (empty)")
+        flash_lines = dag.highlight_block_context(gen, show_past=True, show_future=False)
+        self.wait(2)
+        dag.reset_highlighting(gen, flash_lines=flash_lines)
         self.wait(1)
         self.clear_caption()
 
-        # Test highlighting with future cone
-        self.caption("Highlighting Genesis with future cone")
-        flash_lines = dag.highlight_block_context(gen, show_future=True)
-
-        # Debug: Check flash lines again
-        if flash_lines:
-            debug_text = Text(f"Flash lines created: {len(flash_lines)}", color=YELLOW, font_size=20)
-            debug_text.to_corner(UL)
-            self.add(debug_text)
-        else:
-            debug_text = Text("WARNING: No flash lines created!", color=RED, font_size=20)
-            debug_text.to_corner(UL)
-            self.add(debug_text)
-
-        self.wait(3)
-        self.remove(debug_text)
-
+        # Test 2: Genesis future (should flash all 4 lines)
+        self.caption("Test 2: Genesis future cone (all blocks)")
+        flash_lines = dag.highlight_block_context(gen, show_past=False, show_future=True)
+        self.wait(2)
         dag.reset_highlighting(gen, flash_lines=flash_lines)
         self.wait(1)
+        self.clear_caption()
+
+        # Test 3: B2 past (should flash Gen→B1 and B1→B2)
+        self.caption("Test 3: B2 past cone")
+        flash_lines = dag.highlight_block_context(b2, show_past=True, show_future=False)
+        self.wait(2)
+        dag.reset_highlighting(b2, flash_lines=flash_lines)
+        self.wait(1)
+        self.clear_caption()
+
+        # Test 4: B2 future (should flash B2→B3 and B3→B4)
+        self.caption("Test 4: B2 future cone")
+        flash_lines = dag.highlight_block_context(b2, show_past=False, show_future=True)
+        self.wait(2)
+        dag.reset_highlighting(b2, flash_lines=flash_lines)
+        self.wait(1)
+        self.clear_caption()
+
+        # Test 5: B4 past (should flash all 4 lines)
+        self.caption("Test 5: B4 past cone (all blocks)")
+        flash_lines = dag.highlight_block_context(b4, show_past=True, show_future=False)
+        self.wait(2)
+        dag.reset_highlighting(b4, flash_lines=flash_lines)
+        self.wait(1)
+        self.clear_caption()
+
+        # Test 6: B4 future (edge case - should be empty)
+        self.caption("Test 6: B4 future cone (empty)")
+        flash_lines = dag.highlight_block_context(b4, show_past=False, show_future=True)
+        self.wait(2)
+        dag.reset_highlighting(b4, flash_lines=flash_lines)
+        self.wait(1)
+        self.clear_caption()
 
         # Final confirmation
-        passed_text = Text("Test Complete - Check flash visibility", color=GREEN, font_size=24)
+        passed_text = Text("All edge cases tested!", color=GREEN, font_size=24)
         passed_text.to_edge(DOWN)
         self.play(Write(passed_text))
         self.wait(1)
