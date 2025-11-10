@@ -22,6 +22,7 @@ class KaspaBlockConfig(BaseBlockConfig):
     # Label styling
     label_font_size: int = 24
     label_color: ParsableManimColor = WHITE
+    label_opacity: float = 1.0
 
     # Animation timing
     create_run_time: float = 2.0
@@ -32,6 +33,9 @@ class KaspaBlockConfig(BaseBlockConfig):
     highlight_color: ParsableManimColor = GREEN
     highlight_stroke_width: float = 8
     highlight_run_time: float = 0.5
+    fade_opacity: float = 0.3
+    context_block_color: ParsableManimColor = WHITE
+    flash_connections: bool = True
 
     # Line styling (Kaspa-specific: multiple parents)
     selected_parent_color: ParsableManimColor = PURE_BLUE  # First parent
