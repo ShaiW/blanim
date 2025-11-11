@@ -9,7 +9,7 @@ from typing import Optional, TYPE_CHECKING
 
 from manim import Create, AnimationGroup
 
-from .config import BitcoinBlockConfig, DEFAULT_BITCOIN_CONFIG
+from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG
 from ... import BaseVisualBlock, ParentLine
 
 if TYPE_CHECKING:
@@ -97,7 +97,7 @@ class BitcoinVisualBlock(BaseVisualBlock):
     BaseVisualBlock : Base class for all visual blocks
     BitcoinBlockConfig : Configuration object for Bitcoin blocks
     """
-    bitcoin_config: BitcoinBlockConfig
+    bitcoin_config: BitcoinConfig
     parent_line: ParentLine | None
     logical_block: BitcoinLogicalBlock
 
@@ -106,7 +106,7 @@ class BitcoinVisualBlock(BaseVisualBlock):
             label_text: str,
             position: tuple[float, float],
             parent: Optional[BitcoinVisualBlock] = None,
-            bitcoin_config: BitcoinBlockConfig = DEFAULT_BITCOIN_CONFIG
+            bitcoin_config: BitcoinConfig = DEFAULT_BITCOIN_CONFIG
     ) -> None:
         # Pass config values to BaseVisualBlock
         super().__init__(label_text, position, bitcoin_config)

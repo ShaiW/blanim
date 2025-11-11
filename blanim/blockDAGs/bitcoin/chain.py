@@ -11,12 +11,23 @@ uses a shared configuration pattern where all blocks reference DEFAULT_BITCOIN_C
 for consistent visual styling across the entire chain.
 
 Key Design Principles:
-- Config-driven styling: All visual properties (colors, opacities, stroke widths) are
-  read from BitcoinBlockConfig to maintain a single source of truth for "neutral state"
+- Unified config: All visual properties (colors, opacities, stroke widths) and layout
+  parameters (genesis position, spacing) are read from BitcoinConfig
 - List-based parent lines: Following Kaspa's pattern, parent_lines is a list attribute
   (containing 0-1 elements for Bitcoin) for API consistency across DAG types
 - Separation of concerns: BitcoinLogicalBlock handles graph structure/relationships,
   BitcoinVisualBlock handles Manim rendering, and BitcoinDAG orchestrates both
+- Animation delegation: DAG methods call visual block animation methods rather than
+  directly manipulating Manim objects, ensuring consistent animation behavior
+
+Block Lifecycle:
+---------------
+1. **Creation**: add_block() creates a BitcoinLogicalBlock and plays its
+   create_with_lines() animation, which handles block, label, and parent line creation
+2. **Movement**: move() delegates to visual block's create_movement_animation(), which
+   automatically updates connected parent and child lines
+3. **Highlighting**: Highlighting methods use visual block's animation methods for
+   consistent fade/highlight/pulse effects
 
 Highlighting System:
 -------------------
@@ -29,29 +40,20 @@ The highlight_block_with_context() method visualizes block relationships by:
 Reset is achieved by reading original values from config, ensuring blocks always
 return to their defined neutral state without needing to store temporary state.
 
-TODO / Future Improvements: UPDATE THIS
+TODO / Future Improvements:
 ---------------------------
-1. **Config-driven line properties**: Currently, some line operations use hardcoded
-   parameters (e.g., opacity=1.0). These should read from config.line_stroke_opacity
-   for consistency. This requires:
-   - Ensuring all line creation/reset uses config values
-   - Adding any missing line-related config fields (already have line_stroke_opacity)
+1. **Refactor highlighting to use visual block methods**: Currently, _highlight_with_context()
+   manually constructs fade/highlight animations. Should use:
+   - BaseVisualBlock.create_fade_animation() for fading blocks
+   - BaseVisualBlock.create_reset_animation() for resetting to neutral state
+   - BaseVisualBlock.create_pulsing_highlight() instead of _create_pulse_updater()
+   This requires adding these methods to BaseVisualBlock first.
 
-2. **Label fading during highlighting**: Block labels currently don't fade with their
-   parent blocks during highlighting. To implement:
-   - In highlight_block_with_context(), add label fade animations:
-     ```python
-     block._visual.label.animate.set_fill(opacity=fade_opacity)
-     ```
-   - In reset_highlighting(), restore label opacity from config
-   - May need to add label_opacity to BitcoinBlockConfig if not present
+2. **Add line fade methods to visual block**: Parent line fading logic should move to
+   visual block layer with a create_line_fade_animation() method.
 
-3. **Focused block parent line fading**: The focused block's parent line now correctly
-   fades when the parent is outside the context (e.g., showing B1's future doesn't
-   fade Genesis→B1 line). This was achieved by checking:
-   ```python
-   if focused_block.parent not in context_blocks:
-       fade_animations.append(focused_block._visual.parent_lines[0].animate...)
+3. **Config-driven line properties**: Ensure all line operations read from config
+   (line_stroke_opacity, line_color, etc.) rather than using any hardcoded values.
 """
 
 from __future__ import annotations
@@ -62,17 +64,16 @@ import numpy as np
 from manim import ShowPassingFlash, cycle_animation, WHITE, Wait
 
 from .logical_block import BitcoinLogicalBlock
-from .layout_config import BitcoinLayoutConfig, DEFAULT_BITCOIN_LAYOUT_CONFIG
-from ... import BitcoinBlockConfig, DEFAULT_BITCOIN_CONFIG
+from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG
 
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
 
 # noinspection PyProtectedMember
 class BitcoinDAG:
-    def __init__(self, scene: HUD2DScene, layout_config: BitcoinLayoutConfig = DEFAULT_BITCOIN_LAYOUT_CONFIG):
+    def __init__(self, scene: HUD2DScene, config: BitcoinConfig = DEFAULT_BITCOIN_CONFIG):
         self.scene = scene
-        self.layout_config = layout_config
+        self.config = config
         self.blocks: dict[str, BitcoinLogicalBlock] = {}
         self.all_blocks: List[BitcoinLogicalBlock] = []
         self.genesis: Optional[BitcoinLogicalBlock] = None
@@ -82,12 +83,11 @@ class BitcoinDAG:
     # Block Handling
     ########################################
 
-#TODO blocks added to scene without create and without labels, need to create
     def add_block(
             self,
             parent: Optional[BitcoinLogicalBlock] = None,
             position: Optional[np.ndarray] = None,
-            config: Optional[BitcoinBlockConfig] = None,
+            config: Optional[BitcoinConfig] = None,
             name: Optional[str] = None
     ) -> BitcoinLogicalBlock:
         """Add a new block to the DAG with automatic positioning."""
@@ -98,18 +98,18 @@ class BitcoinDAG:
         if position is None:
             if parent is None:
                 # Genesis block: use genesis_y from layout_config
-                position = np.array([0, self.layout_config.genesis_y, 0])
+                position = np.array([self.config.genesis_x, self.config.genesis_y, 0])
             else:
                 # Child block: position to the right of parent
                 parent_pos = parent._visual.square.get_center()
-                position = parent_pos + np.array([self.layout_config.horizontal_spacing, 0, 0])
+                position = parent_pos + np.array([self.config.horizontal_spacing, 0, 0])
 
                 # Create the block with calculated position
         block = BitcoinLogicalBlock(
             name=name,
             parent=parent,
             position=position,
-            bitcoin_config=config or DEFAULT_BITCOIN_CONFIG,
+            bitcoin_config=config or self.config,
         )
 
         # Register and add to scene
@@ -119,10 +119,8 @@ class BitcoinDAG:
         if parent is None:
             self.genesis = block
 
-            # Automatically add visual components to scene
-        self.scene.add(block._visual)
-        for line in block._visual.parent_lines:
-            self.scene.add(line)
+        # Play the creation animation
+        self.scene.play(block._visual.create_with_lines())
 
         return block
 
@@ -210,7 +208,7 @@ class BitcoinDAG:
             blocks: List[BitcoinLogicalBlock],
             positions: List[tuple[float, float]]
     ):
-        """Move multiple blocks with deduplicated line updates.
+        """Move multiple blocks using their visual block's movement animation.
 
         Args:
             blocks: List of blocks to move
@@ -219,36 +217,17 @@ class BitcoinDAG:
         if len(blocks) != len(positions):
             raise ValueError("Number of blocks must match number of positions")
 
-            # Collect affected lines (deduplicate)
-        affected_lines = set()
-        for block in blocks:
-            # Collect parent line if it exists
-            if block._visual.parent_lines:  # Fixed: check if list is non-empty
-                affected_lines.add(block._visual.parent_lines[0])
-
-            # Collect child lines
-            for child in block.children:
-                if child._visual.parent_lines:  # Fixed: check if list is non-empty
-                    affected_lines.add(child._visual.parent_lines[0])
-
-        # Create movement animations
-        move_animations = []
+        animations = []
         for block, pos in zip(blocks, positions):
             target = np.array([pos[0], pos[1], 0])
-            move_animations.append(
-                block._visual.animate.move_to(target)
+            animations.append(
+                block._visual.create_movement_animation(
+                    block._visual.animate.move_to(target)
+                )
             )
 
-        # Create line update animations (deduplicated)
-        line_animations = [
-            line.create_update_animation()
-            for line in affected_lines
-        ]
-
-        # Combine and play
-        all_animations = move_animations + line_animations
-        if all_animations:
-            self.scene.play(*all_animations)
+        if animations:
+            self.scene.play(*animations)
 
     ########################################
     # Get Past/Future/Anticone Blocks

@@ -1,36 +1,57 @@
-# blanim\blanim\blockDAGs\bitcoin\config.py
+# blanim/blanim/blockDAGs/bitcoin/config.py
+
+from __future__ import annotations
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, ParsableManimColor, YELLOW
-from manim.utils.color.X11 import PURPLE
+from manim import BLUE, WHITE, PURPLE, ParsableManimColor
 
 from ...core.base_config import BaseBlockConfig
 
-__all__ = ["DEFAULT_BITCOIN_CONFIG", "BitcoinBlockConfig"]
+__all__ = ["DEFAULT_BITCOIN_CONFIG", "BitcoinConfig"]
+
 
 @dataclass
-class BitcoinBlockConfig(BaseBlockConfig):
-    """Configuration for Bitcoin block visualization."""
-    # Visual styling
+class BitcoinConfig(BaseBlockConfig):
+    """Complete configuration for Bitcoin blockchain visualization.
+
+    Combines visual styling and spatial layout into a single config.
+    Each section is clearly separated for maintainability.
+    """
+
+    # ========================================
+    # VISUAL STYLING - Block Appearance
+    # ========================================
     block_color: ParsableManimColor = BLUE
     fill_opacity: float = 0.2
     stroke_color: ParsableManimColor = BLUE
     stroke_width: float = 3
     stroke_opacity: float = 1.0
     side_length: float = 0.7
-    line_stroke_opacity: float = 1.0
 
-    # Label styling
+    # ========================================
+    # VISUAL STYLING - Label Appearance
+    # ========================================
     label_font_size: int = 24
     label_color: ParsableManimColor = WHITE
     label_opacity: float = 1.0
 
-    # Animation timing
+    # ========================================
+    # VISUAL STYLING - Line Appearance
+    # ========================================
+    line_color: ParsableManimColor = BLUE
+    line_stroke_width: float = 5
+    line_stroke_opacity: float = 1.0
+
+    # ========================================
+    # ANIMATION TIMING
+    # ========================================
     create_run_time: float = 2.0
     label_change_run_time: float = 1.0
     movement_run_time: float = 1.0
 
-    # Highlighting parameters
+    # ========================================
+    # HIGHLIGHTING BEHAVIOR
+    # ========================================
     highlight_color: ParsableManimColor = PURPLE
     highlight_stroke_width: float = 8
     highlight_run_time: float = 0.5
@@ -38,9 +59,17 @@ class BitcoinBlockConfig(BaseBlockConfig):
     context_block_color: ParsableManimColor = WHITE
     flash_connections: bool = True
 
-    # Line styling (Bitcoin-specific: single parent)
-    line_color: ParsableManimColor = BLUE
-    line_stroke_width: float = 5
+    # ========================================
+    # SPATIAL LAYOUT - Genesis Position
+    # ========================================
+    genesis_x: float = -6.5
+    genesis_y: float = 0.0
+
+    # ========================================
+    # SPATIAL LAYOUT - Block Spacing
+    # ========================================
+    horizontal_spacing: float = 2.0
+    vertical_spacing: float = 1.0  # For parallel blocks during forks
 
 # Default configuration instance
-DEFAULT_BITCOIN_CONFIG = BitcoinBlockConfig()
+DEFAULT_BITCOIN_CONFIG = BitcoinConfig()

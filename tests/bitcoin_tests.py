@@ -3,7 +3,7 @@
 from blanim import *
 from blanim.blockDAGs.bitcoin.chain import BitcoinDAG
 
-#TODO verify the problems in the outputs and debug
+#TODO check the videos outputs and debug
 
 class TestAutomaticNaming(HUD2DScene):
     """Test automatic block naming with height-based convention."""
@@ -398,14 +398,14 @@ class TestAutoPositioning(HUD2DScene):
         b2_pos = b2._visual.square.get_center()
 
         # Check horizontal spacing
-        spacing = dag.layout_config.horizontal_spacing
+        spacing = dag.config.horizontal_spacing
         assert abs(b1_pos[0] - gen_pos[0] - spacing) < 0.01, "B1 horizontal spacing incorrect"
         assert abs(b2_pos[0] - b1_pos[0] - spacing) < 0.01, "B2 horizontal spacing incorrect"
 
         # Check vertical alignment (should be at genesis_y)
-        assert abs(gen_pos[1] - dag.layout_config.genesis_y) < 0.01, "Genesis y position incorrect"
-        assert abs(b1_pos[1] - dag.layout_config.genesis_y) < 0.01, "B1 y position incorrect"
-        assert abs(b2_pos[1] - dag.layout_config.genesis_y) < 0.01, "B2 y position incorrect"
+        assert abs(gen_pos[1] - dag.config.genesis_y) < 0.01, "Genesis y position incorrect"
+        assert abs(b1_pos[1] - dag.config.genesis_y) < 0.01, "B1 y position incorrect"
+        assert abs(b2_pos[1] - dag.config.genesis_y) < 0.01, "B2 y position incorrect"
 
         text = Text("Auto-Positioning Passed", color=GREEN).to_edge(UP)
         self.play(Write(text))

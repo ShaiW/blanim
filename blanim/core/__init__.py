@@ -8,7 +8,6 @@ __all__ = [
     "Frame2DWrapper",
     "Frame2DAnimateWrapper",
     "TranscriptManager",
-    "BaseDAG",
     "BaseBlockConfig"
     # Add other core classes as you implement them
 ]
@@ -16,5 +15,4 @@ __all__ = [
 from .base_visual_block import *
 from .parent_line import *
 from .hud_2d_scene import *
-from .base_dag import *
 from .base_config import *

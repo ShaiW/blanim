@@ -6,7 +6,7 @@ __all__ = ["BitcoinLogicalBlock"]
 
 from typing import Optional, List
 
-from .config import DEFAULT_BITCOIN_CONFIG, BitcoinBlockConfig
+from .config import DEFAULT_BITCOIN_CONFIG, BitcoinConfig
 from .visual_block import BitcoinVisualBlock
 
 class BitcoinLogicalBlock:
@@ -17,7 +17,7 @@ class BitcoinLogicalBlock:
             name: str,
             parent: Optional[BitcoinLogicalBlock] = None,
             position: tuple[float, float] = (0, 0),
-            bitcoin_config: BitcoinBlockConfig = DEFAULT_BITCOIN_CONFIG
+            bitcoin_config: BitcoinConfig = DEFAULT_BITCOIN_CONFIG
     ):
         # Identity
         self.name = name
