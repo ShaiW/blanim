@@ -38,7 +38,7 @@ class BitcoinLogicalBlock:
         # noinspection PyProtectedMember
         parent_visual = self.parent._visual if self.parent else None
         self._visual = BitcoinVisualBlock(
-            label_text=str(self.weight),
+            label_text=str(self.name),
             position=position,
             parent=parent_visual,
             bitcoin_config=bitcoin_config  # Type-specific parameter

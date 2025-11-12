@@ -3,7 +3,6 @@
 from blanim import *
 from blanim.blockDAGs.bitcoin.chain import BitcoinDAG
 
-#TODO check the videos outputs and debug
 
 class TestAutomaticNaming(HUD2DScene):
     """Test automatic block naming with height-based convention."""
@@ -18,7 +17,7 @@ class TestAutomaticNaming(HUD2DScene):
         b3 = dag.add_block(parent=b2)
 
         # Verify automatic names
-        assert genesis.name == "Genesis", f"Genesis name should be 'Genesis', got {genesis.name}"
+        assert genesis.name == "Gen", f"Genesis name should be 'Gen', got {genesis.name}"
         assert b1.name == "B1", f"B1 name should be 'B1', got {b1.name}"
         assert b2.name == "B2", f"B2 name should be 'B2', got {b2.name}"
         assert b3.name == "B3", f"B3 name should be 'B3', got {b3.name}"
@@ -61,7 +60,7 @@ class TestManualNaming(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-
+#TODO add secondary adjustment animation
 class TestParallelBlockNaming(HUD2DScene):
     """Test naming convention for parallel blocks (forks)."""
 
@@ -105,7 +104,7 @@ class TestGenerateChain(HUD2DScene):
         assert len(dag.all_blocks) == 10, f"DAG should track 10 blocks, got {len(dag.all_blocks)}"
 
         # Verify naming sequence
-        assert blocks[0].name == "Genesis"
+        assert blocks[0].name == "Gen"
         assert blocks[1].name == "B1"
         assert blocks[5].name == "B5"
         assert blocks[9].name == "B9"
@@ -135,7 +134,7 @@ class TestFuzzyBlockRetrieval(HUD2DScene):
         dag.generate_chain(5)
 
         # Test exact matches
-        assert dag.get_block("Genesis").name == "Genesis"
+        assert dag.get_block("Gen").name == "Gen"
         assert dag.get_block("B2").name == "B2"
         assert dag.get_block("B4").name == "B4"
 
@@ -176,7 +175,7 @@ class BasicBitcoinChain(HUD2DScene):
         self.wait(1)
 
         # Verify automatic names
-        assert genesis.name == "Genesis"
+        assert genesis.name == "Gen"
         assert b1.name == "B1"
         assert b2.name == "B2"
         assert b3.name == "B3"
@@ -194,10 +193,10 @@ class TestBlockRegistry(HUD2DScene):
         b2 = dag.add_block(parent=b1)
 
         # Verify registry with automatic names
-        assert dag.get_block("Genesis") == gen, "Genesis not found in registry"
+        assert dag.get_block("Gen") == gen, "Gen not found in registry"
         assert dag.get_block("B1") == b1, "B1 not found in registry"
         assert dag.get_block("B2") == b2, "B2 not found in registry"
-        assert dag.genesis == gen, "Genesis not tracked correctly"
+        assert dag.genesis == gen, "Gen not tracked correctly"
         assert len(dag.all_blocks) == 3, "all_blocks count incorrect"
 
         # Add success indicator
@@ -284,7 +283,7 @@ class TestTraversal(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-
+#TODO fix this, cycle on lines never clears
 class TestHighlighting(HUD2DScene):
     """Test visual highlighting system with automatic naming."""
 

@@ -86,30 +86,22 @@ class BitcoinDAG:
     def add_block(
             self,
             parent: Optional[BitcoinLogicalBlock] = None,
-            position: Optional[np.ndarray] = None,
-            config: Optional[BitcoinConfig] = None,
             name: Optional[str] = None
     ) -> BitcoinLogicalBlock:
         """Add a new block to the DAG with automatic positioning."""
         # Auto-generate name only if not provided
         if name is None:
             name = self._generate_block_name(parent)
-            # Auto-calculate position if not provided
-        if position is None:
-            if parent is None:
-                # Genesis block: use genesis_y from layout_config
-                position = np.array([self.config.genesis_x, self.config.genesis_y, 0])
-            else:
-                # Child block: position to the right of parent
-                parent_pos = parent._visual.square.get_center()
-                position = parent_pos + np.array([self.config.horizontal_spacing, 0, 0])
 
-                # Create the block with calculated position
+        # Auto-calculate position if not provided
+        position = self._calculate_position(parent)
+
+        # Create the block with calculated position
         block = BitcoinLogicalBlock(
             name=name,
             parent=parent,
             position=position,
-            bitcoin_config=config or self.config,
+            bitcoin_config=self.config,
         )
 
         # Register and add to scene
@@ -123,6 +115,28 @@ class BitcoinDAG:
         self.scene.play(block._visual.create_with_lines())
 
         return block
+
+    def _calculate_position(self, parent: Optional[BitcoinLogicalBlock]) -> tuple[float, float]:
+        """Calculate position for a block based on parent and siblings.
+
+        This method can be called both during initial block creation and
+        when repositioning blocks after chain length changes.
+        """
+        if parent is None:
+            # Genesis block
+            return self.config.genesis_x, self.config.genesis_y
+
+            # Calculate horizontal position
+        parent_pos = parent._visual.square.get_center()
+        x_position = parent_pos[0] + self.config.horizontal_spacing
+
+        # Calculate vertical offset for parallel blocks
+        new_block_weight = parent.weight + 1
+        same_height_blocks = [b for b in self.all_blocks if b.weight == new_block_weight]
+        sibling_index = len(same_height_blocks)
+        y_position = self.config.genesis_y + (sibling_index * self.config.vertical_spacing)
+
+        return x_position, y_position
 
     def generate_chain(self, num_blocks: int) -> List[BitcoinLogicalBlock]:
         """Generate a linear chain of blocks.
@@ -153,7 +167,7 @@ class BitcoinDAG:
     def _generate_block_name(self, parent: Optional[BitcoinLogicalBlock]) -> str:
         """Generate human-readable block name based on weight (height)."""
         if parent is None:
-            return "Genesis"
+            return "Gen"
 
             # Use weight - 1 for block number since Genesis has weight 1
         height = parent.weight + 1
