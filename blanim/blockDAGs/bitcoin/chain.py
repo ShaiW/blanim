@@ -61,7 +61,7 @@ from __future__ import annotations
 from typing import Optional, List, TYPE_CHECKING
 
 import numpy as np
-from manim import ShowPassingFlash, cycle_animation, WHITE, Wait
+from manim import ShowPassingFlash, cycle_animation, WHITE, Wait, UP
 
 from .logical_block import BitcoinLogicalBlock
 from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG
@@ -78,6 +78,7 @@ class BitcoinDAG:
         self.all_blocks: List[BitcoinLogicalBlock] = []
         self.genesis: Optional[BitcoinLogicalBlock] = None
         self.currently_highlighted_block: Optional[BitcoinLogicalBlock] = None
+        self.flash_lines: List = []
 
     ########################################
     # Block Handling
@@ -114,13 +115,32 @@ class BitcoinDAG:
         # Play the creation animation
         self.scene.play(block._visual.create_with_lines())
 
+        # Collect all repositioning animations
+        all_animations = []
+
+        # Collect animations for blocks at this height if all have same chain length
+        if parent is not None:
+            parallel_animations = self._reposition_parallel_blocks_if_equal(block.weight)
+            all_animations.extend(parallel_animations)
+
+            # Collect animations for parent levels (walks up the chain)
+            current_parent = parent
+            while current_parent is not None:
+                # Pass all_animations list so it can be modified in-place
+                self._collect_parent_level_animations(current_parent, all_animations)
+                current_parent = current_parent.parent
+
+                # Play all animations together in one unified animation
+        if all_animations:
+            self.scene.play(*all_animations)
+
         return block
 
     def _calculate_position(self, parent: Optional[BitcoinLogicalBlock]) -> tuple[float, float]:
         """Calculate position for a block based on parent and siblings.
 
-        This method can be called both during initial block creation and
-        when repositioning blocks after chain length changes.
+        New blocks are placed at parent's y-position if they're the first child
+        of that parent, or below existing siblings if creating parallel blocks.
         """
         if parent is None:
             # Genesis block
@@ -130,13 +150,160 @@ class BitcoinDAG:
         parent_pos = parent._visual.square.get_center()
         x_position = parent_pos[0] + self.config.horizontal_spacing
 
-        # Calculate vertical offset for parallel blocks
+        # Calculate vertical position
         new_block_weight = parent.weight + 1
         same_height_blocks = [b for b in self.all_blocks if b.weight == new_block_weight]
-        sibling_index = len(same_height_blocks)
-        y_position = self.config.genesis_y + (sibling_index * self.config.vertical_spacing)
+
+        if not same_height_blocks:
+            # First block at this height - place at parent's y-position
+            y_position = parent_pos[1]
+        else:
+            # Check if this parent already has children at this height
+            parent_children_at_height = [b for b in same_height_blocks if b.parent == parent]
+
+            if not parent_children_at_height:
+                # First child of THIS parent - place at parent's y-position
+                y_position = parent_pos[1]
+            else:
+                # Extending this parent's chain - find lowest child of this parent
+                lowest_y = min(b._visual.square.get_center()[1] for b in parent_children_at_height)
+                # Place new block below the lowest child of this parent
+                y_position = lowest_y - self.config.vertical_spacing
 
         return x_position, y_position
+
+    def _reposition_parallel_blocks_if_equal(self, weight: int):
+        """Reposition blocks at a given height ONLY if they all have no children.
+
+        Returns a list of animations to be played, or empty list if no repositioning needed.
+        """
+        blocks_at_height = [b for b in self.all_blocks if b.weight == weight]
+
+        if len(blocks_at_height) <= 1:
+            return []  # Return empty list instead of returning None
+
+        # Check if all blocks have no children (same chain length)
+        all_childless = all(len(block.children) == 0 for block in blocks_at_height)
+
+        if not all_childless:
+            return []  # Return empty list
+
+        # Calculate the vertical shift needed
+        num_blocks = len(blocks_at_height)
+        middle_index = (num_blocks - 1) / 2.0
+
+        max_y = max(b._visual.square.get_center()[1] for b in blocks_at_height)
+        min_y = min(b._visual.square.get_center()[1] for b in blocks_at_height)
+        current_middle_y = (max_y + min_y) / 2.0
+
+        vertical_shift = self.config.genesis_y - current_middle_y
+
+        if abs(vertical_shift) < 0.01:
+            return []  # Return empty list
+
+        # Collect animations instead of playing them
+        animations = []
+        for block in blocks_at_height:
+            animations.append(
+                block._visual.create_movement_animation(
+                    block._visual.animate.shift(UP * vertical_shift)
+                )
+            )
+
+        return animations
+
+    def _collect_parent_level_animations(self, parent: BitcoinLogicalBlock, animations: List):
+        """Collect repositioning animations for parent's level without playing them.
+
+        This is called during the ancestor walk in add_block() to collect all
+        animations before playing them together.
+        """
+        blocks_at_parent_height = [b for b in self.all_blocks if b.weight == parent.weight]
+
+        if len(blocks_at_parent_height) <= 1:
+            return
+
+            # Calculate chain lengths for all blocks at this height
+        chain_lengths = {}
+        for block in blocks_at_parent_height:
+            chain_lengths[block] = self._calculate_chain_length(block)
+
+        max_chain_length = max(chain_lengths.values())
+        longest_blocks = [b for b, length in chain_lengths.items() if length == max_chain_length]
+
+        # Only reposition if parent is among the longest chains
+        if parent not in longest_blocks:
+            return
+
+            # Calculate vertical shift needed
+        if len(longest_blocks) == 1:
+            longest_block_y = longest_blocks[0]._visual.square.get_center()[1]
+            vertical_shift = self.config.genesis_y - longest_block_y
+        else:
+            longest_positions = [b._visual.square.get_center()[1] for b in longest_blocks]
+            current_middle = (max(longest_positions) + min(longest_positions)) / 2.0
+            vertical_shift = self.config.genesis_y - current_middle
+
+        if abs(vertical_shift) < 0.01:
+            return
+
+            # Collect parent-level animations
+        for block in blocks_at_parent_height:
+            animations.append(
+                block._visual.create_movement_animation(
+                    block._visual.animate.shift(UP * vertical_shift)
+                )
+            )
+
+            # Collect descendant animations
+        for block in blocks_at_parent_height:
+            self._collect_descendant_animations(block, vertical_shift, animations)
+
+    def _collect_descendant_animations(
+            self,
+            block: BitcoinLogicalBlock,
+            vertical_shift: float,
+            animations: List
+    ) -> None:
+        """Recursively collect animations for all descendants without playing them."""
+        for child in block.children:
+            animations.append(
+                child._visual.create_movement_animation(
+                    child._visual.animate.shift(UP * vertical_shift)
+                )
+            )
+            # Recursively collect grandchildren animations
+            self._collect_descendant_animations(child, vertical_shift, animations)
+
+    def _shift_descendants(
+            self,
+            block: BitcoinLogicalBlock,
+            vertical_shift: float,
+            animations: List
+    ) -> None:
+        """Recursively shift all descendants of a block by the same vertical amount."""
+        for child in block.children:
+            animations.append(
+                child._visual.create_movement_animation(
+                    child._visual.animate.shift(UP * vertical_shift)
+                )
+            )
+            # Recurse to grandchildren, great-grandchildren, etc.
+            self._shift_descendants(child, vertical_shift, animations)
+
+    def _calculate_chain_length(self, block: BitcoinLogicalBlock) -> int:
+        """Calculate the length of the longest chain descending from this block.
+
+        Returns:
+            The number of descendants in the longest chain from this block.
+            Returns 0 if the block has no children.
+        """
+        if not block.children:
+            return 0
+
+            # Recursively find the longest chain among all children
+        max_child_length = max(self._calculate_chain_length(child) for child in block.children)
+        return 1 + max_child_length
 
     def generate_chain(self, num_blocks: int) -> List[BitcoinLogicalBlock]:
         """Generate a linear chain of blocks.
@@ -296,7 +463,8 @@ class BitcoinDAG:
         All styling comes from focused_block._visual.config.
         """
         context_blocks = self.get_past_cone(focused_block)
-        return self._highlight_with_context(focused_block, context_blocks)
+        self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
+        return self.flash_lines
 
     def highlight_future(self, focused_block: BitcoinLogicalBlock) -> List:
         """Highlight a block's future cone (descendants).
@@ -304,7 +472,8 @@ class BitcoinDAG:
         All styling comes from focused_block._visual.config.
         """
         context_blocks = self.get_future_cone(focused_block)
-        return self._highlight_with_context(focused_block, context_blocks)
+        self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
+        return self.flash_lines
 
     def highlight_anticone(self, focused_block: BitcoinLogicalBlock) -> List:
         """Highlight a block's anticone (neither ancestors nor descendants).
@@ -312,7 +481,8 @@ class BitcoinDAG:
         All styling comes from focused_block._visual.config.
         """
         context_blocks = self.get_anticone(focused_block)
-        return self._highlight_with_context(focused_block, context_blocks)
+        self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
+        return self.flash_lines
 
     @staticmethod
     def _create_pulse_updater(block: BitcoinLogicalBlock):
@@ -429,7 +599,12 @@ class BitcoinDAG:
                 self.currently_highlighted_block._visual.square.updaters[-1]
             )
 
-            # Reset ALL blocks to original styling from config
+        # Remove flash line copies from scene
+        for flash_line in self.flash_lines:
+            self.scene.remove(flash_line)
+        self.flash_lines = []
+
+        # Reset ALL blocks to original styling from config
         reset_animations = []
         for block in self.all_blocks:
             reset_animations.extend([
@@ -450,7 +625,7 @@ class BitcoinDAG:
                     )
                 )
 
-                # Clear the tracked state
+        # Clear the tracked state
         self.currently_highlighted_block = None
 
         if reset_animations:

@@ -1,7 +1,7 @@
 # blanim/examples/bitcoin_examples.py
 
 from blanim import *
-from blanim.blockDAGs.bitcoin import BitcoinBlockConfig
+from blanim.blockDAGs.bitcoin import BitcoinConfig
 from blanim.blockDAGs.kaspa import KaspaBlockConfig
 import random
 
@@ -10,7 +10,7 @@ import random
 # ============================================================================
 
 # Custom Bitcoin configuration with all settings overridden
-CUSTOM_BITCOIN_CONFIG = BitcoinBlockConfig(
+CUSTOM_BITCOIN_CONFIG = BitcoinConfig(
     # Visual styling
     block_color=PURPLE,
     fill_opacity=0.3,

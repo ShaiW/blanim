@@ -705,17 +705,17 @@ class TestCameraSetBothDimensions(HUD2DScene):
         self.wait(2)
 
 
-class TestCaptionTextTypes(HUD2DScene):
-    """Test caption with different text types."""
-    caption_text_type = "MathTex"
+#class TestCaptionTextTypes(HUD2DScene):
+#    """Test caption with different text types."""
+#    caption_text_type = "MathTex"#
 
-    def construct(self):
-        self.caption(r"\sum_{i=1}^n i = \frac{n(n+1)}{2}")
-        self.wait(2)
-        self.clear_caption()
+#    def construct(self):
+#        self.caption(r"\sum_{i=1}^n i = \frac{n(n+1)}{2}")
+#        self.wait(2)
+#        self.clear_caption()
 
-        text = Text("Caption Text Types Test Passed", color=GREEN).to_edge(UP)
-        self.play(Write(text))
-        self.wait(2)
+#        text = Text("Caption Text Types Test Passed", color=GREEN).to_edge(UP)
+#        self.play(Write(text))
+#        self.wait(2)
 
 

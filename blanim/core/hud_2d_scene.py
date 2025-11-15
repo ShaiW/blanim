@@ -764,6 +764,8 @@ class HUD2DScene(ThreeDScene):
             self.wait(display_time)
             self.clear_caption(run_time=fade_time, **kwargs)
 
+#TODO added z index to naration and caption, test these
+#    appear to have worked, BUT may require a bg to ensure visibility when something renders below it in z space
 class UniversalNarrationManager:
     """Internal HUD text manager using the primer pattern (not user-facing).
 
@@ -860,6 +862,10 @@ class UniversalNarrationManager:
 
         # Register primers as fixed-in-frame
         self.scene.add_fixed_in_frame_mobjects(narration_primer, caption_primer)
+
+        # SET Z-INDEX HERE - after registration but before storing references
+        narration_primer.set_z_index(1000)
+        caption_primer.set_z_index(1000)
 
         self.current_narration_text = narration_primer
         self.current_caption_text = caption_primer
@@ -1011,6 +1017,7 @@ class UniversalNarrationManager:
         """
         self.caption_color = caption_color
 
+#TODO was able to break positioning of narration and caption during an example, attempt to break again(possible from using movingcamera in 3dscene)
 class Frame2DWrapper:
     """Internal wrapper that mimics MovingCamera.frame API for ThreeDCamera in 2D mode (not user-facing).
 

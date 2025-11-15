@@ -60,7 +60,6 @@ class TestManualNaming(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO add secondary adjustment animation
 class TestParallelBlockNaming(HUD2DScene):
     """Test naming convention for parallel blocks (forks)."""
 
@@ -90,6 +89,373 @@ class TestParallelBlockNaming(HUD2DScene):
         self.wait(2)
 
 
+class TestParallelBlockRepositioningWithChildren(HUD2DScene):
+    """Test that parallel blocks don't reposition when one has children."""
+
+    def construct(self):
+        dag = BitcoinDAG(scene=self)
+
+        # Create chain with fork
+        genesis = dag.add_block()
+        b1 = dag.add_block(parent=genesis)
+
+        # Create first block at height 2 and extend it (give it a child)
+        b2 = dag.add_block(parent=b1)
+        b3 = dag.add_block(parent=b2)  # b2 now has a child
+
+        # Store b2's position before adding parallel block
+        b2_pos_before = b2._visual.square.get_center().copy()
+
+        self.wait(1)
+
+        # Add parallel block at height 2 - should NOT trigger repositioning
+        # because b2 has a child
+        b2_fork = dag.add_block(parent=b1)
+
+        # Store positions after
+        b2_pos_after = b2._visual.square.get_center()
+        b2_fork_pos = b2_fork._visual.square.get_center()
+
+        # Verify b2 did NOT move (stayed at genesis_y)
+        assert abs(b2_pos_before[1] - b2_pos_after[1]) < 0.01, \
+            f"b2 should not have moved, but y changed from {b2_pos_before[1]} to {b2_pos_after[1]}"
+
+        # Verify b2 is at genesis_y (the longer chain stays centered)
+        assert abs(b2_pos_after[1] - dag.config.genesis_y) < 0.01, \
+            f"b2 should be at genesis_y ({dag.config.genesis_y}), but is at {b2_pos_after[1]}"
+
+        # Verify b2_fork is below b2 (offset position maintained)
+        assert b2_fork_pos[1] < b2_pos_after[1], \
+            f"b2_fork should be below b2, but b2_fork.y={b2_fork_pos[1]}, b2.y={b2_pos_after[1]}"
+
+        # Verify naming
+        assert b2.name == "B2", f"Expected 'B2', got {b2.name}"
+        assert b2_fork.name == "B2a", f"Expected 'B2a', got {b2_fork.name}"
+
+        # Visual confirmation
+        text = Text("No Repositioning With Children Test Passed", color=GREEN, font_size=24)
+        text.to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+#TODO test that we are properly positioning all blocks during forks
+class TestCascadingChainRepositioning(HUD2DScene):
+    """Test that adding children to parallel blocks causes cascading repositioning
+    so the longest chain is always centered at genesis_y."""
+
+    def construct(self):
+        dag = BitcoinDAG(scene=self)
+
+        # Create initial structure: Gen -> B1 -> (B2, B2a, B2b)
+        genesis = dag.add_block()
+        b1 = dag.add_block(parent=genesis)
+
+        # Create 3 parallel blocks at height 2 (all childless, will be centered)
+        b2 = dag.add_block(parent=b1)
+        b2a = dag.add_block(parent=b1)
+        b2b = dag.add_block(parent=b1)
+
+        self.wait(1)
+
+        # After centering, blocks should be:
+        # b2: genesis_y + spacing (top)
+        # b2a: genesis_y (middle)
+        # b2b: genesis_y - spacing (bottom)
+
+        # Store initial positions
+        b2_pos_initial = b2._visual.square.get_center().copy()
+        b2a_pos_initial = b2a._visual.square.get_center().copy()
+        b2b_pos_initial = b2b._visual.square.get_center().copy()
+
+        self.caption("Initial: 3 parallel childless blocks centered")
+        self.wait(2)
+
+        # === TEST 1: Add child to bottom block (b2b) ===
+        self.caption("Test 1: Add child to bottom block")
+        b3b = dag.add_block(parent=b2b)
+
+        # Verify all blocks at height 2 shifted up so b2b is now at genesis_y
+        b2_pos_after_test1 = b2._visual.square.get_center()
+        b2a_pos_after_test1 = b2a._visual.square.get_center()
+        b2b_pos_after_test1 = b2b._visual.square.get_center()
+
+        # b2b should now be at genesis_y (longest chain)
+        assert abs(b2b_pos_after_test1[1] - dag.config.genesis_y) < 0.01, \
+            f"b2b should be at genesis_y after getting child, but is at {b2b_pos_after_test1[1]}"
+
+        # All blocks should have shifted by the same amount
+        shift_amount = b2b_pos_after_test1[1] - b2b_pos_initial[1]
+        assert abs((b2_pos_after_test1[1] - b2_pos_initial[1]) - shift_amount) < 0.01, \
+            "b2 should have shifted by same amount as b2b"
+        assert abs((b2a_pos_after_test1[1] - b2a_pos_initial[1]) - shift_amount) < 0.01, \
+            "b2a should have shifted by same amount as b2b"
+
+        # b3b (child) should also have shifted
+        b3b_pos = b3b._visual.square.get_center()
+
+        self.wait(2)
+
+        # === TEST 2: Add child to another block (b2) - creates tied chains ===
+        self.caption("Test 2: Add child to top block (creates tie)")
+        b3 = dag.add_block(parent=b2)
+
+        # Now b2 and b2b both have 1 child (tied for longest)
+        # They should be equidistant from genesis_y
+        b2_pos_after_test2 = b2._visual.square.get_center()
+        b2a_pos_after_test2 = b2a._visual.square.get_center()
+        b2b_pos_after_test2 = b2b._visual.square.get_center()
+
+        # Calculate middle of tied chains
+        tied_middle = (b2_pos_after_test2[1] + b2b_pos_after_test2[1]) / 2.0
+        assert abs(tied_middle - dag.config.genesis_y) < 0.01, \
+            f"Tied chains should be centered around genesis_y, but middle is at {tied_middle}"
+
+        # b2a (shorter chain) should maintain relative position
+        # It should be between b2 and b2b
+        assert b2b_pos_after_test2[1] < b2a_pos_after_test2[1] < b2_pos_after_test2[1], \
+            "b2a should remain between the two tied chains"
+
+        # Verify descendants also shifted
+        b3_pos = b3._visual.square.get_center()
+        b3b_pos_after_test2 = b3b._visual.square.get_center()
+
+        self.wait(2)
+
+        # === TEST 3: Extend one chain further (b2b wins) ===
+        self.caption("Test 3: Extend bottom chain (breaks tie)")
+        b4b = dag.add_block(parent=b3b)
+
+        # Now b2b has longest chain (2 children), should be at genesis_y
+        b2_pos_after_test3 = b2._visual.square.get_center()
+        b2a_pos_after_test3 = b2a._visual.square.get_center()
+        b2b_pos_after_test3 = b2b._visual.square.get_center()
+
+        assert abs(b2b_pos_after_test3[1] - dag.config.genesis_y) < 0.01, \
+            f"b2b (longest chain) should be at genesis_y, but is at {b2b_pos_after_test3[1]}"
+
+        # b2 and b2a should be above genesis_y (offset from longest chain)
+        assert b2_pos_after_test3[1] > dag.config.genesis_y, \
+            "b2 should be above genesis_y"
+        assert b2a_pos_after_test3[1] > dag.config.genesis_y, \
+            "b2a should be above genesis_y"
+
+        # Verify all descendants shifted with their parents
+        b3_pos_final = b3._visual.square.get_center()
+        b3b_pos_final = b3b._visual.square.get_center()
+        b4b_pos_final = b4b._visual.square.get_center()
+
+        # b3b and b4b should be aligned with b2b (same x, offset y)
+        assert abs(b3b_pos_final[0] - b2b_pos_after_test3[0] - dag.config.horizontal_spacing) < 0.01, \
+            "b3b should be horizontally aligned with b2b's chain"
+        assert abs(b4b_pos_final[0] - b3b_pos_final[0] - dag.config.horizontal_spacing) < 0.01, \
+            "b4b should be horizontally aligned with b3b's chain"
+
+        self.wait(2)
+
+        # Visual confirmation
+        text = Text("Cascading Chain Repositioning Test Passed", color=GREEN, font_size=24)
+        text.to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestThreeWayTieResolution(HUD2DScene):
+    """Test three parallel forks with equal length, then resolve the tie."""
+
+    def construct(self):
+        dag = BitcoinDAG(scene=self)
+
+        # Create initial structure: Gen -> B1 -> (B2, B2a, B2b)
+        genesis = dag.add_block()
+        b1 = dag.add_block(parent=genesis)
+
+        # Create 3 parallel blocks
+        b2 = dag.add_block(parent=b1)
+        b2a = dag.add_block(parent=b1)
+        b2b = dag.add_block(parent=b1)
+
+        # All should be centered around genesis_y
+        b2_pos_1 = b2._visual.square.get_center()
+        b2a_pos_1 = b2a._visual.square.get_center()
+        b2b_pos_1 = b2b._visual.square.get_center()
+
+        # Calculate middle position
+        middle_y = (b2_pos_1[1] + b2a_pos_1[1] + b2b_pos_1[1]) / 3
+        assert abs(middle_y - dag.config.genesis_y) < 0.01, \
+            "Three childless blocks should be centered around genesis_y"
+
+        self.wait(1)
+
+        # Extend all three forks by one block each (maintain tie)
+        b3 = dag.add_block(parent=b2)
+        b3a = dag.add_block(parent=b2a)
+        b3b = dag.add_block(parent=b2b)
+
+        # All should still be centered around genesis_y
+        b2_pos_2 = b2._visual.square.get_center()
+        b2a_pos_2 = b2a._visual.square.get_center()
+        b2b_pos_2 = b2b._visual.square.get_center()
+
+        middle_y_2 = (b2_pos_2[1] + b2a_pos_2[1] + b2b_pos_2[1]) / 3
+        assert abs(middle_y_2 - dag.config.genesis_y) < 0.01, \
+            "Three tied chains should remain centered around genesis_y"
+
+        self.wait(1)
+
+        # Extend middle fork (b2a) to break the tie
+        b4 = dag.add_block(parent=b3)
+
+        # b2 should now be at genesis_y (longest chain with 4 blocks)
+        b2_pos_3 = b2._visual.square.get_center()
+        assert abs(b2_pos_3[1] - dag.config.genesis_y) < 0.01, \
+            "b2 should be at genesis_y after breaking the tie (longest chain)"
+
+        # b2a and b2b should be above and below genesis_y respectively
+        b2a_pos_3 = b2a._visual.square.get_center()
+        b2b_pos_3 = b2b._visual.square.get_center()
+        assert b2a_pos_3[1] > dag.config.genesis_y or b2a_pos_3[1] < dag.config.genesis_y, \
+            "b2a should be offset from genesis_y"
+        assert b2b_pos_3[1] > dag.config.genesis_y or b2b_pos_3[1] < dag.config.genesis_y, \
+            "b2b should be offset from genesis_y"
+
+        # Verify descendants are properly aligned
+        b4_pos = b4._visual.square.get_center()
+        assert abs(b4_pos[0] - b3._visual.square.get_center()[0] - dag.config.horizontal_spacing) < 0.01, \
+            "b4 should be horizontally aligned with b3"
+
+        self.wait(2)
+
+        text = Text("Three-Way Tie Resolution Test Passed", color=GREEN, font_size=24)
+        text.to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestAlternatingForkExtensions(HUD2DScene):
+    """Test alternating extensions between two competing forks."""
+
+    def construct(self):
+        dag = BitcoinDAG(scene=self)
+
+        # Create initial structure: Gen -> B1 -> (B2, B2a)
+        genesis = dag.add_block()
+        b1 = dag.add_block(parent=genesis)
+
+        # Create 2 parallel blocks
+        b2 = dag.add_block(parent=b1)
+        b2a = dag.add_block(parent=b1)
+
+        self.wait(1)
+
+        # Extend b2 (top fork)
+        b3 = dag.add_block(parent=b2)
+        b2_pos_1 = b2._visual.square.get_center()
+        assert abs(b2_pos_1[1] - dag.config.genesis_y) < 0.01, \
+            "b2 should be at genesis_y after first extension"
+
+        self.wait(0.5)
+
+        # Extend b2a (bottom fork) to tie
+        b3a = dag.add_block(parent=b2a)
+        b2_pos_2 = b2._visual.square.get_center()
+        b2a_pos_2 = b2a._visual.square.get_center()
+        # Both should be equidistant from genesis_y
+        assert abs(abs(b2_pos_2[1] - dag.config.genesis_y) - abs(b2a_pos_2[1] - dag.config.genesis_y)) < 0.01, \
+            "Tied chains should be equidistant from genesis_y"
+
+        self.wait(0.5)
+
+        # Extend b2 again (top fork takes lead)
+        b4 = dag.add_block(parent=b3)
+        b2_pos_3 = b2._visual.square.get_center()
+        assert abs(b2_pos_3[1] - dag.config.genesis_y) < 0.01, \
+            "b2 should be at genesis_y after taking lead"
+
+        self.wait(0.5)
+
+        # Extend b2a twice (bottom fork overtakes)
+        b4a = dag.add_block(parent=b3a)
+        b5a = dag.add_block(parent=b4a)
+        b2a_pos_4 = b2a._visual.square.get_center()
+        assert abs(b2a_pos_4[1] - dag.config.genesis_y) < 0.01, \
+            "b2a should be at genesis_y after overtaking"
+
+        # Verify b2 is now above genesis_y
+        b2_pos_4 = b2._visual.square.get_center()
+        assert b2_pos_4[1] > dag.config.genesis_y, \
+            "b2 should be above genesis_y after being overtaken"
+
+        self.wait(2)
+
+        text = Text("Alternating Fork Extensions Test Passed", color=GREEN, font_size=24)
+        text.to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestMultipleCompetingForksWithDifferentDepths(HUD2DScene):
+    """Test multiple parallel forks growing to different depths."""
+
+    def construct(self):
+        dag = BitcoinDAG(scene=self)
+
+        # Create initial structure: Gen -> B1 -> (B2, B2a, B2b)
+        genesis = dag.add_block()
+        b1 = dag.add_block(parent=genesis)
+
+        # Create 3 parallel blocks at height 2
+        b2 = dag.add_block(parent=b1)
+        b2a = dag.add_block(parent=b1)
+        b2b = dag.add_block(parent=b1)
+
+        self.wait(1)
+
+        # Extend b2 chain (middle fork) by 2 blocks
+        b3 = dag.add_block(parent=b2)
+        b4 = dag.add_block(parent=b3)
+
+        # Verify b2 is at genesis_y (longest chain)
+        b2_pos = b2._visual.square.get_center()
+        assert abs(b2_pos[1] - dag.config.genesis_y) < 0.01, \
+            f"b2 should be at genesis_y after extending its chain"
+
+        self.wait(1)
+
+        # Extend b2b chain (bottom fork) by 3 blocks to overtake
+        b3b = dag.add_block(parent=b2b)
+        b4b = dag.add_block(parent=b3b)
+        b5b = dag.add_block(parent=b4b)
+
+        # Verify b2b is now at genesis_y (new longest chain)
+        b2b_pos = b2b._visual.square.get_center()
+        assert abs(b2b_pos[1] - dag.config.genesis_y) < 0.01, \
+            f"b2b should be at genesis_y after becoming longest chain"
+
+        # Verify b2 and b2a are above genesis_y
+        b2_pos_final = b2._visual.square.get_center()
+        b2a_pos_final = b2a._visual.square.get_center()
+        assert b2_pos_final[1] > dag.config.genesis_y, \
+            "b2 should be above genesis_y"
+        assert b2a_pos_final[1] > dag.config.genesis_y, \
+            "b2a should be above genesis_y"
+
+        # Verify all descendants are properly aligned
+        b4_pos = b4._visual.square.get_center()
+        b5b_pos = b5b._visual.square.get_center()
+        assert abs(b4_pos[0] - b3._visual.square.get_center()[0] - dag.config.horizontal_spacing) < 0.01, \
+            "b4 should be horizontally aligned with b3"
+        assert abs(b5b_pos[0] - b4b._visual.square.get_center()[0] - dag.config.horizontal_spacing) < 0.01, \
+            "b5b should be horizontally aligned with b4b"
+
+        self.wait(2)
+
+        text = Text("Multiple Competing Forks Test Passed", color=GREEN, font_size=24)
+        text.to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+#TODO follow highest or recent blocks with camera
 class TestGenerateChain(HUD2DScene):
     """Test bulk chain generation with generate_chain()."""
 
@@ -283,7 +649,6 @@ class TestTraversal(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO fix this, cycle on lines never clears
 class TestHighlighting(HUD2DScene):
     """Test visual highlighting system with automatic naming."""
 

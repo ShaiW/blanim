@@ -1,8 +1,12 @@
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Tuple, Set
 import numpy as np
 from manim import *  # currently using manim to determine what problems come from how I am using manim
+
+from blanim import HUD2DScene
+
 
 @dataclass
 class BlockConfig:
@@ -644,3 +648,188 @@ class ScrollingBlocks(Scene):
             ])
 
         self.play(*shift_animations, run_time=1)
+
+
+class BitcoinVsKaspaLogarithmic(HUD2DScene):
+    def construct(self):
+        all_kaspa_blocks = VGroup()
+        block_count = 0
+
+        self.narrate(r"Bitcoin vs Kaspa: Block Production")
+        self.add(all_kaspa_blocks)
+
+        # Set initial zoom
+        self.camera.zoom_tracker.set_value(6.0)
+
+        frame_height = config["frame_height"]
+        frame_width = config["frame_width"]
+        margin = 1.0
+
+        # Phase 1: 0-1 second (REDUCED: 10 blocks, ~15 seconds total)
+        for i in range(10):
+            time = (i + 1) * 0.1
+            block_count += 1
+            new_block = Square(side_length=1.0, stroke_width=0, fill_opacity=1, color="#70C7BA")
+            all_kaspa_blocks.add(new_block)
+
+            cols = min(block_count, 10)
+            rows = math.ceil(block_count / cols)
+
+            # ANIMATED repositioning with reduced run_time
+            self.play(
+                Create(new_block),
+                all_kaspa_blocks.animate.arrange_in_grid(rows=rows, cols=cols, buff=0.1).move_to(ORIGIN),
+                run_time=0.3  # REDUCED from 1
+            )
+
+            current_zoom = self.camera.zoom_tracker.get_value()
+            visible_height = frame_height / current_zoom
+            visible_width = frame_width / current_zoom
+
+            if (all_kaspa_blocks.height > (visible_height - margin) or
+                    all_kaspa_blocks.width > (visible_width - margin)):
+                new_zoom = current_zoom * 0.85
+                self.play(
+                    self.camera.zoom_tracker.animate.set_value(new_zoom),
+                    run_time=0.3  # REDUCED from 1
+                )
+
+            self.narrate(f"Time: {time:.1f}s | Kaspa: {block_count}")
+
+            # Phase 2: 1-10 seconds (REDUCED: ~20 seconds total)
+        for i in range(1, 10):
+            time = i + 1
+            block_count += 10
+            new_blocks = VGroup(*[
+                Square(side_length=1.0, stroke_width=0, fill_opacity=1, color="#70C7BA")
+                for _ in range(10)
+            ])
+            all_kaspa_blocks.add(*new_blocks)
+
+            cols = min(block_count, 20)
+            rows = math.ceil(block_count / cols)
+
+            # ANIMATED repositioning with reduced run_time
+            self.play(
+                Create(new_blocks),
+                all_kaspa_blocks.animate.arrange_in_grid(rows=rows, cols=cols, buff=0.1).move_to(ORIGIN),
+                run_time=0.5  # REDUCED from 2
+            )
+
+            current_zoom = self.camera.zoom_tracker.get_value()
+            visible_height = frame_height / current_zoom
+            visible_width = frame_width / current_zoom
+
+            if (all_kaspa_blocks.height > (visible_height - margin) or
+                    all_kaspa_blocks.width > (visible_width - margin)):
+                new_zoom = current_zoom * 0.8
+                self.play(
+                    self.camera.zoom_tracker.animate.set_value(new_zoom),
+                    run_time=0.5  # REDUCED from 2
+                )
+
+            self.narrate(f"Time: {time}s | Kaspa: {block_count}")
+
+            # Phase 3: 10s-1min (REDUCED: ~15 seconds total)
+        for i in range(1, 6):
+            time = i * 10
+            block_count += 100
+            new_blocks = VGroup(*[
+                Square(side_length=1.0, stroke_width=0, fill_opacity=1, color="#70C7BA")
+                for _ in range(100)
+            ])
+            all_kaspa_blocks.add(*new_blocks)
+
+            cols = int(math.sqrt(block_count) * 1.5)
+            rows = math.ceil(block_count / cols)
+
+            # ANIMATED repositioning with reduced run_time
+            self.play(
+                Create(new_blocks),
+                all_kaspa_blocks.animate.arrange_in_grid(rows=rows, cols=cols, buff=0.1).move_to(ORIGIN),
+                run_time=0.8  # REDUCED from 3
+            )
+
+            current_zoom = self.camera.zoom_tracker.get_value()
+            visible_height = frame_height / current_zoom
+            visible_width = frame_width / current_zoom
+
+            if (all_kaspa_blocks.height > (visible_height - margin) or
+                    all_kaspa_blocks.width > (visible_width - margin)):
+                new_zoom = current_zoom * 0.75
+                self.play(
+                    self.camera.zoom_tracker.animate.set_value(new_zoom),
+                    run_time=0.8  # REDUCED from 3
+                )
+
+            self.narrate(f"Time: {time}s | Kaspa: {block_count}")
+
+            # Phase 4: 1min-10min (REDUCED: ~25 seconds total)
+        for i in range(1, 10):
+            minutes = i + 1
+            block_count += 600
+            new_blocks = VGroup(*[
+                Square(side_length=1.0, stroke_width=0, fill_opacity=1, color="#70C7BA")
+                for _ in range(600)
+            ])
+            all_kaspa_blocks.add(*new_blocks)
+
+            cols = int(math.sqrt(block_count) * 1.2)
+            rows = math.ceil(block_count / cols)
+
+            # ANIMATED repositioning with reduced run_time
+            self.play(
+                Create(new_blocks),
+                all_kaspa_blocks.animate.arrange_in_grid(rows=rows, cols=cols, buff=0.1).move_to(ORIGIN),
+                run_time=1.0  # REDUCED from 4
+            )
+
+            current_zoom = self.camera.zoom_tracker.get_value()
+            visible_height = frame_height / current_zoom
+            visible_width = frame_width / current_zoom
+
+            if (all_kaspa_blocks.height > (visible_height - margin) or
+                    all_kaspa_blocks.width > (visible_width - margin)):
+                new_zoom = current_zoom * 0.7
+                self.play(
+                    self.camera.zoom_tracker.animate.set_value(new_zoom),
+                    run_time=1.0  # REDUCED from 4
+                )
+
+            self.narrate(f"Time: {minutes}min | Kaspa: {block_count}")
+
+            # Phase 5: Bitcoin block (REDUCED: ~15 seconds total)
+        self.narrate(r"10 Minutes: Bitcoin block created!")
+
+        kaspa_top_left = all_kaspa_blocks.get_corner(UP + LEFT)
+
+        bitcoin_block = Square(
+            side_length=1.0,
+            stroke_width=2,
+            stroke_color=WHITE,
+            fill_opacity=0.9,
+            color="#F7931A"
+        )
+        bitcoin_block.move_to(kaspa_top_left + UP * 1.5)
+
+        self.play(Create(bitcoin_block), run_time=2)  # REDUCED from 5
+
+        # Zoom to Bitcoin block using set(height=...)
+        bitcoin_height = bitcoin_block.height
+        target_pos = bitcoin_block.get_center()
+        self.play(
+            self.camera.frame.animate.move_to(target_pos).set(height=bitcoin_height * 3),
+            run_time=3  # REDUCED from 5
+        )
+        self.wait(1.5)  # REDUCED from 3
+
+        # Final zoom out
+        all_objects = VGroup(all_kaspa_blocks, bitcoin_block)
+        total_height = all_objects.height
+
+        self.play(
+            self.camera.frame.animate.move_to(all_objects.get_center()).set(height=total_height * 1.2),
+            run_time=2.5  # REDUCED from 4
+        )
+        self.caption(r"1 Bitcoin block vs 6000 Kaspa blocks")
+        self.wait(2)  # REDUCED from 3
