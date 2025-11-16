@@ -138,7 +138,7 @@ class TestParallelBlockRepositioningWithChildren(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO test that we are properly positioning all blocks during forks
+
 class TestCascadingChainRepositioning(HUD2DScene):
     """Test that adding children to parallel blocks causes cascading repositioning
     so the longest chain is always centered at genesis_y."""
@@ -455,7 +455,7 @@ class TestMultipleCompetingForksWithDifferentDepths(HUD2DScene):
         self.wait(2)
 
 
-#TODO follow highest or recent blocks with camera
+#TODO refine camera following blocks and determine timing
 class TestGenerateChain(HUD2DScene):
     """Test bulk chain generation with generate_chain()."""
 
@@ -485,8 +485,9 @@ class TestGenerateChain(HUD2DScene):
             assert blocks[i].parent == blocks[i - 1], f"Block {i} parent incorrect"
 
             # Visual confirmation
-        text = Text("Generate Chain Test Passed", color=GREEN).to_edge(UP)
-        self.play(Write(text))
+#        text = Text("Generate Chain Test Passed", color=GREEN).to_edge(UP)# this places text at world coords instead of camera coords
+#        self.play(Write(text))
+        self.narrate("Generate Chain Test Passed")
         self.wait(2)
 
 

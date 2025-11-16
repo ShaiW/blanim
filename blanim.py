@@ -14,7 +14,7 @@ from manim.typing import Point3DLike  # noqa: F401
 from blanim import *
 
 #TODO restructure project for this
-#TODO started bitcoin and kaspa logical blocks
+#TODO Bitcoin complete/close to complete (1st iteration), need to create Kaspa DAG next
 #TODO add an empty example consensus type to demonstrate how to create a new type
 """      
 BLANIM PROJECT FILE STRUCTURE (REVISED)      
@@ -41,7 +41,7 @@ blanim/                                   # ← Project root directory
 │       ├── __init__.py                   # Exports all blockchain modules                                     #COMPLETE            
 │       ├── bitcoin/                                                                                                    
 │       │   ├── __init__.py               # Exports Bitcoin classes                                            #COMPLETE          
-│       │   ├── config.py                 # BitcoinConfig - UNIFIED visual + layout config                     #REFACTOR        
+│       │   ├── config.py                 # BitcoinConfig - UNIFIED visual + layout config                     #COMPLETE        
 │       │   ├── visual_block.py           # BitcoinVisualBlock - animation return pattern, inherits base       #COMPLETE            
 │       │   ├── logical_block.py          # BitcoinLogicalBlock - proxy pattern, owns _visual                  #COMPLETE        
 │       │   ├── chain.py                  # BitcoinDAG - orchestrates all animations (standard)                #COMPLETE      
@@ -72,6 +72,7 @@ blanim/                                   # ← Project root directory
 │  
 ├── tests/                                # ← Test files (outside package)                                                    
 │   ├── __init__.py                       # Empty or minimal                                                   #COMPLETE          
+│   ├── kaspa_tests.py                    # Testing Kaspa DAG                                                  #TODO          
 │   └── bitcoin_tests.py                  # Testing Bitcoin chain                                              #COMPLETE          
 │              
 ├── pyproject.toml                        # ← Package configuration for pip install                            #COMPLETE          

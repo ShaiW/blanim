@@ -61,7 +61,7 @@ from __future__ import annotations
 from typing import Optional, List, TYPE_CHECKING
 
 import numpy as np
-from manim import ShowPassingFlash, cycle_animation, WHITE, Wait, UP
+from manim import ShowPassingFlash, cycle_animation, WHITE, Wait, UP, RIGHT
 
 from .logical_block import BitcoinLogicalBlock
 from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG
@@ -137,7 +137,40 @@ class BitcoinDAG:
         # NEW: Apply chain-length-based opacity after repositioning
         self._apply_chain_length_opacity()
 
+        # NEW: Shift camera to follow blocks if needed
+        self.shift_camera_to_follow_blocks()
+
         return block
+
+    def shift_camera_to_follow_blocks(self):
+        """Shift camera to keep the rightmost blocks in view using Frame2DWrapper."""
+        if not self.all_blocks:
+            return
+
+            # Find the rightmost block position
+        rightmost_x = max(block._visual.square.get_center()[0] for block in self.all_blocks)
+
+        # Calculate desired frame center (keep some margin on the right)
+        margin = self.config.horizontal_spacing * 2
+
+        # Get current frame center using Frame2DWrapper's get_center()
+        current_center = self.scene.camera.frame.get_center()
+
+        # Calculate how much we need to shift
+        from manim import config
+        frame_width = config["frame_width"]
+        right_edge = current_center[0] + (frame_width / 2)
+
+        if rightmost_x > right_edge - margin:
+            # Calculate the shift needed
+            shift_amount = rightmost_x - (right_edge - margin)
+
+            # Use Frame2DWrapper's animate API
+            # This creates a Frame2DAnimateWrapper, which HUD2DScene.play() handles
+            self.scene.play(
+                self.scene.camera.frame.animate.shift(RIGHT * shift_amount),
+                run_time=0.5
+            )
 
     def _apply_chain_length_opacity(self):
         """Apply opacity based on tip heights - only fade shorter forks."""

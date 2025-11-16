@@ -1017,7 +1017,7 @@ class UniversalNarrationManager:
         """
         self.caption_color = caption_color
 
-#TODO was able to break positioning of narration and caption during an example, attempt to break again(possible from using movingcamera in 3dscene)
+#TODO was able to break positioning of narration and caption during an example, attempt to break again(possibly from using movingcamera in 3dscene)
 class Frame2DWrapper:
     """Internal wrapper that mimics MovingCamera.frame API for ThreeDCamera in 2D mode (not user-facing).
 
