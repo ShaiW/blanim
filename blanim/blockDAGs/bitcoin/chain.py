@@ -130,11 +130,86 @@ class BitcoinDAG:
                 self._collect_parent_level_animations(current_parent, all_animations)
                 current_parent = current_parent.parent
 
-                # Play all animations together in one unified animation
+        # Play all animations together in one unified animation
         if all_animations:
             self.scene.play(*all_animations)
 
+        # NEW: Apply chain-length-based opacity after repositioning
+        self._apply_chain_length_opacity()
+
         return block
+
+    def _apply_chain_length_opacity(self):
+        """Apply opacity based on tip heights - only fade shorter forks."""
+        if not self.all_blocks:
+            return
+
+        # Find all tip blocks (blocks with no children)
+        tips = [block for block in self.all_blocks if len(block.children) == 0]
+
+        if not tips:
+            return
+
+        # Get the maximum height among all tips
+        max_tip_height = max(tip.weight for tip in tips)
+
+        # Find tips that are at max height (longest chains)
+        longest_tips = [tip for tip in tips if tip.weight == max_tip_height]
+
+        # If all tips are at the same height, no fork exists - keep everything at full opacity
+        if len(tips) == len(longest_tips):
+            opacity_animations = []
+            for block in self.all_blocks:
+                opacity_animations.extend([
+                    block._visual.square.animate.set_fill(opacity=block._visual.config.fill_opacity),
+                    block._visual.square.animate.set_stroke(opacity=block._visual.config.stroke_opacity),
+                    block._visual.label.animate.set_fill(opacity=block._visual.config.label_opacity)
+                ])
+                for line in block._visual.parent_lines:
+                    opacity_animations.append(
+                        line.animate.set_stroke(opacity=block._visual.config.line_stroke_opacity)
+                    )
+            if opacity_animations:
+                self.scene.play(*opacity_animations)
+            return
+
+        # Collect all blocks on longest chains by walking back from longest tips
+        longest_chain_blocks = set()
+        for tip in longest_tips:
+            current = tip
+            while current is not None:
+                longest_chain_blocks.add(current)
+                current = current.parent
+
+        # Apply opacity: full for longest chains, faded for shorter forks
+        opacity_animations = []
+        for block in self.all_blocks:
+            if block in longest_chain_blocks:
+                # On longest chain - full opacity
+                target_fill_opacity = block._visual.config.fill_opacity
+                target_stroke_opacity = block._visual.config.stroke_opacity
+                target_label_opacity = block._visual.config.label_opacity
+                target_line_opacity = block._visual.config.line_stroke_opacity
+            else:
+                # On shorter fork - fade opacity
+                target_fill_opacity = block._visual.config.fade_opacity
+                target_stroke_opacity = block._visual.config.fade_opacity
+                target_label_opacity = block._visual.config.fade_opacity
+                target_line_opacity = block._visual.config.fade_opacity
+
+            opacity_animations.extend([
+                block._visual.square.animate.set_fill(opacity=target_fill_opacity),
+                block._visual.square.animate.set_stroke(opacity=target_stroke_opacity),
+                block._visual.label.animate.set_fill(opacity=target_label_opacity)
+            ])
+
+            for line in block._visual.parent_lines:
+                opacity_animations.append(
+                    line.animate.set_stroke(opacity=target_line_opacity)
+                )
+
+        if opacity_animations:
+            self.scene.play(*opacity_animations)
 
     def _calculate_position(self, parent: Optional[BitcoinLogicalBlock]) -> tuple[float, float]:
         """Calculate position for a block based on parent and siblings.
