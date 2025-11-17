@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, PURPLE, ParsableManimColor
+from manim import BLUE, WHITE, ParsableManimColor, ORANGE
 
 from ...core.base_config import BaseBlockConfig
 
@@ -48,21 +48,29 @@ class BitcoinConfig(BaseBlockConfig):
     create_run_time: float = 2.0
     label_change_run_time: float = 1.0
     movement_run_time: float = 1.0
+    camera_follow_time: float = 1.0
 
     # ========================================
     # HIGHLIGHTING BEHAVIOR
     # ========================================
-    highlight_color: ParsableManimColor = PURPLE
+    # Context Block is the block we show relationships of during highlighting
+    context_block_color: ParsableManimColor = WHITE # Color of pulsing stroke
+    context_block_cycle_time: float = 2.0  # Seconds per complete pulse cycle
+    context_block_stroke_width: float = 8
+
+    # Highlight blocks with relationships to the Context Block
+    highlight_color: ParsableManimColor = ORANGE
     highlight_stroke_width: float = 8
-    highlight_run_time: float = 0.5
-    fade_opacity: float = 0.3
-    context_block_color: ParsableManimColor = WHITE
-    flash_connections: bool = True
+
+    fade_opacity: float = 0.3 # Opacity to fade unrelated blocks to during a highlight animation
+
+    flash_connections: bool = True # Directional flash animation cycling on lines
+    highlight_line_cycle_time = 1 # Time for a single flash to pass on lines
 
     # ========================================
     # SPATIAL LAYOUT - Genesis Position
     # ========================================
-    genesis_x: float = -6.5
+    genesis_x: float = -5.5
     genesis_y: float = 0.0
 
     # ========================================

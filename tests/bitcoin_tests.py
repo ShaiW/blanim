@@ -480,13 +480,11 @@ class TestGenerateChain(HUD2DScene):
             expected_weight = i + 1
             assert block.weight == expected_weight, f"Block {i} weight should be {expected_weight}, got {block.weight}"
 
-            # Verify parent-child relationships
+        # Verify parent-child relationships
         for i in range(1, len(blocks)):
             assert blocks[i].parent == blocks[i - 1], f"Block {i} parent incorrect"
 
-            # Visual confirmation
-#        text = Text("Generate Chain Test Passed", color=GREEN).to_edge(UP)# this places text at world coords instead of camera coords
-#        self.play(Write(text))
+        # Visual confirmation
         self.narrate("Generate Chain Test Passed")
         self.wait(2)
 
@@ -664,7 +662,7 @@ class TestHighlighting(HUD2DScene):
         # Test 1: Genesis past (edge case - should be empty)
         self.caption("Test 1: Genesis past cone (empty)")
         dag.highlight_past(gen)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()
@@ -672,7 +670,7 @@ class TestHighlighting(HUD2DScene):
         # Test 2: Genesis future (should highlight all blocks)
         self.caption("Test 2: Genesis future cone (all blocks)")
         dag.highlight_future(gen)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()
@@ -680,7 +678,7 @@ class TestHighlighting(HUD2DScene):
         # Test 3: B2 past
         self.caption("Test 3: B2 past cone")
         dag.highlight_past(b2)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()
@@ -688,7 +686,7 @@ class TestHighlighting(HUD2DScene):
         # Test 4: B2 future
         self.caption("Test 4: B2 future cone")
         dag.highlight_future(b2)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()
@@ -696,7 +694,7 @@ class TestHighlighting(HUD2DScene):
         # Test 5: B4 past (should highlight all blocks)
         self.caption("Test 5: B4 past cone (all blocks)")
         dag.highlight_past(b4)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()
@@ -704,7 +702,7 @@ class TestHighlighting(HUD2DScene):
         # Test 6: B4 future (edge case - should be empty)
         self.caption("Test 6: B4 future cone (empty)")
         dag.highlight_future(b4)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()
@@ -712,7 +710,7 @@ class TestHighlighting(HUD2DScene):
         # Test 7: Anticone test (should be empty for linear chain)
         self.caption("Test 7: B2 anticone (empty for linear chain)")
         dag.highlight_anticone(b2)
-        self.wait(2)
+        self.wait(5)
         dag.reset_highlighting()
         self.wait(1)
         self.clear_caption()

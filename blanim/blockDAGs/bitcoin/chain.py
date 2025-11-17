@@ -52,8 +52,11 @@ TODO / Future Improvements:
 2. **Add line fade methods to visual block**: Parent line fading logic should move to
    visual block layer with a create_line_fade_animation() method.
 
-3. **Config-driven line properties**: Ensure all line operations read from config
-   (line_stroke_opacity, line_color, etc.) rather than using any hardcoded values.
+3. **Fit everything better to the proxy pattern instead of accessing _visual_block directly(see 1)
+
+4. **Ensure we are only setting a visual state for the DAG with our methods here, the existing state should persist in the scene,
+    that way, timing can be handled at the scene level, and narration/caption/transcript/camera movements can all happen WHILE visual state
+    persists.
 """
 
 from __future__ import annotations
@@ -61,7 +64,7 @@ from __future__ import annotations
 from typing import Optional, List, TYPE_CHECKING
 
 import numpy as np
-from manim import ShowPassingFlash, cycle_animation, WHITE, Wait, UP, RIGHT
+from manim import ShowPassingFlash, cycle_animation, Wait, UP, RIGHT, config
 
 from .logical_block import BitcoinLogicalBlock
 from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG
@@ -71,9 +74,9 @@ if TYPE_CHECKING:
 
 # noinspection PyProtectedMember
 class BitcoinDAG:
-    def __init__(self, scene: HUD2DScene, config: BitcoinConfig = DEFAULT_BITCOIN_CONFIG):
+    def __init__(self, scene: HUD2DScene, chain_config: BitcoinConfig = DEFAULT_BITCOIN_CONFIG):
         self.scene = scene
-        self.config = config
+        self.config = chain_config
         self.blocks: dict[str, BitcoinLogicalBlock] = {}
         self.all_blocks: List[BitcoinLogicalBlock] = []
         self.genesis: Optional[BitcoinLogicalBlock] = None
@@ -112,6 +115,9 @@ class BitcoinDAG:
         if parent is None:
             self.genesis = block
 
+        # NEW: Shift camera AFTER block object exists but BEFORE Create() animation
+        self.shift_camera_to_follow_blocks()
+
         # Play the creation animation
         self.scene.play(block._visual.create_with_lines())
 
@@ -137,9 +143,6 @@ class BitcoinDAG:
         # NEW: Apply chain-length-based opacity after repositioning
         self._apply_chain_length_opacity()
 
-        # NEW: Shift camera to follow blocks if needed
-        self.shift_camera_to_follow_blocks()
-
         return block
 
     def shift_camera_to_follow_blocks(self):
@@ -157,7 +160,6 @@ class BitcoinDAG:
         current_center = self.scene.camera.frame.get_center()
 
         # Calculate how much we need to shift
-        from manim import config
         frame_width = config["frame_width"]
         right_edge = current_center[0] + (frame_width / 2)
 
@@ -169,7 +171,7 @@ class BitcoinDAG:
             # This creates a Frame2DAnimateWrapper, which HUD2DScene.play() handles
             self.scene.play(
                 self.scene.camera.frame.animate.shift(RIGHT * shift_amount),
-                run_time=0.5
+                run_time=self.config.camera_follow_time
             )
 
     def _apply_chain_length_opacity(self):
@@ -592,20 +594,20 @@ class BitcoinDAG:
         self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
         return self.flash_lines
 
-    @staticmethod
-    def _create_pulse_updater(block: BitcoinLogicalBlock):
+    def _create_pulse_updater(self):
         """Create pulsing stroke width updater using config values."""
-        # Read ALL values from config
-        original_width = block._visual.config.stroke_width
-        highlighted_width = block._visual.config.highlight_stroke_width
+        original_width = self.config.stroke_width
+        highlighted_width = self.config.context_block_stroke_width
+        context_color = self.config.context_block_color
+        cycle_time = self.config.context_block_cycle_time  # Use renamed property
 
         def pulse_stroke(mob, dt):
             t = getattr(mob, 'time', 0) + dt
             mob.time = t
             width = original_width + (highlighted_width - original_width) * (
-                    np.sin(t * np.pi) + 1
+                    np.sin(t * 2 * np.pi / cycle_time) + 1
             ) / 2
-            mob.set_stroke(WHITE, width=width)
+            mob.set_stroke(context_color, width=width)
 
         return pulse_stroke
 
@@ -622,9 +624,10 @@ class BitcoinDAG:
         # Store the currently highlighted block
         self.currently_highlighted_block = focused_block
         # Read ALL styling from config
-        fade_opacity = focused_block._visual.config.fade_opacity
-        highlight_color = focused_block._visual.config.highlight_color
-        flash_connections = focused_block._visual.config.flash_connections
+        fade_opacity = self.config.fade_opacity
+        highlight_color = self.config.highlight_color
+        flash_connections = self.config.flash_connections
+        line_cycle_time = self.config.highlight_line_cycle_time
 
         if context_blocks is None:
             context_blocks = []
@@ -653,16 +656,16 @@ class BitcoinDAG:
             self.scene.play(*fade_animations)
 
         # Add pulsing white stroke to focused block (using updater)
-        pulse_updater = self._create_pulse_updater(focused_block)
+        pulse_updater = self._create_pulse_updater()
         focused_block._visual.square.add_updater(pulse_updater)
 
-        # Highlight context blocks with yellow stroke and increased width
+        # Highlight context blocks with yellow stroke and increased width(highlight_stroke_width)
         context_animations = []
         for block in context_blocks:
             context_animations.extend([
                 block._visual.square.animate.set_stroke(
                     highlight_color,
-                    width=block._visual.config.highlight_stroke_width
+                    width=self.config.highlight_stroke_width
                 )
             ])
 
@@ -684,7 +687,7 @@ class BitcoinDAG:
 
                     # Apply cycle_animation to make it flash
                     cycle_animation(
-                        ShowPassingFlash(flash_line, time_width=0.5, run_time=1.5)
+                        ShowPassingFlash(flash_line, time_width=0.5, run_time=line_cycle_time)#run_time sets cycle time
                     )
 
             # Flash focused block's parent line only if parent is in context
@@ -693,7 +696,7 @@ class BitcoinDAG:
                 self.scene.add(flash_line)
                 flash_lines.append(flash_line)
                 cycle_animation(
-                    ShowPassingFlash(flash_line, time_width=0.5, run_time=1.5)
+                    ShowPassingFlash(flash_line, time_width=0.5, run_time=line_cycle_time)
                 )
 
         # Return the flash line copies (not originals) for cleanup
@@ -716,20 +719,20 @@ class BitcoinDAG:
         reset_animations = []
         for block in self.all_blocks:
             reset_animations.extend([
-                block._visual.square.animate.set_fill(opacity=block._visual.config.fill_opacity),
+                block._visual.square.animate.set_fill(opacity=self.config.fill_opacity),
                 block._visual.square.animate.set_stroke(
-                    block._visual.config.stroke_color,
-                    width=block._visual.config.stroke_width,
-                    opacity=block._visual.config.stroke_opacity
+                    self.config.stroke_color,
+                    width=self.config.stroke_width,
+                    opacity=self.config.stroke_opacity
                 ),
-                block._visual.label.animate.set_fill(opacity=block._visual.config.label_opacity)
+                block._visual.label.animate.set_fill(opacity=self.config.label_opacity)
             ])
             for line in block._visual.parent_lines:
                 reset_animations.append(
                     line.animate.set_stroke(
-                        block._visual.config.line_color,
-                        width=block._visual.config.line_stroke_width,
-                        opacity=block._visual.config.line_stroke_opacity
+                        self.config.line_color,
+                        width=self.config.line_stroke_width,
+                        opacity=self.config.line_stroke_opacity
                     )
                 )
 
