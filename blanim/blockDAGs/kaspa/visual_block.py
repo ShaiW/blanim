@@ -4,16 +4,19 @@ from __future__ import annotations
 
 __all__ = ["KaspaVisualBlock"]
 
+import copy
 from typing import TYPE_CHECKING
 
 from manim import AnimationGroup, Create
 
-from .config import KaspaBlockConfig, DEFAULT_KASPA_CONFIG
+from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
 
 if TYPE_CHECKING:
     from .logical_block import KaspaLogicalBlock
 
+# noinspection PyProtectedMember
+#TODO instead of using a config for every single block, we can pass parameters from the DAG - low priority
 class KaspaVisualBlock(BaseVisualBlock):
     """Kaspa block visualization with multi-parent DAG structure.
 
@@ -110,7 +113,7 @@ class KaspaVisualBlock(BaseVisualBlock):
     KaspaBlockConfig : Configuration object for Kaspa blocks
     """
 
-    kaspa_config: KaspaBlockConfig
+    kaspa_config: KaspaConfig
     parent_lines: list[ParentLine]
     logical_block: KaspaLogicalBlock
 
@@ -119,16 +122,17 @@ class KaspaVisualBlock(BaseVisualBlock):
             label_text: str,
             position: tuple[float, float],
             parents: list[KaspaVisualBlock] | None = None,
-            kaspa_config: KaspaBlockConfig = DEFAULT_KASPA_CONFIG
+            kaspa_config: KaspaConfig = DEFAULT_KASPA_CONFIG
     ) -> None:
         # Pass config directly to BaseVisualBlock
         super().__init__(label_text, position, kaspa_config)
 
         # Handle parent lines with config
+        #TODO confirm z-index on SP lines vs other lines
         if parents:
             self.parent_lines = []
             for i, parent in enumerate(parents):
-                line_color = self.kaspa_config.selected_parent_color if i == 0 else self.kaspa_config.other_parent_color
+                line_color = self.kaspa_config.selected_parent_line_color if i == 0 else self.kaspa_config.other_parent_line_color
                 parent_line = ParentLine(
                     self.square,
                     parent.square,
@@ -138,6 +142,22 @@ class KaspaVisualBlock(BaseVisualBlock):
                 self.parent_lines.append(parent_line)
         else:
             self.parent_lines = []
+
+#TODO verify this is correct to avoid breaking manim
+    def __deepcopy__(self, memo):
+        logical_block = self.logical_block
+        self.logical_block = None
+
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, copy.deepcopy(v, memo))
+
+        self.logical_block = logical_block  # Restore original
+        result.logical_block = logical_block  # Set on copy
+
+        return result
 
     def create_with_lines(self):
         """Create animation for block, label, and all parent lines.

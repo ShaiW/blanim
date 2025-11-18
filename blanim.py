@@ -16,6 +16,7 @@ from blanim import *
 #TODO restructure project for this
 #TODO Bitcoin complete/close to complete (1st iteration), need to create Kaspa DAG next
 #TODO add an empty example consensus type to demonstrate how to create a new type
+#TODO get rid of base config, only pass required parameters down to each block instead of exach block having its own copy of config - low priority
 """      
 BLANIM PROJECT FILE STRUCTURE (REVISED)      
 Proxy Pattern + DAG-Orchestrated Architecture + Animation Return Pattern + Unified Config System    
