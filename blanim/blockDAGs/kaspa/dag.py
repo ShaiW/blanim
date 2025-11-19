@@ -202,6 +202,7 @@ class KaspaDAG:
         """Queue repositioning animation for all pending x-positions."""
         if self.pending_repositioning:
             positions_to_reposition = self.pending_repositioning.copy()
+            self.pending_repositioning.clear()
             self.workflow_steps.append(
                 lambda: self._animate_dag_repositioning(positions_to_reposition)
             )
@@ -436,91 +437,54 @@ class KaspaDAG:
             # Animate everything
         self.catch_up()
 #TODO determine a block naming based on DAG somehow
-    def _generate_block_name(self, parents: Optional[List[KaspaLogicalBlock]]) -> str:
-        """Generate block name based on DAG structure."""
+    def _generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
+        """Generate automatic block name based on round from genesis.
+
+        Uses selected parent (parents[0]) to determine round/depth from genesis.
+        Round 0: Genesis ("Gen")
+        Round 1: "B1", "B1a", "B1b", ... (parallel blocks)
+        Round 2: "B2", "B2a", "B2b", ...
+        """
         if not parents:
             return "Gen"
 
-            # Use selected parent (first) for naming
+            # Calculate round by following selected parent chain back to genesis
         selected_parent = parents[0]
-        height = selected_parent.weight + 1
-        block_number = height - 1
+        round_number = 1
+        current = selected_parent
 
-        # Count existing blocks at this height
-        blocks_at_height = [b for b in self.all_blocks if b.weight == height]
+        while current.parents:  # Traverse back to genesis
+            current = current.parents[0]  # Follow selected parent chain
+            round_number += 1
 
-        if not blocks_at_height:
-            return f"B{block_number}"
+            # Count parallel blocks at this round (blocks already in all_blocks)
+        blocks_at_round = [
+            b for b in self.all_blocks
+            if b != self.genesis and self._get_round(b) == round_number
+        ]
+
+        # Generate name
+        if len(blocks_at_round) == 0:
+            return f"B{round_number}"
         else:
-            suffix = chr(ord('a') + len(blocks_at_height))
-            return f"B{block_number}{suffix}"
+            # Subtract 1 to get correct suffix: 1 existing block → 'a', 2 → 'b', etc.
+            suffix = chr(ord('a') + len(blocks_at_round) - 1)
+            return f"B{round_number}{suffix}"
+
+    def _get_round(self, block: KaspaLogicalBlock) -> int:
+        """Helper to get round number for a block."""
+        if not block.parents:
+            return 0
+        round_num = 1
+        current = block.parents[0]
+        while current.parents:
+            current = current.parents[0]
+            round_num += 1
+        return round_num
 
 #TODO may need to adjust fuzzy retrieval if naming convention changes
     def get_block(self, name: str) -> Optional[KaspaLogicalBlock]:
-        """Retrieve a block by name with fuzzy matching support.
-
-        This method attempts to find a block using the provided name string.
-        If an exact match is not found, it falls back to fuzzy matching by
-        extracting numeric identifiers from the input and searching for
-        similar block names.
-
-        Parameters
-        ----------
-        name : str
-            The block name to search for. Can be an exact name (e.g., "Gen", "B5")
-            or a partial/fuzzy name (e.g., "5", "block5").
-
-        Returns
-        -------
-        KaspaLogicalBlock | None
-            The matching block if found, otherwise None.
-
-        Examples
-        --------
-        Exact match::
-
-            block = dag.get_block("B5")  # Returns block named "B5"
-
-        Fuzzy match::
-
-            block = dag.get_block("5")      # Finds "B5" via fuzzy matching
-            block = dag.get_block("block5") # Also finds "B5"
-
-        No match::
-
-            block = dag.get_block("nonexistent")  # Returns None
-
-        Notes
-        -----
-        **Naming Convention (Update Here if Changed):**
-
-        The current naming convention follows this pattern:
-        - Genesis block: "Gen"
-        - Regular blocks: "B{number}" (e.g., "B1", "B2", "B3")
-        - Parallel blocks: "B{number}{letter}" (e.g., "B2a", "B2b")
-
-        The fuzzy matching logic uses regex to extract numeric identifiers
-        from block names. If you change the naming convention, you must update:
-        1. The `_generate_block_name()` method (defines naming pattern)
-        2. The fuzzy matching regex in this method (extracts identifiers)
-        3. This docstring to reflect the new convention
-
-        **Fuzzy Matching Algorithm:**
-
-        1. Try exact dictionary lookup in `self.blocks[name]`
-        2. If not found, extract numbers from input using regex
-        3. Search all block names for matches containing those numbers
-        4. Return the first match found, or None if no matches exist
-
-        This method is used internally by `get_past_cone()`, `get_future_cone()`,
-        and `get_anticone()` to provide user-friendly block name resolution.
-
-        See Also
-        --------
-        _generate_block_name : Defines the block naming convention
-        get_past_cone : Uses fuzzy retrieval for ancestor queries
-        get_future_cone : Uses fuzzy retrieval for descendant queries
-        """
+        """Retrieve a block by name with fuzzy matching support."""
         # Try exact match first
         if name in self.blocks:
             return self.blocks[name]
@@ -528,19 +492,19 @@ class KaspaDAG:
         if not self.all_blocks:
             return None
 
-            # Extract height and find closest
+            # Extract round number and find closest
         import re
         match = re.search(r'B?(\d+)', name)
         if not match:
             return self.all_blocks[-1]
 
-        target_height = int(match.group(1))
-        max_height = max(b.weight for b in self.all_blocks)
-        actual_height = min(target_height, max_height)
+        target_round = int(match.group(1))
+        max_round = max(self._get_round(b) for b in self.all_blocks)
+        actual_round = min(target_round, max_round)
 
-        # Find first block at this height
+        # Find first block at this round
         for block in self.all_blocks:
-            if block.weight == actual_height:
+            if self._get_round(block) == actual_round:
                 return block
 
         return self.all_blocks[-1]

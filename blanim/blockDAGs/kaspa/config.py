@@ -78,4 +78,4 @@ class KaspaConfig(BaseBlockConfig):
     vertical_spacing: float = 1.0  # For parallel blocks during forks
 
 # Default configuration instance
-DEFAULT_KASPA_CONFIG = KaspaBlockConfig()
+DEFAULT_KASPA_CONFIG = KaspaConfig()

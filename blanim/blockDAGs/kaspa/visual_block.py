@@ -127,6 +127,7 @@ class KaspaVisualBlock(BaseVisualBlock):
         # Pass config directly to BaseVisualBlock
         super().__init__(label_text, position, kaspa_config)
 
+        self.kaspa_config = kaspa_config
         # Handle parent lines with config
         #TODO confirm z-index on SP lines vs other lines
         if parents:
