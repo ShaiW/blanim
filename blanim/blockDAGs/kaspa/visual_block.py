@@ -304,7 +304,7 @@ class KaspaVisualBlock(BaseVisualBlock):
 
         # Update child lines (lines from children pointing to this block)
         for logical_child in self.logical_block.children:
-            for line in logical_child._visual.parent_lines:
+            for line in logical_child.visual_block.parent_lines:
                 if line.parent_block == self.square:
                     animations.append(line.create_update_animation())
 

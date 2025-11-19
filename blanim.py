@@ -13,74 +13,70 @@ from manim.typing import Point3DLike  # noqa: F401
 
 from blanim import *
 
-#TODO restructure project for this
-#TODO Bitcoin complete/close to complete (1st iteration), need to create Kaspa DAG next
+#TODO Bitcoin complete/close to complete (1st iteration), need to continue Kaspa DAG next
 #TODO add an empty example consensus type to demonstrate how to create a new type
 #TODO get rid of base config, only pass required parameters down to each block instead of exach block having its own copy of config - low priority
-"""      
-BLANIM PROJECT FILE STRUCTURE (REVISED)      
-Proxy Pattern + DAG-Orchestrated Architecture + Animation Return Pattern + Unified Config System    
-====================================================================================================    
-    
-Architecture for blockchain animation project supporting multiple consensus mechanisms     
-(Bitcoin, Kaspa, future blockchains) using composition-based design with transparent     
-proxy pattern, centralized DAG orchestration, animation return pattern, and unified     
-config-driven visual styling.    
-    
-blanim/                                   # ← Project root directory                                                 
-├── blanim/                               # ← Python package directory                                              
-│   ├── __init__.py                       # Re-exports manim + all submodules                                  #COMPLETE            
-│   ├── __main__.py                       # Required for build                                                 #COMPLETE            
-│   ├── core/                             # Shared visual components + base config                                                                                                           
-│   │   ├── __init__.py                   # Exports BaseVisualBlock, ParentLine, HUD2DScene, BaseBlockConfig   #COMPLETE          
-│   │   ├── base_config.py                # BaseBlockConfig - shared config interface for all blockchains      #COMPLETE    
-│   │   ├── base_visual_block.py          # BaseVisualBlock - pure rendering with animation return pattern     #COMPLETE            
-│   │   ├── parent_line.py                # ParentLine - line connections between blocks                       #COMPLETE            
-│   │   └── hud_2d_scene.py               # HUD2DScene - 2D scene with narration/caption support               #COMPLETE          
-│   │              
-│   └── blockDAGs/                        # Blockchain-specific implementations                                                                                                     
-│       ├── __init__.py                   # Exports all blockchain modules                                     #COMPLETE            
-│       ├── bitcoin/                                                                                                    
-│       │   ├── __init__.py               # Exports Bitcoin classes                                            #COMPLETE          
-│       │   ├── config.py                 # BitcoinConfig - UNIFIED visual + layout config                     #COMPLETE        
-│       │   ├── visual_block.py           # BitcoinVisualBlock - animation return pattern, inherits base       #COMPLETE            
-│       │   ├── logical_block.py          # BitcoinLogicalBlock - proxy pattern, owns _visual                  #COMPLETE        
-│       │   ├── chain.py                  # BitcoinDAG - orchestrates all animations (standard)                #COMPLETE      
-│       │   └── dags/                     # OPTIONAL: Specialized DAG variants                                 #FUTURE      
-│       │       ├── __init__.py           # Future specialized implementations                                 #TODO      
-│       │       ├── standard_dag.py       # Standard longest-chain consensus                                   #TODO      
-│       │       ├── selfish_mining_dag.py # Selfish mining attack simulation                                   #TODO      
-│       │       └── simulation_dag.py     # Realistic network simulation                                       #TODO      
-│       │              
-│       └── kaspa/                                                                                                    
-│           ├── __init__.py               # Exports Kaspa classes                                              #COMPLETE          
-│           ├── config.py                 # KaspaConfig - UNIFIED visual + layout config                       #REFACTOR        
-│           ├── visual_block.py           # KaspaVisualBlock - animation return pattern, inherits base         #COMPLETE          
-│           ├── logical_block.py          # KaspaLogicalBlock - proxy pattern, owns _visual                    #COMPLETE            
-│           ├── dag.py                    # KaspaDAG - orchestrates all animations (standard GHOSTDAG)         #NEW        
-│           ├── ghostdag.py               # GHOSTDAG algorithm (ordering, blue set, tree conversion)           #TODO      
-│           └── dags/                     # OPTIONAL: Specialized DAG variants                                 #FUTURE      
-│               ├── __init__.py           # Future specialized implementations                                 #TODO      
-│               ├── standard_dag.py       # Standard GHOSTDAG consensus                                        #TODO      
-│               ├── ghostdag_demo_dag.py  # GHOSTDAG visualization/demo mode                                   #TODO      
-│               └── simulation_dag.py     # Realistic DAG network simulation                                   #TODO      
-│              
-├── examples/                             # ← Example/demo scenes (outside package)                                                    
-│   ├── __init__.py                       # Empty or minimal                                                   #COMPLETE          
-│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                                #COMPLETE          
-│   ├── bitcoin_examples.py               # Bitcoin animation examples using DAG API                           #REFACTOR          
-│   └── kaspa_examples.py                 # Kaspa animation examples using DAG API                             #TODO          
-│  
-├── tests/                                # ← Test files (outside package)                                                    
-│   ├── __init__.py                       # Empty or minimal                                                   #COMPLETE          
-│   ├── kaspa_tests.py                    # Testing Kaspa DAG                                                  #TODO          
-│   └── bitcoin_tests.py                  # Testing Bitcoin chain                                              #COMPLETE          
-│              
-├── pyproject.toml                        # ← Package configuration for pip install                            #COMPLETE          
-├── README.md                             # ← Project documentation                                            #TODO UPDATE          
-└── .gitignore                            # ← Git ignore file                                                  #COMPLETE          
-    
-    
+"""
+BLANIM PROJECT FILE STRUCTURE (REVISED)
+Proxy Pattern + DAG-Orchestrated Architecture + Animation Return Pattern + Unified Config System
+====================================================================================================
+
+Architecture for blockchain animation project supporting multiple consensus mechanisms
+(Bitcoin, Kaspa, future blockchains) using composition-based design with transparent
+proxy pattern, centralized DAG orchestration, animation return pattern, and unified
+config-driven visual styling.
+
+blanim/                                   # ← Project root directory
+├── blanim/                               # ← Python package directory
+│   ├── __init__.py                       # Re-exports manim + all submodules                                  #COMPLETE
+│   ├── __main__.py                       # Required for build                                                 #COMPLETE
+│   ├── core/                             # Shared visual components + base config
+│   │   ├── __init__.py                   # Exports BaseVisualBlock, ParentLine, HUD2DScene, BaseBlockConfig   #COMPLETE
+│   │   ├── base_config.py                # BaseBlockConfig - shared config interface for all blockchains      #COMPLETE
+│   │   ├── base_visual_block.py          # BaseVisualBlock - pure rendering with animation return pattern     #COMPLETE
+│   │   ├── parent_line.py                # ParentLine - line connections between blocks                       #COMPLETE
+│   │   └── hud_2d_scene.py               # HUD2DScene - 2D scene with narration/caption support               #COMPLETE
+│   │
+│   └── blockDAGs/                        # Blockchain-specific implementations
+│       ├── __init__.py                   # Exports all blockchain modules                                     #COMPLETE
+│       ├── bitcoin/
+│       │   ├── __init__.py               # Exports Bitcoin classes                                            #COMPLETE
+│       │   ├── config.py                 # BitcoinConfig - UNIFIED visual + layout config                     #COMPLETE
+│       │   ├── visual_block.py           # BitcoinVisualBlock - animation return pattern, inherits base       #COMPLETE
+│       │   ├── logical_block.py          # BitcoinLogicalBlock - proxy pattern, owns _visual                  #COMPLETE
+│       │   ├── chain.py                  # BitcoinDAG - orchestrates all animations (standard)                #COMPLETE
+│       │   └── chains/                   # OPTIONAL: Specialized DAG variants
+│       │       ├── __init__.py           # Future specialized implementations                                 #COMPLETE
+│       │       └──placeholder_dag.py     # Placeholder for future chain types                                 #COMPLETE
+│       │
+│       └── kaspa/
+│           ├── __init__.py               # Exports Kaspa classes                                              #COMPLETE
+│           ├── config.py                 # KaspaConfig - UNIFIED visual + layout config                       #COMPLETE
+│           ├── visual_block.py           # KaspaVisualBlock - animation return pattern, inherits base         #COMPLETE
+│           ├── logical_block.py          # KaspaLogicalBlock - proxy pattern, owns _visual                    #COMPLETE
+│           ├── dag.py                    # KaspaDAG - orchestrates all animations (standard GHOSTDAG)         #WORKING
+│           ├── ghostdag.py               # GHOSTDAG algorithm (ordering, blue set, tree conversion)           #EXISTS
+│           └── dags/                     # OPTIONAL: Specialized DAG variants
+│               ├── __init__.py           # Future specialized implementations                                 #COMPLETE
+│               └── placeholder_dag.py    # Placeholder for future chain types                                 #COMPLETE
+│
+├── examples/                             # ← Example/demo scenes (outside package)
+│   ├── __init__.py                       # Empty or minimal                                                   #COMPLETE
+│   ├── hud_2d_scene_examples.py          # HUD2DScene examples                                                #COMPLETE
+│   ├── bitcoin_examples.py               # Bitcoin animation examples using DAG API                           #REFACTOR
+│   └── kaspa_examples.py                 # Kaspa animation examples using DAG API                             #TODO
+│
+├── tests/                                # ← Test files (outside package)
+│   ├── __init__.py                       # Empty or minimal                                                   #COMPLETE
+│   ├── kaspa_tests.py                    # Testing Kaspa DAG                                                  #TODO
+│   ├── hud2dscene_tests.py               # Testing HUD2DScene                                                 #COMPLETE
+│   └── bitcoin_tests.py                  # Testing Bitcoin chain                                              #COMPLETE
+│
+├── pyproject.toml                        # ← Package configuration for pip install                            #COMPLETE
+├── README.md                             # ← Project documentation                                            #TODO UPDATE
+└── .gitignore                            # ← Git ignore file                                                  #COMPLETE
+
+
 ARCHITECTURE PRINCIPLES (REVISED):            
 ----------------------------------            
           
@@ -228,115 +224,115 @@ ARCHITECTURE PRINCIPLES (REVISED):
    BaseVisualBlock eliminates ~150 lines of duplicated code per consensus type while    
    allowing consensus-specific customization (parent line handling, movement logic).    
    BaseBlockConfig is a pure data interface with no behavior - safe to share.    
-    
-    
-SIMPLIFIED FILE COUNT PER CONSENSUS TYPE:    
------------------------------------------    
-    
-To add a new consensus mechanism (e.g., "NewConsensus"), developers create:    
-    
-1. config.py          - Unified NewConsensusConfig (visual + layout, ~20-30 parameters)    
-2. visual_block.py    - NewConsensusVisualBlock (inherits BaseVisualBlock, ~100-200 lines)    
-3. logical_block.py   - NewConsensusLogicalBlock (proxy pattern, ~50-80 lines)    
-4. dag.py             - NewConsensusDAG (orchestration, ~300-500 lines)    
-    
-Total: 4 files, ~500-800 lines of consensus-specific code    
-    
-REASONING: Unified config reduces file count from 5 to 4. BaseVisualBlock inheritance    
-eliminates ~150 lines of boilerplate per consensus. Clear separation of concerns makes    
-each file focused and maintainable. This is the minimum viable complexity for supporting    
-fundamentally different consensus mechanisms while maintaining code quality.    
-    
-    
-IMPORT PATTERNS (REVISED):            
---------------------------             
-The import strategy differs based on where your code lives:    
-    
-A. Files INSIDE the package (blanim/blanim/...):    
-   Use RELATIVE imports for intra-package references:    
-       
-   # In blanim/blanim/blockDAGs/bitcoin/config.py    
-   from dataclasses import dataclass    
-   from manim import BLUE, WHITE, YELLOW, ParsableManimColor    
-   from ...core.base_config import BaseBlockConfig  # Relative import    
-       
-   # In blanim/blanim/blockDAGs/bitcoin/visual_block.py    
-   from __future__ import annotations    
-   from typing import Optional    
-   from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG  # Relative import    
-   from ... import BaseVisualBlock, ParentLine  # Relative import to core    
-       
-   REASONING: Relative imports work regardless of sys.path configuration.    
-   They're relative to the module's location, not the execution directory.    
-   This ensures imports work during development, testing, and after installation.    
-    
-B. Files OUTSIDE the package (examples/, test files at project root):    
-   Use ABSOLUTE imports with sys.path manipulation:    
-       
-   # In examples/bitcoin_examples.py or blanim/test_scene.py    
-   import sys    
-   from pathlib import Path    
-       
-   # Add project root to sys.path for development    
-   project_root = Path(__file__).parent.parent  # Adjust based on file location    
-   if str(project_root) not in sys.path:    
-       sys.path.insert(0, str(project_root))    
-       
-   from blanim import *  # Now this works    
-   from blanim.blockDAGs.bitcoin.chain import BitcoinDAG    
-       
-   REASONING: When running scripts directly (python examples/bitcoin_examples.py),    
-   Python adds the script's directory to sys.path, not the project root.    
-   Manual sys.path manipulation ensures blanim package is importable.    
-   When blanim is installed via pip, sys.path manipulation is harmless (no-op).    
-    
-C. User scene files (after pip install blanim):    
-   Use ABSOLUTE imports - no sys.path manipulation needed:    
-       
-   # In user's my_animation.py    
-   from blanim import *  # Gets Manim + all blanim classes    
-       
-   class MyScene(HUD2DScene):    
-       def construct(self):    
-           dag = BitcoinDAG(scene=self)    
-           genesis = dag.add_block("Gen", parent=None, position=None)    
-           # Animation automatically played by add_block    
-       
-   REASONING: After pip install, blanim is in site-packages and Python    
-   finds it automatically. Users don't need to worry about sys.path.    
-   The blanim/__init__.py re-exports everything needed (Manim + blanim classes).    
-    
-D. CLI Usage (blanim or manim commands):    
-   Both commands work identically after installation:    
-       
-   # Using blanim command (blockchain-optimized defaults)    
-   blanim -pql scene.py MyScene    
-       
-   # Using manim command (standard Manim behavior)      
-   manim -pql scene.py MyScene    
-       
-   The blanim CLI is implemented in blanim/__main__.py and delegates    
-   to manim.__main__:main(). Both commands:    
-   - Add the script's parent directory to sys.path    
-   - Import the scene file (which can use "from blanim import *")    
-   - Render the scene using Manim's rendering pipeline    
-       
-   REASONING: Users installing blanim get both commands. The blanim    
-   command provides branded CLI with optional blockchain-specific    
-   defaults, while manim command remains available for standard usage.    
-   Both work with any scene (pure Manim, pure blanim, or mixed).    
-    
-    
-KEY IMPORT RULES:    
------------------    
-    
-1. **Package-internal files**: Always use relative imports (from .config, from ..core)    
-2. **Example/test files**: Use absolute imports with sys.path setup    
-3. **User scene files**: Use absolute imports (from blanim import *)    
-4. **Never mix**: Don't use relative imports in example files or absolute imports    
-   for intra-package references    
-5. **blanim/__init__.py**: Re-exports everything users need (Manim + blanim classes)    
-   so users only need "from blanim import *"    
+
+
+SIMPLIFIED FILE COUNT PER CONSENSUS TYPE:
+-----------------------------------------
+
+To add a new consensus mechanism (e.g., "NewConsensus"), developers create:
+
+1. config.py          - Unified NewConsensusConfig (visual + layout, ~20-30 parameters)
+2. visual_block.py    - NewConsensusVisualBlock (inherits BaseVisualBlock, ~100-200 lines)
+3. logical_block.py   - NewConsensusLogicalBlock (proxy pattern, ~50-80 lines)
+4. dag.py             - NewConsensusDAG (orchestration, ~300-500 lines)
+
+Total: 4 files, ~500-800 lines of consensus-specific code
+
+REASONING: Unified config reduces file count from 5 to 4. BaseVisualBlock inheritance
+eliminates ~150 lines of boilerplate per consensus. Clear separation of concerns makes
+each file focused and maintainable. This is the minimum viable complexity for supporting
+fundamentally different consensus mechanisms while maintaining code quality.
+
+
+IMPORT PATTERNS (REVISED):
+--------------------------
+The import strategy differs based on where your code lives:
+
+A. Files INSIDE the package (blanim/blanim/...):
+   Use RELATIVE imports for intra-package references:
+
+   # In blanim/blanim/blockDAGs/bitcoin/config.py
+   from dataclasses import dataclass
+   from manim import BLUE, WHITE, YELLOW, ParsableManimColor
+   from ...core.base_config import BaseBlockConfig  # Relative import
+
+   # In blanim/blanim/blockDAGs/bitcoin/visual_block.py
+   from __future__ import annotations
+   from typing import Optional
+   from .config import BitcoinConfig, DEFAULT_BITCOIN_CONFIG  # Relative import
+   from ... import BaseVisualBlock, ParentLine  # Relative import to core
+
+   REASONING: Relative imports work regardless of sys.path configuration.
+   They're relative to the module's location, not the execution directory.
+   This ensures imports work during development, testing, and after installation.
+
+B. Files OUTSIDE the package (examples/, test files at project root):
+   Use ABSOLUTE imports with sys.path manipulation:
+
+   # In examples/bitcoin_examples.py or blanim/test_scene.py
+   import sys
+   from pathlib import Path
+
+   # Add project root to sys.path for development
+   project_root = Path(__file__).parent.parent  # Adjust based on file location
+   if str(project_root) not in sys.path:
+       sys.path.insert(0, str(project_root))
+
+   from blanim import *  # Now this works
+   from blanim.blockDAGs.bitcoin.chain import BitcoinDAG
+
+   REASONING: When running scripts directly (python examples/bitcoin_examples.py),
+   Python adds the script's directory to sys.path, not the project root.
+   Manual sys.path manipulation ensures blanim package is importable.
+   When blanim is installed via pip, sys.path manipulation is harmless (no-op).
+
+C. User scene files (after pip install blanim):
+   Use ABSOLUTE imports - no sys.path manipulation needed:
+
+   # In user's my_animation.py
+   from blanim import *  # Gets Manim + all blanim classes
+
+   class MyScene(HUD2DScene):
+       def construct(self):
+           dag = BitcoinDAG(scene=self)
+           genesis = dag.add_block("Gen", parent=None, position=None)
+           # Animation automatically played by add_block
+
+   REASONING: After pip install, blanim is in site-packages and Python
+   finds it automatically. Users don't need to worry about sys.path.
+   The blanim/__init__.py re-exports everything needed (Manim + blanim classes).
+
+D. CLI Usage (blanim or manim commands):
+   Both commands work identically after installation:
+
+   # Using blanim command (blockchain-optimized defaults)
+   blanim -pql scene.py MyScene
+
+   # Using manim command (standard Manim behavior)
+   manim -pql scene.py MyScene
+
+   The blanim CLI is implemented in blanim/__main__.py and delegates
+   to manim.__main__:main(). Both commands:
+   - Add the script's parent directory to sys.path
+   - Import the scene file (which can use "from blanim import *")
+   - Render the scene using Manim's rendering pipeline
+
+   REASONING: Users installing blanim get both commands. The blanim
+   command provides branded CLI with optional blockchain-specific
+   defaults, while manim command remains available for standard usage.
+   Both work with any scene (pure Manim, pure blanim, or mixed).
+
+
+KEY IMPORT RULES:
+-----------------
+
+1. **Package-internal files**: Always use relative imports (from .config, from ..core)
+2. **Example/test files**: Use absolute imports with sys.path setup
+3. **User scene files**: Use absolute imports (from blanim import *)
+4. **Never mix**: Don't use relative imports in example files or absolute imports
+   for intra-package references
+5. **blanim/__init__.py**: Re-exports everything users need (Manim + blanim classes)
+   so users only need "from blanim import *"
 """
 
 BLOCK_H = 0.4

@@ -4,6 +4,7 @@ __all__ = ["ParentLine"]
 
 from manim import Line, WHITE, CapStyleType, UpdateFromFunc
 
+#TODO ensure lines have their own properties preserved so animations can be created by accessing lines properties
 class ParentLine(Line):
     """Uses no updater, update from func during movement anims on either parent or child block.square"""
     def __init__(self, this_block, parent_block, line_color=WHITE):
@@ -19,7 +20,7 @@ class ParentLine(Line):
 
         self.this_block = this_block
         self.parent_block = parent_block
-        self._fixed_stroke_width = 5
+#        self._fixed_stroke_width = 5
 
     def _update_position_and_size(self, mobject):
         new_start = self.this_block.get_left()

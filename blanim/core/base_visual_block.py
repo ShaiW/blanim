@@ -29,6 +29,8 @@ class BaseVisualBlock(VGroup):
     """
 
     config: BaseBlockConfig
+    square: Square
+    label: Text
 
     def __init__(
             self,
@@ -116,7 +118,7 @@ class BaseVisualBlock(VGroup):
 
         return AnimationGroup(*anims)
 
-#TODO see if we can simplify / config these after refactoring
+#TODO remove all references to config and use properties, the config should only exist at the DAG level and pass parameters to everything
     def create_highlight_animation(self, color=None, stroke_width=None):
         """Returns animation for highlighting this block's stroke."""
         if color is None:

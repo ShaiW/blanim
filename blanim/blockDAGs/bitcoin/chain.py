@@ -57,6 +57,11 @@ TODO / Future Improvements:
 4. **Ensure we are only setting a visual state for the DAG with our methods here, the existing state should persist in the scene,
     that way, timing can be handled at the scene level, and narration/caption/transcript/camera movements can all happen WHILE visual state
     persists.
+
+5. **Lines should retain their original properties instead of always referring back to config.
+
+6. **Add a fade_all, so the user can use a dag, fade it, draw something else, then return to the existing dag by fading it back in.
+    Use opacity to keep all blocks and lines in the scene during other animations(prevents breakage).
 """
 
 from __future__ import annotations
@@ -415,6 +420,8 @@ class BitcoinDAG:
         max_child_length = max(self._calculate_chain_length(child) for child in block.children)
         return 1 + max_child_length
 
+#TODO ensure consitency even when user only names some blocks
+#TODO need to generate a chain from any parent, this cirrently generates a chain from gen only
     def generate_chain(self, num_blocks: int) -> List[BitcoinLogicalBlock]:
         """Generate a linear chain of blocks.
 
@@ -432,7 +439,7 @@ class BitcoinDAG:
             created_blocks.append(genesis)
             num_blocks -= 1
 
-            # Create remaining blocks in sequence
+        # Create remaining blocks in sequence
         parent = self.genesis
         for i in range(num_blocks):
             block = self.add_block(parent=parent)
