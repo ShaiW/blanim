@@ -275,6 +275,13 @@ class TestZIndexRendering(ThreeDScene):
         self.play(*animations, run_time=3)
         self.wait(2)
 
+        # Test 6: Move block D back to its previous position
+        animations = self.deduplicate_line_animations(
+            block4.animate_move_to((0, -2, 0)),
+        )
+        self.play(*animations, run_time=2)
+        self.wait(2)
+
     def deduplicate_line_animations(self, *animation_groups: AnimationGroup) -> list[Animation]:
         """Collect animations, deduplicate UpdateFromFunc, and order them correctly."""
         block_animations = []
@@ -293,3 +300,230 @@ class TestZIndexRendering(ThreeDScene):
 
                     # Return block animations first, then line updates
         return block_animations + line_updates
+
+#TODO implement this later
+"""  
+Multi-Dimensional Configuration System for Blanim DAG Visualization  
+====================================================================  
+
+This module defines a hierarchical configuration system using nested dataclasses  
+that allows users to configure all aspects of DAG visualization (lines, blocks,  
+and DAG-level settings) from a single, copy-pasteable config object.  
+
+Design Philosophy  
+-----------------  
+
+The config system follows these principles:  
+
+1. **Single Source of Truth**: One DAGConfig instance per DAG, defined at scene level  
+2. **Copy-Pasteable**: Users can copy entire config blocks across scenes  
+3. **Selective Overrides**: Only specify parameters that differ from defaults  
+4. **Hierarchical Organization**: Related settings grouped into logical sections  
+5. **Type-Safe**: Dataclasses provide type hints and validation  
+6. **Clean Unpacking**: Each component receives only its relevant config section  
+
+Configuration Hierarchy  
+-----------------------  
+
+DAGConfig (top level)  
+├── LineConfig (line styling and z-index)  
+├── BlockConfig (block styling and z-index)  
+└── DAG-level settings (animation defaults, etc.)  
+
+Z-Index Ranges  
+--------------  
+
+The system uses expanded z-index ranges for future extensibility:  
+
+Lines: 0-10  
+    - Regular lines: z_index = 0 (bottom layer)  
+    - Selected parent lines: z_index = 5 (middle of range)  
+    - Reserved: 1-4, 6-10 for future line types  
+
+Blocks: 11-20  
+    - Background rectangles: z_index = 11  
+    - Squares: z_index = 12  
+    - Labels: z_index = 13  
+    - Reserved: 14-20 for future block layers  
+
+Usage Pattern  
+-------------  
+
+**At Scene Level (Outside Scene Class)**:  
+
+.. code-block:: python  
+
+    from blanim import DAGConfig, LineConfig, BlockConfig  
+    from manim import YELLOW, RED, WHITE  
+
+    # Define config outside scene - copy-pasteable across scenes  
+    config = DAGConfig(  
+        line_config=LineConfig(  
+            color=YELLOW,  
+            stroke_width=7,  
+            z_index_regular=0,  
+            z_index_selected=5  
+        ),  
+        block_config=BlockConfig(  
+            square_fill_color=RED,  
+            label_font_size=48,  
+            z_index_background=11,  
+            z_index_square=12,  
+            z_index_label=13  
+        ),  
+        default_animation_run_time=2.5  
+    )  
+
+    class MyScene(HUD2DScene):  
+        def construct(self):  
+            # Pass config to DAG  
+            dag = DAG(config=config)  
+
+            # All blocks and lines created by DAG use this config  
+            block1 = dag.create_block("A", position=(-3, 0))  
+            block2 = dag.create_block("B", position=(0, 0), parent=block1)  
+
+**Config Unpacking in Components**:  
+
+.. code-block:: python  
+
+    # In DAG class  
+    class DAG:  
+        def __init__(self, config: DAGConfig | None = None):  
+            self.config = config if config is not None else DAGConfig()  
+
+        def create_line(self, child_block, parent_block, is_selected=False):  
+            # Pass down line config section  
+            return ParentLine(  
+                this_block=child_block.square,  
+                parent_block=parent_block.square,  
+                is_selected_parent_line=is_selected,  
+                config=self.config.line_config  # Unpack line config  
+            )  
+
+    # In ParentLine class  
+    class ParentLine(Line):  
+        def __init__(  
+            self,  
+            this_block,  
+            parent_block,  
+            is_selected_parent_line=False,  
+            config: LineConfig | None = None  
+        ):  
+            if config is None:  
+                config = LineConfig()  
+
+            super().__init__(  
+                start=this_block.get_left(),  
+                end=parent_block.get_right(),  
+                buff=config.buff,  
+                color=config.color,  
+                stroke_width=config.stroke_width,  
+                cap_style=config.cap_style  
+            )  
+
+            # Use config z-index values  
+            z_index = config.z_index_selected if is_selected_parent_line else config.z_index_regular  
+            self.set_z_index(z_index)  
+
+Configuration Classes  
+---------------------  
+
+LineConfig  
+~~~~~~~~~~  
+
+Attributes:  
+    color : ManimColor  
+        Line color (default: WHITE)  
+    stroke_width : float  
+        Line stroke width (default: 5)  
+    cap_style : CapStyleType  
+        Line cap style (default: CapStyleType.ROUND)  
+    buff : float  
+        Buffer distance from block edges (default: 0.1)  
+    z_index_regular : float  
+        Z-index for regular lines (default: 0)  
+    z_index_selected : float  
+        Z-index for selected parent lines (default: 5)  
+
+BlockConfig  
+~~~~~~~~~~~  
+
+Attributes:  
+    square_fill_color : ManimColor  
+        Block square fill color (default: BLUE)  
+    square_fill_opacity : float  
+        Block square fill opacity (default: 0.7)  
+    square_stroke_color : ManimColor  
+        Block square stroke color (default: WHITE)  
+    square_stroke_width : float  
+        Block square stroke width (default: 3)  
+    square_side_length : float  
+        Block square side length (default: 1)  
+    bg_color : ManimColor  
+        Background rectangle color (default: BLACK)  
+    bg_fill_opacity : float  
+        Background fill opacity (default: 0.75)  
+    bg_buff : float  
+        Background buffer around square (default: 0)  
+    label_font_size : int  
+        Label text font size (default: 36)  
+    label_color : ManimColor  
+        Label text color (default: WHITE)  
+    z_index_background : float  
+        Z-index for background rectangles (default: 11)  
+    z_index_square : float  
+        Z-index for squares (default: 12)  
+    z_index_label : float  
+        Z-index for labels (default: 13)  
+
+DAGConfig  
+~~~~~~~~~  
+
+Attributes:  
+    line_config : LineConfig  
+        Configuration for all lines (default: LineConfig())  
+    block_config : BlockConfig  
+        Configuration for all blocks (default: BlockConfig())  
+    default_animation_run_time : float  
+        Default run time for animations (default: 2.0)  
+    enable_deduplication : bool  
+        Enable line animation deduplication (default: True)  
+
+Benefits  
+--------  
+
+1. **Maintainability**: Single config object easier to manage than scattered parameters  
+2. **Consistency**: All components use same styling automatically  
+3. **Flexibility**: Easy to create variations by copying and modifying config  
+4. **Type Safety**: Dataclass validation catches configuration errors early  
+5. **Extensibility**: New config options can be added without breaking existing code  
+6. **Documentation**: Config structure self-documents available options  
+
+Integration with Manim  
+-----------------------  
+
+This pattern aligns with Manim's own configuration system (ManimConfig) which uses  
+a similar hierarchical approach for managing library-wide settings. See:  
+- manim/_config/utils.py:146-328 for ManimConfig implementation  
+- manim/_config/__init__.py for config initialization  
+
+See Also  
+--------  
+HUD2DScene : Scene class with z-index support  
+ParentLine : Line class that uses LineConfig  
+BlockWithBg : Reference implementation for block structure (from sample code)  
+ManimConfig : Manim's configuration system (manim/_config/utils.py)  
+
+Notes  
+-----  
+
+**Implementation Status**: This is a proposed architecture to be implemented after  
+completing the blocks, lines, and DAG refactoring to match the sample code architecture.  
+
+**Compatibility**: The config system is designed to work with the z-index-based  
+rendering system in HUD2DScene (which extends ThreeDScene with use_z_index=True).  
+
+**Future Extensions**: The expanded z-index ranges (0-10 for lines, 11-20 for blocks)  
+provide room for additional layer types without breaking existing code.  
+"""

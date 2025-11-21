@@ -44,11 +44,6 @@ class BaseVisualBlock(VGroup):
         self.config = config
         self._label_text = label_text
 
-        # Define z-coordinates for all components
-        self.square_z = 0.0      # Front
-        self.bg_rect_z = 0.005   # Behind square  (but infront of lines at 0.01)
-        self.label_z = -0.005    # In front of square
-
         #####Square#####
         self.square = Square(
             fill_color=config.block_color,
@@ -57,10 +52,9 @@ class BaseVisualBlock(VGroup):
             stroke_width=config.stroke_width,
             stroke_opacity=config.stroke_opacity,
             side_length=config.side_length,
-            shade_in_3d=True
         )
 
-        self.square.move_to((position[0], position[1], self.square_z))
+        self.square.move_to((position[0], position[1], 0))
 
         self.background_rect = BackgroundRectangle(
             self.square,
@@ -69,9 +63,8 @@ class BaseVisualBlock(VGroup):
             buff=0  # No buffer, exact size of square
         )
 
-        self.background_rect.shade_in_3d = True
         # Position background BEHIND square
-        self.background_rect.move_to((position[0], position[1], self.bg_rect_z))
+        self.background_rect.move_to(self.square.get_center())
 
         #####Label (Primer Pattern)#####
         # Create invisible primer with 5-character capacity
@@ -80,15 +73,18 @@ class BaseVisualBlock(VGroup):
             font_size=1,
             color=BLACK
         )
-#        self.label.move_to(self.square.get_center())
-        self.label.move_to((position[0], position[1], self.label_z))
-        self.label.shade_in_3d = True
+        self.label.move_to(self.square.get_center())
 
         # Add to VGroup
         self.add(self.background_rect, self.square, self.label)
 
         self.parent_lines = []
         self.child_lines = []
+
+        # Add after creating all components:
+        self.background_rect.set_z_index(11)
+        self.square.set_z_index(12)
+        self.label.set_z_index(13)
 
     def _get_label(self, text: str) -> Text:
 
@@ -97,8 +93,7 @@ class BaseVisualBlock(VGroup):
             font_size=self.config.label_font_size,
             color=self.config.label_color
         )
-        center = self.square.get_center()
-        new_label.move_to((center[0], center[1], self.label_z))
+        new_label.move_to(self.square.get_center())
         return new_label
 
     def create_with_label(self):

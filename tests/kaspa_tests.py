@@ -188,7 +188,7 @@ class TestDAGPositioning(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO z index for parent lines and blocks needs to be fixed
+
 class TestGenerateDAG(HUD2DScene):
     """Test generate_dag() with various parameters."""
 
@@ -247,26 +247,76 @@ class TestFuzzyBlockRetrieval(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-
 class TestMoveBlocks(HUD2DScene):
     """Test moving multiple blocks with move()."""
 
     def construct(self):
         dag = KaspaDAG(scene=self)
 
-        genesis = dag.add_block()
-        b1 = dag.add_block(parents=[genesis])
-        b2 = dag.add_block(parents=[genesis])
+        # Step 1: Create blocks at default positions (likely origin)
+        genesis = dag.add_block(name="Genesis")
+        b1 = dag.add_block(name="B1", parents=[genesis])
+        b2 = dag.add_block(name="B2", parents=[genesis])
+        b3 = dag.add_block(name="B3", parents=[b1, b2])
+
         self.wait(1)
 
-        # Move blocks
+        # Step 2: Move blocks to starting positions
+        self.caption("Positioning blocks...")
+        dag.move(
+            [genesis, b1, b2, b3],
+            [(0, -2), (-2, 0), (2, 0), (0, 2)]
+        )
+        self.wait(1)
+
+        # Step 3: Test movements
         self.caption("Moving blocks...")
         dag.move([genesis, b1, b2], [(0, 2), (2, 2), (4, 2)])
         self.wait(1)
 
         # Move back
         self.caption("Moving back...")
-        dag.move([genesis, b1, b2], [(0, 0), (2, 0), (4, 0)])
+        dag.move([genesis, b1, b2], [(0, -2), (-2, 0), (2, 0)])
+        self.wait(1)
+
+        self.clear_caption()
+        text = Text("Move Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestMoveBlocksWithBGRectVerify(HUD2DScene):
+    """Test moving multiple blocks with move()."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Step 1: Create blocks at default positions (likely origin)
+        genesis = dag.add_block(name="Genesis")
+        b1 = dag.add_block(name="B1", parents=[genesis])
+        b2 = dag.add_block(name="B2", parents=[genesis])
+        b3 = dag.add_block(name="B3", parents=[b1, b2])
+
+        # Set b2's background rectangle opacity to 0 to verify line rendering
+        b2.visual_block.background_rect.set_opacity(0)
+        self.wait(1)
+
+        # Step 2: Move blocks to starting positions
+        self.caption("Positioning blocks...")
+        dag.move(
+            [genesis, b1, b2, b3],
+            [(0, -2), (-2, 0), (2, 0), (0, 2)]
+        )
+        self.wait(1)
+
+        # Step 3: Test movements
+        self.caption("Moving blocks...")
+        dag.move([genesis, b1, b2], [(0, 2), (2, 2), (4, 2)])
+        self.wait(1)
+
+        # Move back
+        self.caption("Moving back...")
+        dag.move([genesis, b1, b2], [(0, -2), (-2, 0), (2, 0)])
         self.wait(1)
 
         self.clear_caption()

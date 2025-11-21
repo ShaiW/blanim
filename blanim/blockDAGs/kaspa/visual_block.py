@@ -98,8 +98,10 @@ class KaspaVisualBlock(BaseVisualBlock):
 
     The z_index creates a clear visual hierarchy:
     - Regular lines and non-selected parent lines: z_index=0 (back)
-    - Selected parent line: z_index=1 (middle)
-    - Blocks: z_index=2 (front)
+    - Selected parent line: z_index=5 (middle of line range)
+    - Blocks (backgrounds): z_index=11
+    - Blocks (squares): z_index=12
+    - Blocks (labels): z_index=13 (front)
 
     All objects remain at z-coordinate 0 to avoid 3D projection issues in HUD2DScene.
 
@@ -130,22 +132,21 @@ class KaspaVisualBlock(BaseVisualBlock):
 
         self.kaspa_config = kaspa_config
         # Handle parent lines with config
-        #TODO confirm z-index on SP lines vs other lines
         if parents:
             self.parent_lines = []
             for i, parent in enumerate(parents):
                 line_color = self.kaspa_config.selected_parent_line_color if i == 0 else self.kaspa_config.other_parent_line_color
+                is_selected = (i == 0)
                 parent_line = ParentLine(
                     self.square,
                     parent.square,
-                    line_color=line_color
+                    line_color=line_color,
+                    is_selected_parent_line=is_selected
                 )
-                parent_line.set_z_index(1 if i == 0 else 0)
                 self.parent_lines.append(parent_line)
         else:
             self.parent_lines = []
 
-#TODO verify this is correct to avoid breaking manim
     def __deepcopy__(self, memo):
         logical_block = self.logical_block
         self.logical_block = None
@@ -312,15 +313,35 @@ class KaspaVisualBlock(BaseVisualBlock):
 
         return AnimationGroup(*animations) if len(animations) > 1 else animation
 
-    def move_to_position(self, position: tuple[float, float] | tuple[float, float, float]):
-        """Move block to position while preserving z-coordinate relationships."""
-        if len(position) == 2:
-            x, y = position
-            self.square.move_to((x, y, self.square_z))
-            self.label.move_to((x, y, self.label_z))
-            self.background_rect.move_to((x, y, self.bg_rect_z))
-        else:
-            self.square.move_to(position)
-            self.label.move_to(position)
-            self.background_rect.move_to(position)
-        return self
+    def animate_move_to(self, x: float, y: float) -> AnimationGroup:
+        """Move block to 2D position and return animation with line updates.
+
+        This is a thin wrapper that automatically creates a movement animation
+        with synchronized line updates. It accepts only 2D coordinates (x, y)
+        with z always set to 0.
+
+        Parameters
+        ----------
+        x : float
+            X-coordinate for block placement
+        y : float
+            Y-coordinate for block placement
+
+        Returns
+        -------
+        AnimationGroup
+            Animation group containing block movement and all line updates
+
+        Examples
+        --------
+        ::
+
+            # In DAG class
+            animation = block.visual_block.move_to(2.0, 3.0)
+            self.scene.play(animation)
+        """
+        # Create base movement animation using VGroup's animate
+        base_animation = super().animate.move_to((x, y, 0))
+
+        # Wrap with line updates using existing method
+        return self.create_movement_animation(base_animation)
