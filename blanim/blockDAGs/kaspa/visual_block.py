@@ -7,7 +7,7 @@ __all__ = ["KaspaVisualBlock"]
 import copy
 from typing import TYPE_CHECKING
 
-from manim import AnimationGroup, Create
+from manim import AnimationGroup, Create, BackgroundRectangle
 
 from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
@@ -116,6 +116,7 @@ class KaspaVisualBlock(BaseVisualBlock):
     kaspa_config: KaspaConfig
     parent_lines: list[ParentLine]
     logical_block: KaspaLogicalBlock
+    background_rect: BackgroundRectangle
 
     def __init__(
             self,
@@ -310,3 +311,16 @@ class KaspaVisualBlock(BaseVisualBlock):
                     animations.append(line.create_update_animation())
 
         return AnimationGroup(*animations) if len(animations) > 1 else animation
+
+    def move_to_position(self, position: tuple[float, float] | tuple[float, float, float]):
+        """Move block to position while preserving z-coordinate relationships."""
+        if len(position) == 2:
+            x, y = position
+            self.square.move_to((x, y, self.square_z))
+            self.label.move_to((x, y, self.label_z))
+            self.background_rect.move_to((x, y, self.bg_rect_z))
+        else:
+            self.square.move_to(position)
+            self.label.move_to(position)
+            self.background_rect.move_to(position)
+        return self

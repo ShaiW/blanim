@@ -6,6 +6,7 @@ __all__ = ["BaseVisualBlock"]
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 from manim import (
     Square,
     Text,
@@ -14,7 +15,7 @@ from manim import (
     BLACK,
     Create,
     AnimationGroup,
-    VGroup
+    VGroup, BackgroundRectangle
 )
 
 if TYPE_CHECKING:
@@ -40,10 +41,13 @@ class BaseVisualBlock(VGroup):
     ) -> None:
         super().__init__()
 
-        # Store config
         self.config = config
-        # Store label text
         self._label_text = label_text
+
+        # Define z-coordinates for all components
+        self.square_z = 0.0      # Front
+        self.bg_rect_z = 0.005   # Behind square  (but infront of lines at 0.01)
+        self.label_z = -0.005    # In front of square
 
         #####Square#####
         self.square = Square(
@@ -53,11 +57,21 @@ class BaseVisualBlock(VGroup):
             stroke_width=config.stroke_width,
             stroke_opacity=config.stroke_opacity,
             side_length=config.side_length,
-            shade_in_3d=False
+            shade_in_3d=True
         )
 
-        self.set_z_index(2)
-        self.square.move_to((position[0], position[1], 0))
+        self.square.move_to((position[0], position[1], self.square_z))
+
+        self.background_rect = BackgroundRectangle(
+            self.square,
+            color=None,  # None uses scene background color
+            fill_opacity=0.75,  # Allows slight line visibility
+            buff=0  # No buffer, exact size of square
+        )
+
+        self.background_rect.shade_in_3d = True
+        # Position background BEHIND square
+        self.background_rect.move_to((position[0], position[1], self.bg_rect_z))
 
         #####Label (Primer Pattern)#####
         # Create invisible primer with 5-character capacity
@@ -66,10 +80,12 @@ class BaseVisualBlock(VGroup):
             font_size=1,
             color=BLACK
         )
-        self.label.move_to(self.square.get_center())
+#        self.label.move_to(self.square.get_center())
+        self.label.move_to((position[0], position[1], self.label_z))
+        self.label.shade_in_3d = True
 
         # Add to VGroup
-        self.add(self.square, self.label)
+        self.add(self.background_rect, self.square, self.label)
 
         self.parent_lines = []
         self.child_lines = []
@@ -81,7 +97,8 @@ class BaseVisualBlock(VGroup):
             font_size=self.config.label_font_size,
             color=self.config.label_color
         )
-        new_label.move_to(self.square.get_center())
+        center = self.square.get_center()
+        new_label.move_to((center[0], center[1], self.label_z))
         return new_label
 
     def create_with_label(self):
@@ -105,18 +122,34 @@ class BaseVisualBlock(VGroup):
         self._label_text = text
         return Transform(self.label, new_label, run_time=run_time)
 
-    def create_with_lines(self):  # CHANGE 3: Added new method
+    def create_with_lines(self):
         """Returns AnimationGroup of block + label + lines creation."""
         run_time = self.config.create_run_time
-        create_anim = Create(self.square, run_time=run_time)
+
+        # Create animations for square AND background_rect together
+        create_square = Create(self.square, run_time=run_time)
+        create_bg = Create(self.background_rect, run_time=run_time)
+
         actual_label = self._get_label(self._label_text)
         label_transform = Transform(self.label, actual_label, run_time=run_time)
 
-        anims = [create_anim, label_transform]
+        anims = [create_square, create_bg, label_transform]
         for line in self.parent_lines:
             anims.append(Create(line, run_time=run_time))
 
         return AnimationGroup(*anims)
+    # def create_with_lines(self):  # CHANGE 3: Added new method
+    #     """Returns AnimationGroup of block + label + lines creation."""
+    #     run_time = self.config.create_run_time
+    #     create_anim = Create(self.square, run_time=run_time)
+    #     actual_label = self._get_label(self._label_text)
+    #     label_transform = Transform(self.label, actual_label, run_time=run_time)
+    #
+    #     anims = [create_anim, label_transform]
+    #     for line in self.parent_lines:
+    #         anims.append(Create(line, run_time=run_time))
+    #
+    #     return AnimationGroup(*anims)
 
 #TODO remove all references to config and use properties, the config should only exist at the DAG level and pass parameters to everything
     def create_highlight_animation(self, color=None, stroke_width=None):

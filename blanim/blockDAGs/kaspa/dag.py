@@ -141,6 +141,21 @@ from .config import KaspaConfig, DEFAULT_KASPA_CONFIG
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
 
+class BlockPlaceholder:
+    """Placeholder for a block that will be created later."""
+
+    def __init__(self, dag, parents, name):
+        self.dag = dag
+        self.parents = parents
+        self.name = name
+        self.actual_block = None  # Will be set automatically when created
+
+    def __getattr__(self, attr):
+        """Automatically delegate to actual_block once it's created."""
+        if self.actual_block is None:
+            raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
+        return getattr(self.actual_block, attr)
+
 #TODO block naming for DAG
 #TODO lines should also retain their own original properties instead of always referring back to config
 class KaspaDAG:
@@ -154,136 +169,112 @@ class KaspaDAG:
         self.flash_lines: List = []
 
         # NEW: State tracking for step-by-step workflow
-        self.pending_blocks: List[KaspaLogicalBlock] = []
-        self.pending_repositioning: Set[float] = set()
         self.workflow_steps: List[Callable] = []
+
+        # CRITICAL: Enable z-index rendering
+        self.scene.renderer.camera.use_z_index = True
+
     ########################################
     # Block Handling
     ########################################
 
-    def create_block(
+    def queue_block(
             self,
-            parents: Optional[List[KaspaLogicalBlock]] = None,
+            parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None,
             name: Optional[str] = None
-    ) -> KaspaLogicalBlock:
-        """Create a logical block without animation, saving steps for later."""
-        if name is None:
-            name = self._generate_block_name(parents)
+    ) -> BlockPlaceholder:
+        """Queue block creation, return placeholder that auto-resolves."""
 
-        position = self._calculate_dag_position(parents)
+        placeholder = BlockPlaceholder(self, parents, name)
 
-        block = KaspaLogicalBlock(
-            name=name,
-            parents=parents if parents else [],
-            position=position,
-            kaspa_config=self.config,
-        )
+        def create_and_animate_block():
+            # Resolve parent placeholders to actual blocks
+            resolved_parents = []
+            if parents:
+                for p in parents:
+                    if isinstance(p, BlockPlaceholder):
+                        if p.actual_block is None:
+                            raise ValueError(f"Parent block hasn't been created yet")
+                        resolved_parents.append(p.actual_block)
+                    else:
+                        resolved_parents.append(p)
 
-        # Register block
-        self.blocks[name] = block
-        self.all_blocks.append(block)
+            # Create the actual block
+            block_name = name if name else self._generate_block_name(resolved_parents)
+            position = self._calculate_dag_position(resolved_parents)
 
-        if parents is None:
-            self.genesis = block
-
-            # Track as pending
-        self.pending_blocks.append(block)
-
-        # Queue animation step
-        self.workflow_steps.append(lambda b=block: self._animate_block_creation(b))
-
-        # Track x-position for repositioning (but don't queue yet)
-        x_pos = block.visual_block.square.get_center()[0]
-        self.pending_repositioning.add(x_pos)
-
-        return block
-
-    def queue_repositioning(self):
-        """Queue repositioning animation for all pending x-positions."""
-        if self.pending_repositioning:
-            positions_to_reposition = self.pending_repositioning.copy()
-            self.pending_repositioning.clear()
-            self.workflow_steps.append(
-                lambda: self._animate_dag_repositioning(positions_to_reposition)
+            block = KaspaLogicalBlock(
+                name=block_name,
+                parents=resolved_parents if resolved_parents else [],
+                position=position,
+                kaspa_config=self.config,
             )
 
+            self.blocks[block_name] = block
+            self.all_blocks.append(block)
+
+            if not resolved_parents:
+                self.genesis = block
+
+            # AUTOMATICALLY link placeholder to actual block
+            placeholder.actual_block = block
+
+            # Animate it
+            self._animate_block_creation(block)
+
+            return block
+
+        self.workflow_steps.append(create_and_animate_block)
+
+        # Queue repositioning
+        def reposition_column():
+            if self.all_blocks:
+                x_pos = self.all_blocks[-1].visual_block.square.get_center()[0]
+                self._animate_dag_repositioning({x_pos})
+
+        self.workflow_steps.append(reposition_column)
+
+        return placeholder
+
     def next_step(self):
-        """Execute the next pending animation step.
-
-        Automatically queues repositioning if all pending block creations
-        have been animated.
-        """
+        """Execute the next queued function."""
         if self.workflow_steps:
-            step = self.workflow_steps.pop(0)
-            step()
-
-            # Auto-detect if we should queue repositioning
-            # Check if we just animated the last pending block creation
-            if not self.workflow_steps and self.pending_repositioning:
-                self.queue_repositioning()
-        elif self.pending_repositioning:
-            # No more workflow steps, but repositioning is pending
-            self.queue_repositioning()
-            if self.workflow_steps:
-                self.next_step()  # Execute the repositioning we just queued
+            func = self.workflow_steps.pop(0)
+            func()
 
     def catch_up(self):
-        """Complete all pending animation steps."""
+        """Execute all queued functions in sequence."""
         while self.workflow_steps:
             self.next_step()
 
-            # Clear state
-        self.pending_blocks.clear()
-        self.pending_repositioning.clear()
-
     def add_block(
             self,
-            parents: Optional[List[KaspaLogicalBlock]] = None,
+            parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None,
             name: Optional[str] = None
     ) -> KaspaLogicalBlock:
-        """Add a new block with full automatic workflow (create + animate + reposition)."""
-        block = self.create_block(parents=parents, name=name)
-        self.queue_repositioning()  # Queue repositioning once
-        self.catch_up()
-        return block
+        """Create and animate a block immediately."""
+        placeholder = self.queue_block(parents=parents, name=name)
+        self.next_step()  # Execute block creation
+        self.next_step()  # Execute repositioning
+        return placeholder.actual_block  # Return actual block, not placeholder
 
     def add_blocks(
             self,
-            blocks_data: List[tuple[Optional[List[KaspaLogicalBlock]], Optional[str]]]
+            blocks_data: List[tuple[Optional[List[BlockPlaceholder | KaspaLogicalBlock]], Optional[str]]]
     ) -> List[KaspaLogicalBlock]:
-        """Add multiple blocks and complete all animations automatically.
+        """Add multiple blocks and complete all animations automatically."""
+        placeholders = []
 
-        This is a convenience method that creates multiple blocks, animates them,
-        and repositions them in sequence without allowing scene-level animations
-        in between steps.
-
-        Args:
-            blocks_data: List of (parents, name) tuples for each block to create
-
-        Returns:
-            List of created blocks
-
-        Example:
-            blocks = dag.add_blocks([
-                ([genesis], "B1"),
-                ([genesis], "B2"),
-                ([b1, b2], "B3"),
-            ])
-        """
-        created_blocks = []
-
-        # Create all blocks (queues their animations)
+        # Queue all blocks
         for parents, name in blocks_data:
-            block = self.create_block(parents=parents, name=name)
-            created_blocks.append(block)
+            placeholder = self.queue_block(parents=parents, name=name)
+            placeholders.append(placeholder)
 
-            # Queue repositioning
-        self.queue_repositioning()
-
-        # Execute all pending steps automatically
+            # Execute all queued steps
         self.catch_up()
 
-        return created_blocks
+        # Return actual blocks
+        return [p.actual_block for p in placeholders]
 
     def shift_camera_to_follow_blocks(self):
         """Shift camera to keep rightmost blocks in view."""
@@ -377,66 +368,51 @@ class KaspaDAG:
             num_rounds: int,
             lambda_parallel: float = 1.0,
             chain_prob: float = 0.7,
-            old_tip_prob: float = 0.1,  # Probability of referencing old tips
+            old_tip_prob: float = 0.1,
     ):
-        """Generate a DAG with Poisson-distributed parallel blocks.
-
-        Parameters
-        ----------
-        num_rounds
-            Number of block creation rounds
-        lambda_parallel
-            Poisson parameter for number of parallel blocks (when not chaining)
-        chain_prob
-            Probability of creating a single block (chain extension)
-        old_tip_prob
-            Probability that a block references old tips from previous round
-        """
+        """Generate a DAG with Poisson-distributed parallel blocks."""
         if not self.genesis:
             raise ValueError("Genesis block must exist before generating DAG")
 
         current_tips = [self.genesis]
-        previous_tips = []  # Tips from the previous round
+        previous_tips = []
 
         for round_num in range(num_rounds):
-            # Decide: chain extension or parallel blocks?
             if np.random.random() < chain_prob:
                 num_blocks = 1
             else:
                 num_blocks = max(1, np.random.poisson(lambda_parallel) + 1)
 
-            new_blocks = []
+            new_placeholders = []
 
             for _ in range(num_blocks):
-                # Decide if this block should reference old tips
                 if previous_tips and np.random.random() < old_tip_prob:
-                    # Select parents from previous round (network delay simulation)
                     num_parents = min(len(previous_tips), np.random.randint(1, 3))
                     parents = list(np.random.choice(previous_tips, size=num_parents, replace=False))
                 else:
-                    # Normal case: select from current tips
                     num_parents = min(len(current_tips), np.random.randint(1, 3))
                     parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
 
-                    # Create the block
-                new_block = self.create_block(parents=parents)
-                new_blocks.append(new_block)
+                    # Use queue_block instead of create_block
+                placeholder = self.queue_block(parents=parents)
+                new_placeholders.append(placeholder)
 
-                # Update tip tracking for next round
-            previous_tips = current_tips.copy()  # Save current tips as "old tips"
+                # Execute all queued steps for this round
+            self.catch_up()
 
-            # Remove parents that now have children from current tips
+            # Convert placeholders to actual blocks
+            new_blocks = [p.actual_block for p in new_placeholders]
+
+            # Update tip tracking
+            previous_tips = current_tips.copy()
+
             for block in new_blocks:
                 for parent in block.parents:
                     if parent in current_tips:
                         current_tips.remove(parent)
 
-                        # Add newly created blocks to current tips
             current_tips.extend(new_blocks)
-
-            # Animate everything
-        self.catch_up()
-#TODO determine a block naming based on DAG somehow
+        #TODO determine a block naming based on DAG somehow
     def _generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
         """Generate automatic block name based on round from genesis.
 
@@ -510,34 +486,22 @@ class KaspaDAG:
         return self.all_blocks[-1]
 
     ########################################
-    # Moving Blocks #TODO COMPLETE
+    # Moving Blocks #TODO COMPLETE  Lines are rendering on top of blocks when moved during updaters and update from func
     ########################################
 
-    def move(
-            self,
-            blocks: List[KaspaLogicalBlock],
-            positions: List[tuple[float, float]]
-    ):
-        """Move multiple blocks using their visual block's movement animation.
-
-        Args:
-            blocks: List of blocks to move
-            positions: Corresponding (x, y) positions
-        """
-        if len(blocks) != len(positions):
-            raise ValueError("Number of blocks must match number of positions")
-
+    def move(self, blocks, positions):
+        """Move blocks to new positions with synchronized line updates."""
         animations = []
+
         for block, pos in zip(blocks, positions):
-            target = np.array([pos[0], pos[1], 0])
+            # Use create_movement_animation with move_to_position
             animations.append(
                 block.visual_block.create_movement_animation(
-                    block.visual_block.animate.move_to(target)
+                    block.visual_block.animate.move_to_position(pos)
                 )
             )
 
-        if animations:
-            self.scene.play(*animations)
+        self.scene.play(*animations)
 
     ########################################
     # Get Past/Future/Anticone Blocks #TODO COMPLETE
@@ -778,3 +742,82 @@ class KaspaDAG:
 
         if reset_animations:
             self.scene.play(*reset_animations)
+
+
+"""  
+Z-Index Rendering Solution for 3D Scenes Modeled as 2D  
+=======================================================  
+
+PROBLEM:  
+--------  
+When using ThreeDScene (via HUD2DScene) for 2D visualizations, parent lines were   
+rendering on top of blocks during move animations despite setting z-index values   
+and using `use_z_index=True`. The issue occurred because:  
+
+1. Manim's z-index sorting happens during mobject extraction for rendering  
+2. During animations with updaters, the scene's mobject list order can override   
+   z-index sorting  
+3. `UpdateFromFunc` animations update during `interpolate_mobject()` phase, which   
+   happens AFTER z-index sorting for that frame  
+
+ATTEMPTED SOLUTIONS (THAT DIDN'T WORK):  
+----------------------------------------  
+1. Setting `use_z_index=True` alone - insufficient during updater animations  
+2. Using `bring_to_front()` before/after animations - only affects initial order  
+3. Adding blocks as foreground mobjects - caused timing issues with line animations  
+4. Setting z-index within `UpdateFromFunc` - too late in rendering pipeline  
+5. Adding per-frame `bring_to_front()` updaters - computationally expensive  
+
+WORKING SOLUTION:  
+-----------------  
+Use ThreeDCamera's depth-based rendering by setting z-coordinates:  
+
+1. **For blocks**: Set z=0.001 when converting 2D coordinates to 3D  
+   - Example: `(x, y)` becomes `(x, y, 0.001)`  
+
+2. **For lines**: Keep z=0 (default)  
+   - Lines remain at z=0 during initialization  
+
+3. **Enable z-index**: Set `self.scene.renderer.camera.use_z_index = True` in DAG init  
+
+4. **Use updaters for line positioning**: Replace `UpdateFromFunc` with mobject updaters  
+   - Add updaters before `scene.play()`  
+   - Remove updaters after animation completes  
+   - Updaters run during scene's update phase (before rendering)  
+
+WHY THIS WORKS:  
+---------------  
+- ThreeDCamera uses depth-based sorting via `get_mobjects_to_display()` which sorts   
+  by z-coordinate when `shade_in_3d=True`  
+- A z-offset of 0.001 is negligible at typical camera distances (focal_distance=20.0)  
+  so no visual misalignment occurs in 2D space  
+- Blocks at z=0.001 always render in front of lines at z=0  
+- Updaters update mobjects during the update phase (before rendering), allowing   
+  z-index sorting to work correctly each frame  
+
+IMPLEMENTATION:  
+---------------  
+In `move()` method:  
+```python  
+# Convert 2D to 3D with z-offset for blocks  [header-2](#header-2)
+positions_3d = [(pos[0], pos[1], 0.001) if len(pos) == 2 else pos   
+                for pos in positions]  
+
+# Use regular .animate for blocks  [header-3](#header-3)
+animations = []  
+for block, pos in zip(blocks, positions_3d):  
+    animations.append(block.visual_block.square.animate.move_to(pos))  
+    animations.append(block.visual_block.label.animate.move_to(pos))  
+
+# Add updaters for lines (temporary, only during animation)  [header-4](#header-4)
+for block in blocks:  
+    for line in block.visual_block.parent_lines:  
+        line.add_updater(lambda mob, l=line: l._update_position_and_size(l))  
+
+self.scene.play(*animations)  
+
+# Clean up updaters  [header-5](#header-5)
+for block in blocks:  
+    for line in block.visual_block.parent_lines:  
+        line.clear_updaters()
+"""

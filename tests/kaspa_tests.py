@@ -3,7 +3,8 @@
 from blanim import *
 from blanim.blockDAGs.kaspa.dag import KaspaDAG
 
-
+#TODO first blocks in a round are added at parent y, they should be added at gen y instead
+#   Note, unrelated to this specific test
 class TestAutomaticNaming(HUD2DScene):
     """Test automatic block naming with DAG structure."""
 
@@ -58,7 +59,7 @@ class TestManualNaming(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-
+#TODO since changing next step only animates a single create OR movement, and empty movements are qued
 class TestCreateBlockWorkflow(HUD2DScene):
     """Test step-by-step workflow with create_block() and next_step()."""
 
@@ -66,27 +67,30 @@ class TestCreateBlockWorkflow(HUD2DScene):
         dag = KaspaDAG(scene=self)
 
         # Create blocks without animation
-        genesis = dag.create_block()
+        genesis = dag.queue_block()
         self.caption("Genesis created (not animated yet)")
         self.wait(1)
 
-        b1 = dag.create_block(parents=[genesis])
-        b2 = dag.create_block(parents=[genesis])
+        b1 = dag.queue_block(parents=[genesis])
+        b2 = dag.queue_block(parents=[genesis])
         self.caption("B1 and B2 created (not animated yet)")
         self.wait(1)
 
         # Animate genesis
         self.caption("Animating genesis...")
         dag.next_step()
+        dag.next_step()
         self.wait(1)
 
         # Animate b1
         self.caption("Animating B1...")
         dag.next_step()
+        dag.next_step()
         self.wait(1)
 
         # Animate b2
         self.caption("Animating B2...")
+        dag.next_step()
         dag.next_step()
         self.wait(1)
 
@@ -108,10 +112,10 @@ class TestCatchUpWorkflow(HUD2DScene):
         dag = KaspaDAG(scene=self)
 
         # Create multiple blocks without animation
-        genesis = dag.create_block()
-        b1 = dag.create_block(parents=[genesis])
-        b2 = dag.create_block(parents=[genesis])
-        b3 = dag.create_block(parents=[b1, b2])
+        genesis = dag.queue_block()
+        b1 = dag.queue_block(parents=[genesis])
+        b2 = dag.queue_block(parents=[genesis])
+        b3 = dag.queue_block(parents=[b1, b2])
 
         self.caption("4 blocks created, none animated yet")
         self.wait(2)
@@ -184,7 +188,7 @@ class TestDAGPositioning(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-
+#TODO z index for parent lines and blocks needs to be fixed
 class TestGenerateDAG(HUD2DScene):
     """Test generate_dag() with various parameters."""
 
@@ -491,7 +495,6 @@ class TestHighlightingAnticone(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-
 class TestQueueRepositioning(HUD2DScene):
     """Test manual repositioning queue control."""
 
@@ -499,21 +502,20 @@ class TestQueueRepositioning(HUD2DScene):
         dag = KaspaDAG(scene=self)
 
         # Create blocks without repositioning
-        genesis = dag.create_block()
-        dag.next_step()  # Animate genesis
+        genesis = dag.queue_block()
+        self.caption(r"after create gen, before dag.next\_step")
+        dag.next_step()  # Animate genesis create
+        dag.next_step()  # Animate genesis movement(empty)
 
-        b1 = dag.create_block(parents=[genesis])
-        b2 = dag.create_block(parents=[genesis])
+        b1 = dag.queue_block(parents=[genesis])
+        b2 = dag.queue_block(parents=[genesis])
         dag.next_step()  # Animate b1
+        dag.next_step()  # Animate b1 movement
         dag.next_step()  # Animate b2
 
-        self.caption("Blocks created, repositioning not queued yet")
         self.wait(2)
 
-        # Manually queue repositioning
-        self.caption("Manually queueing repositioning...")
-        dag.queue_repositioning()
-        dag.next_step()  # Execute repositioning
+        dag.next_step()  # Animate b2 movement
 
         self.clear_caption()
         text = Text("Manual Repositioning Test Passed", color=GREEN).to_edge(UP)
