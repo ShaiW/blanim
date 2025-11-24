@@ -3,8 +3,7 @@
 from blanim import *
 from blanim.blockDAGs.kaspa.dag import KaspaDAG
 
-#TODO first blocks in a round are added at parent y, they should be added at gen y instead
-#   Note, unrelated to this specific test
+#TODO look at changing animation sequence from create(), move_camera(), vertical_shift()
 class TestAutomaticNaming(HUD2DScene):
     """Test automatic block naming with DAG structure."""
 
@@ -59,7 +58,7 @@ class TestManualNaming(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO since changing next step only animates a single create OR movement, and empty movements are qued
+
 class TestCreateBlockWorkflow(HUD2DScene):
     """Test step-by-step workflow with create_block() and next_step()."""
 
@@ -79,18 +78,17 @@ class TestCreateBlockWorkflow(HUD2DScene):
         # Animate genesis
         self.caption("Animating genesis...")
         dag.next_step()
-        dag.next_step()
+#        dag.next_step()
         self.wait(1)
 
         # Animate b1
         self.caption("Animating B1...")
         dag.next_step()
-        dag.next_step()
+#        dag.next_step()
         self.wait(1)
 
         # Animate b2
         self.caption("Animating B2...")
-        dag.next_step()
         dag.next_step()
         self.wait(1)
 
@@ -555,13 +553,11 @@ class TestQueueRepositioning(HUD2DScene):
         genesis = dag.queue_block()
         self.caption(r"after create gen, before dag.next\_step")
         dag.next_step()  # Animate genesis create
-        dag.next_step()  # Animate genesis movement(empty)
 
         b1 = dag.queue_block(parents=[genesis])
         b2 = dag.queue_block(parents=[genesis])
-        dag.next_step()  # Animate b1
-        dag.next_step()  # Animate b1 movement
-        dag.next_step()  # Animate b2
+        dag.next_step()  # Animate b1 create
+        dag.next_step()  # Animate b2 create
 
         self.wait(2)
 

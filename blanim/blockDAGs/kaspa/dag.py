@@ -232,15 +232,38 @@ class KaspaDAG:
                 x_pos = self.all_blocks[-1].visual_block.square.get_center()[0]
                 self._animate_dag_repositioning({x_pos})
 
+        reposition_column.is_repositioning = True
         self.workflow_steps.append(reposition_column)
 
         return placeholder
 
-    def next_step(self):
-        """Execute the next queued function."""
-        if self.workflow_steps:
-            func = self.workflow_steps.pop(0)
-            func()
+    def next_step(self)-> None:
+        """Execute the next queued function, skipping empty repositioning."""
+        if not self.workflow_steps:
+            return None
+
+        func = self.workflow_steps.pop(0)
+
+        # Check if this is a marked repositioning function
+        if getattr(func, 'is_repositioning', False):
+            if self.all_blocks:
+                x_pos = self.all_blocks[-1].visual_block.square.get_center()[0]
+                column_blocks = [
+                    b for b in self.all_blocks
+                    if abs(b.visual_block.square.get_center()[0] - x_pos) < 0.01
+                ]
+
+                if column_blocks:
+                    current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
+                    current_center_y = (max(current_ys) + min(current_ys)) / 2
+                    shift_y = self.config.genesis_y - current_center_y
+
+                    # Skip if negligible shift
+                    if abs(shift_y) < 0.01:
+                        return self.next_step()
+
+        func()
+        return None
 
     def catch_up(self):
         """Execute all queued functions in sequence."""
@@ -301,7 +324,7 @@ class KaspaDAG:
         if not parents:
             return self.config.genesis_x, self.config.genesis_y
 
-            # Use rightmost parent for x-position
+        # Use rightmost parent for x-position
         rightmost_parent = max(parents, key=lambda p: p.visual_block.square.get_center()[0])
         parent_pos = rightmost_parent.visual_block.square.get_center()
         x_position = parent_pos[0] + self.config.horizontal_spacing
@@ -313,8 +336,8 @@ class KaspaDAG:
         ]
 
         if not same_x_blocks:
-            # First block at this x - use rightmost parent's y
-            y_position = parent_pos[1]
+            # First block at this x - use gen_y y
+            y_position = self.config.genesis_y
         else:
             # Stack above topmost neighbor
             topmost_y = max(b.visual_block.square.get_center()[1] for b in same_x_blocks)
@@ -345,7 +368,7 @@ class KaspaDAG:
             if not column_blocks:
                 continue
 
-                # Calculate current center and target shift
+            # Calculate current center and target shift
             current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
             current_center_y = (max(current_ys) + min(current_ys)) / 2
             shift_y = genesis_y - current_center_y
@@ -363,6 +386,7 @@ class KaspaDAG:
         if animations:
             self.scene.play(*animations)
 
+#TODO check if this generates a DAG from existing tips or only from GEN
     def generate_dag(
             self,
             num_rounds: int,
@@ -412,7 +436,8 @@ class KaspaDAG:
                         current_tips.remove(parent)
 
             current_tips.extend(new_blocks)
-        #TODO determine a block naming based on DAG somehow
+
+#TODO determine a block naming based on DAG somehow
     def _generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
         """Generate automatic block name based on round from genesis.
 
@@ -468,7 +493,7 @@ class KaspaDAG:
         if not self.all_blocks:
             return None
 
-            # Extract round number and find closest
+        # Extract round number and find closest
         import re
         match = re.search(r'B?(\d+)', name)
         if not match:
@@ -486,7 +511,7 @@ class KaspaDAG:
         return self.all_blocks[-1]
 
     ########################################
-    # Moving Blocks with Synchronized Line Updates
+    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify
     ########################################
 
     def move(self, blocks, positions):
@@ -925,82 +950,3 @@ class KaspaDAG:
 
         if reset_animations:
             self.scene.play(*reset_animations)
-
-
-"""  
-Z-Index Rendering Solution for 3D Scenes Modeled as 2D  
-=======================================================  
-
-PROBLEM:  
---------  
-When using ThreeDScene (via HUD2DScene) for 2D visualizations, parent lines were   
-rendering on top of blocks during move animations despite setting z-index values   
-and using `use_z_index=True`. The issue occurred because:  
-
-1. Manim's z-index sorting happens during mobject extraction for rendering  
-2. During animations with updaters, the scene's mobject list order can override   
-   z-index sorting  
-3. `UpdateFromFunc` animations update during `interpolate_mobject()` phase, which   
-   happens AFTER z-index sorting for that frame  
-
-ATTEMPTED SOLUTIONS (THAT DIDN'T WORK):  
-----------------------------------------  
-1. Setting `use_z_index=True` alone - insufficient during updater animations  
-2. Using `bring_to_front()` before/after animations - only affects initial order  
-3. Adding blocks as foreground mobjects - caused timing issues with line animations  
-4. Setting z-index within `UpdateFromFunc` - too late in rendering pipeline  
-5. Adding per-frame `bring_to_front()` updaters - computationally expensive  
-
-WORKING SOLUTION:  
------------------  
-Use ThreeDCamera's depth-based rendering by setting z-coordinates:  
-
-1. **For blocks**: Set z=0.001 when converting 2D coordinates to 3D  
-   - Example: `(x, y)` becomes `(x, y, 0.001)`  
-
-2. **For lines**: Keep z=0 (default)  
-   - Lines remain at z=0 during initialization  
-
-3. **Enable z-index**: Set `self.scene.renderer.camera.use_z_index = True` in DAG init  
-
-4. **Use updaters for line positioning**: Replace `UpdateFromFunc` with mobject updaters  
-   - Add updaters before `scene.play()`  
-   - Remove updaters after animation completes  
-   - Updaters run during scene's update phase (before rendering)  
-
-WHY THIS WORKS:  
----------------  
-- ThreeDCamera uses depth-based sorting via `get_mobjects_to_display()` which sorts   
-  by z-coordinate when `shade_in_3d=True`  
-- A z-offset of 0.001 is negligible at typical camera distances (focal_distance=20.0)  
-  so no visual misalignment occurs in 2D space  
-- Blocks at z=0.001 always render in front of lines at z=0  
-- Updaters update mobjects during the update phase (before rendering), allowing   
-  z-index sorting to work correctly each frame  
-
-IMPLEMENTATION:  
----------------  
-In `move()` method:  
-```python  
-# Convert 2D to 3D with z-offset for blocks  [header-2](#header-2)
-positions_3d = [(pos[0], pos[1], 0.001) if len(pos) == 2 else pos   
-                for pos in positions]  
-
-# Use regular .animate for blocks  [header-3](#header-3)
-animations = []  
-for block, pos in zip(blocks, positions_3d):  
-    animations.append(block.visual_block.square.animate.move_to(pos))  
-    animations.append(block.visual_block.label.animate.move_to(pos))  
-
-# Add updaters for lines (temporary, only during animation)  [header-4](#header-4)
-for block in blocks:  
-    for line in block.visual_block.parent_lines:  
-        line.add_updater(lambda mob, l=line: l._update_position_and_size(l))  
-
-self.scene.play(*animations)  
-
-# Clean up updaters  [header-5](#header-5)
-for block in blocks:  
-    for line in block.visual_block.parent_lines:  
-        line.clear_updaters()
-"""

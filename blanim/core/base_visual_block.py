@@ -133,18 +133,6 @@ class BaseVisualBlock(VGroup):
             anims.append(Create(line, run_time=run_time))
 
         return AnimationGroup(*anims)
-    # def create_with_lines(self):  # CHANGE 3: Added new method
-    #     """Returns AnimationGroup of block + label + lines creation."""
-    #     run_time = self.config.create_run_time
-    #     create_anim = Create(self.square, run_time=run_time)
-    #     actual_label = self._get_label(self._label_text)
-    #     label_transform = Transform(self.label, actual_label, run_time=run_time)
-    #
-    #     anims = [create_anim, label_transform]
-    #     for line in self.parent_lines:
-    #         anims.append(Create(line, run_time=run_time))
-    #
-    #     return AnimationGroup(*anims)
 
 #TODO remove all references to config and use properties, the config should only exist at the DAG level and pass parameters to everything
     def create_highlight_animation(self, color=None, stroke_width=None):

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 __all__ = ["ParentLine"]
 
-import numpy as np
 from manim import Line, WHITE, CapStyleType, UpdateFromFunc
 
 #TODO ensure lines have their own properties preserved so animations can be created by accessing lines properties
