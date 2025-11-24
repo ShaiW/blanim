@@ -5,9 +5,10 @@ from __future__ import annotations
 __all__ = ["KaspaVisualBlock"]
 
 import copy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Any
 
-from manim import AnimationGroup, Create, BackgroundRectangle
+import numpy as np
+from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation
 
 from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
@@ -345,3 +346,109 @@ class KaspaVisualBlock(BaseVisualBlock):
 
         # Wrap with line updates using existing method
         return self.create_movement_animation(base_animation)
+
+    def create_fade_animation(self) -> list[Any]:
+        """Create animations to fade this block using config opacity."""
+        return [
+            self.square.animate.set_fill(opacity=self.kaspa_config.fade_opacity),
+            self.square.animate.set_stroke(opacity=self.kaspa_config.fade_opacity),
+            self.label.animate.set_fill(opacity=self.kaspa_config.fade_opacity)
+        ]
+
+    def create_highlight_animation(self, color=None, stroke_width=None) -> Any:
+        """Create animation to highlight this block's stroke using config."""
+        return self.square.animate.set_stroke(
+            self.kaspa_config.highlight_color,
+            width=self.kaspa_config.highlight_stroke_width
+        )
+
+    def create_pulsing_highlight(self, color=None, min_width=None, max_width=None) -> Callable:
+        """Create updater function for pulsing stroke effect using config values."""
+        original_width = self.kaspa_config.stroke_width
+        highlighted_width = self.kaspa_config.context_block_stroke_width
+        context_color = self.kaspa_config.context_block_color
+        cycle_time = self.kaspa_config.context_block_cycle_time
+
+        def pulse_stroke(mob, dt):
+            t = getattr(mob, 'time', 0) + dt
+            mob.time = t
+            width = original_width + (highlighted_width - original_width) * (
+                    np.sin(t * 2 * np.pi / cycle_time) + 1
+            ) / 2
+            mob.set_stroke(context_color, width=width)
+
+        return pulse_stroke
+
+    def create_reset_animation(self) -> list[Any]:
+        """Create animations to reset block to neutral state from config."""
+        return [
+            self.square.animate.set_fill(opacity=self.kaspa_config.fill_opacity),
+            self.square.animate.set_stroke(
+                self.kaspa_config.stroke_color,
+                width=self.kaspa_config.stroke_width,
+                opacity=self.kaspa_config.stroke_opacity
+            ),
+            self.label.animate.set_fill(opacity=self.kaspa_config.label_opacity)
+        ]
+
+    def create_line_fade_animations(self) -> list[Any]:
+        """Create animations to fade all parent lines."""
+        return [
+            line.animate.set_stroke(opacity=self.kaspa_config.fade_opacity)
+            for line in self.parent_lines
+        ]
+
+    def create_line_reset_animations(self) -> list[Any]:
+        """Create animations to reset all parent lines, respecting selected parent color."""
+        animations = []
+        for i, line in enumerate(self.parent_lines):
+            # First parent line is the selected parent
+            if i == 0:
+                color = self.kaspa_config.selected_parent_line_color
+            else:
+                color = self.kaspa_config.other_parent_line_color
+
+            animations.append(
+                line.animate.set_stroke(
+                    color,
+                    width=self.kaspa_config.line_stroke_width,
+                    opacity=self.kaspa_config.line_stroke_opacity
+                )
+            )
+        return animations
+
+    def create_directional_line_flash(self) -> list:
+        """Create flashing line copies with child-to-parent direction.
+
+        Lines always flash from child (this block) to parent, matching DAG structure.
+        Selected parent line (index 0) uses full highlight color, others use dimmed color.
+
+        Returns:
+            List of flash line copies that need to be added to scene
+        """
+        flash_lines = []
+        highlight_color = self.kaspa_config.highlight_color
+        cycle_time = self.kaspa_config.highlight_line_cycle_time
+
+        for i, line in enumerate(self.parent_lines):
+            # Selected parent gets full highlight color, others get dimmed
+            if i == 0:
+                flash_color = highlight_color
+            else:
+                # Dim non-selected parent lines by interpolating with white
+                flash_color = highlight_color  # You can add .interpolate(WHITE, 0.5) if needed
+
+            flash_line = line.copy().set_color(flash_color)
+            flash_lines.append(flash_line)
+
+            # Always flash from child to parent (reverse direction)
+            cycle_animation(
+                ShowPassingFlash(
+                    flash_line,
+                    time_width=0.5,
+                    run_time=cycle_time,
+                    reverse_rate_function=True
+                )
+            )
+
+        return flash_lines

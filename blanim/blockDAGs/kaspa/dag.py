@@ -133,7 +133,7 @@ from __future__ import annotations
 from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
-from manim import ShowPassingFlash, cycle_animation, Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc
+from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG
@@ -773,179 +773,114 @@ class KaspaDAG:
         ]
 
     ########################################
-    # Highlighting Blocks #TODO fix this for changes made AND for DAG
+    # Highlighting Blocks #TODO highlighting lines travels the wrong direction, need to write better tests
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock) -> List:
-        """Highlight a block's past cone (ancestors).
-
-        All styling comes from focused_block._visual.config.
-        """
+        """Highlight a block's past cone with child-to-parent line animations."""
         context_blocks = self.get_past_cone(focused_block)
         self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
         return self.flash_lines
 
     def highlight_future(self, focused_block: KaspaLogicalBlock) -> List:
-        """Highlight a block's future cone (descendants).
-
-        All styling comes from focused_block._visual.config.
-        """
+        """Highlight a block's future cone with child-to-parent line animations."""
         context_blocks = self.get_future_cone(focused_block)
         self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
         return self.flash_lines
 
     def highlight_anticone(self, focused_block: KaspaLogicalBlock) -> List:
-        """Highlight a block's anticone (neither ancestors nor descendants).
-
-        All styling comes from focused_block._visual.config.
-        """
+        """Highlight a block's anticone with child-to-parent line animations."""
         context_blocks = self.get_anticone(focused_block)
         self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
         return self.flash_lines
-
-    def _create_pulse_updater(self):
-        """Create pulsing stroke width updater using config values."""
-        original_width = self.config.stroke_width
-        highlighted_width = self.config.context_block_stroke_width
-        context_color = self.config.context_block_color
-        cycle_time = self.config.context_block_cycle_time  # Use renamed property
-
-        def pulse_stroke(mob, dt):
-            t = getattr(mob, 'time', 0) + dt
-            mob.time = t
-            width = original_width + (highlighted_width - original_width) * (
-                    np.sin(t * 2 * np.pi / cycle_time) + 1
-            ) / 2
-            mob.set_stroke(context_color, width=width)
-
-        return pulse_stroke
 
     def _highlight_with_context(
             self,
             focused_block: KaspaLogicalBlock,
             context_blocks: Optional[List[KaspaLogicalBlock]] = None
     ) -> List:
-        """Highlight a block and its context with optional connection flashing.
+        """Highlight a block and its context with directional line animations.
 
-        Returns:
-            List of flash line copies that were added to the scene (for cleanup)
+        Lines always flash from child to parent (DAG directional relationship).
         """
-        # Store the currently highlighted block
         self.currently_highlighted_block = focused_block
-        # Read ALL styling from config
-        fade_opacity = self.config.fade_opacity
-        highlight_color = self.config.highlight_color
-        flash_connections = self.config.flash_connections
-        line_cycle_time = self.config.highlight_line_cycle_time
 
         if context_blocks is None:
             context_blocks = []
 
-        # Fade non-context blocks (always fade unrelated blocks)
+            # Collect fade animations using visual block methods
         fade_animations = []
         for block in self.all_blocks:
             if block not in context_blocks and block != focused_block:
-                fade_animations.extend([
-                    block._visual.square.animate.set_fill(opacity=fade_opacity),
-                    block._visual.square.animate.set_stroke(opacity=fade_opacity),
-                    block._visual.label.animate.set_fill(opacity=fade_opacity)
-                ])
-                for line in block._visual.parent_lines:
-                    fade_animations.append(line.animate.set_stroke(opacity=fade_opacity))
+                # Use visual_block property instead of ._visual
+                fade_animations.extend(block.visual_block.create_fade_animation())
+                fade_animations.extend(block.visual_block.create_line_fade_animations())
 
-        # Fade focused block's parent line if parent is not in context
-        if focused_block._visual.parent_lines:
-            parent_block = focused_block.parent
-            if parent_block and parent_block not in context_blocks:
-                fade_animations.append(
-                    focused_block._visual.parent_lines[0].animate.set_stroke(opacity=fade_opacity)
-                )
+                # Fade focused block's parent lines if parents not in context
+        if focused_block.visual_block.parent_lines:
+            for parent in focused_block.parents:
+                if parent not in context_blocks:
+                    fade_animations.extend(focused_block.visual_block.create_line_fade_animations())
+                    break
 
         if fade_animations:
             self.scene.play(*fade_animations)
 
-        # Add pulsing white stroke to focused block (using updater)
-        pulse_updater = self._create_pulse_updater()
-        focused_block._visual.square.add_updater(pulse_updater)
+            # Add pulsing highlight to focused block using visual block method
+        pulse_updater = focused_block.visual_block.create_pulsing_highlight()
+        focused_block.visual_block.square.add_updater(pulse_updater)
 
-        # Highlight context blocks with yellow stroke and increased width(highlight_stroke_width)
+        # Highlight context blocks using visual block methods
         context_animations = []
         for block in context_blocks:
-            context_animations.extend([
-                block._visual.square.animate.set_stroke(
-                    highlight_color,
-                    width=self.config.highlight_stroke_width
-                )
-            ])
+            context_animations.append(block.visual_block.create_highlight_animation())
 
         if context_animations:
             self.scene.play(*context_animations)
         else:
-            # Play a minimal wait to commit the fade state
             self.scene.play(Wait(0.01))
 
-        # Flash connections using cycle_animation (non-blocking)
+            # Create directional line flashes (always child → parent)
         flash_lines = []
-        if flash_connections:
+        if self.config.flash_connections:
             for block in context_blocks:
-                if block._visual.parent_lines:
-                    # Create a copy of the line with highlight color
-                    flash_line = block._visual.parent_lines[0].copy().set_color(highlight_color)
+                block_flash_lines = block.visual_block.create_directional_line_flash()
+                for flash_line in block_flash_lines:
                     self.scene.add(flash_line)
                     flash_lines.append(flash_line)
 
-                    # Apply cycle_animation to make it flash
-                    cycle_animation(
-                        ShowPassingFlash(flash_line, time_width=0.5, run_time=line_cycle_time)#run_time sets cycle time
-                    )
+                    # Flash focused block's lines if parents in context
+            if focused_block.visual_block.parent_lines:
+                for parent in focused_block.parents:
+                    if parent in context_blocks:
+                        block_flash_lines = focused_block.visual_block.create_directional_line_flash()
+                        for flash_line in block_flash_lines:
+                            self.scene.add(flash_line)
+                            flash_lines.append(flash_line)
+                        break
 
-            # Flash focused block's parent line only if parent is in context
-            if focused_block._visual.parent_lines and focused_block.parent in context_blocks:
-                flash_line = focused_block._visual.parent_lines[0].copy().set_color(highlight_color)
-                self.scene.add(flash_line)
-                flash_lines.append(flash_line)
-                cycle_animation(
-                    ShowPassingFlash(flash_line, time_width=0.5, run_time=line_cycle_time)
-                )
-
-        # Return the flash line copies (not originals) for cleanup
         return flash_lines
 
-    def reset_highlighting(self):
-        """Reset all blocks to neutral state from config."""
-        # Remove pulse updater from currently highlighted block
-        if self.currently_highlighted_block and self.currently_highlighted_block._visual.square.updaters:
-            self.currently_highlighted_block._visual.square.remove_updater(
-                self.currently_highlighted_block._visual.square.updaters[-1]
-            )
+    def reset_highlighting(self) -> None:
+        """Reset all blocks to neutral state using visual block methods."""
+        # Remove pulse updater from focused block
+        if self.currently_highlighted_block:
+            if self.currently_highlighted_block.visual_block.square.updaters:
+                self.currently_highlighted_block.visual_block.square.remove_updater(
+                    self.currently_highlighted_block.visual_block.square.updaters[-1]
+                )
 
-        # Remove flash line copies from scene
+                # Remove flash line copies
         for flash_line in self.flash_lines:
             self.scene.remove(flash_line)
         self.flash_lines = []
 
-        # Reset ALL blocks to original styling from config
+        # Reset all blocks using visual block methods
         reset_animations = []
         for block in self.all_blocks:
-            reset_animations.extend([
-                block._visual.square.animate.set_fill(opacity=self.config.fill_opacity),
-                block._visual.square.animate.set_stroke(
-                    self.config.stroke_color,
-                    width=self.config.stroke_width,
-                    opacity=self.config.stroke_opacity
-                ),
-                block._visual.label.animate.set_fill(opacity=self.config.label_opacity)
-            ])
-            for line in block._visual.parent_lines:
-                reset_animations.append(
-                    line.animate.set_stroke(
-                        self.config.selected_parent_line_color,#TODO this is why lines need to retain their own properties
-                        width=self.config.line_stroke_width,
-                        opacity=self.config.line_stroke_opacity
-                    )
-                )
+            reset_animations.extend(block.visual_block.create_reset_animation())
+            reset_animations.extend(block.visual_block.create_line_reset_animations())
 
-        # Clear the tracked state
         self.currently_highlighted_block = None
 
         if reset_animations:
