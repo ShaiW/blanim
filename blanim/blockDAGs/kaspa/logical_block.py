@@ -44,7 +44,7 @@ class KaspaLogicalBlock:
         # Create visual (composition)
         parent_visuals = [p.visual_block for p in self.parents]
         self._visual = KaspaVisualBlock(
-            label_text=str(""),#TODO update this
+            label_text=str(" "),#TODO update this  NOTE: when passing an empty string, manim breaks.  for an empty label, pass " ", not "" #TODO figure out a better way to do this
             position=position,
             parents=parent_visuals,
             kaspa_config=kaspa_config

@@ -368,18 +368,17 @@ class KaspaDAG:
             if not column_blocks:
                 continue
 
-            # Calculate current center and target shift
+                # Calculate current center and target shift
             current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
             current_center_y = (max(current_ys) + min(current_ys)) / 2
             shift_y = genesis_y - current_center_y
 
             # Create shift animations for all blocks in column
             for block in column_blocks:
-                current_pos = block.visual_block.square.get_center()
-                target = np.array([current_pos[0], current_pos[1] + shift_y, 0])
+                # Use shift instead of move_to to preserve x-position
                 animations.append(
                     block.visual_block.create_movement_animation(
-                        block.visual_block.animate.move_to(target)
+                        block.visual_block.animate.shift(np.array([0, shift_y, 0]))
                     )
                 )
 
@@ -511,7 +510,7 @@ class KaspaDAG:
         return self.all_blocks[-1]
 
     ########################################
-    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify #TODO figure out why blocks move y positions when using qh and remain correctly positioned when using ql to render
+    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify #TODO figure out why blocks move y positions when using qh and remain correctly positioned when using ql to render/might have broke when changing narration font sizes
     ########################################
 
     def move(self, blocks, positions):
