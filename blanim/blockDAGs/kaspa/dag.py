@@ -511,7 +511,7 @@ class KaspaDAG:
         return self.all_blocks[-1]
 
     ########################################
-    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify
+    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify #TODO figure out why blocks move y positions when using qh and remain correctly positioned when using ql to render
     ########################################
 
     def move(self, blocks, positions):
@@ -773,64 +773,130 @@ class KaspaDAG:
         ]
 
     ########################################
-    # Highlighting Blocks #TODO highlighting lines travels the wrong direction, need to write better tests
+    # Highlighting Blocks #TODO currently fails to filter highlighted lines from a future block to an anticone block (check tests)
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock) -> List:
         """Highlight a block's past cone with child-to-parent line animations."""
         context_blocks = self.get_past_cone(focused_block)
-        self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
+        self.flash_lines = self._highlight_with_context(
+            focused_block, context_blocks, relationship_type="past"
+        )
         return self.flash_lines
 
     def highlight_future(self, focused_block: KaspaLogicalBlock) -> List:
         """Highlight a block's future cone with child-to-parent line animations."""
         context_blocks = self.get_future_cone(focused_block)
-        self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
+        self.flash_lines = self._highlight_with_context(
+            focused_block, context_blocks, relationship_type="future"
+        )
         return self.flash_lines
 
     def highlight_anticone(self, focused_block: KaspaLogicalBlock) -> List:
         """Highlight a block's anticone with child-to-parent line animations."""
         context_blocks = self.get_anticone(focused_block)
-        self.flash_lines = self._highlight_with_context(focused_block, context_blocks)
+        self.flash_lines = self._highlight_with_context(
+            focused_block, context_blocks, relationship_type="anticone"
+        )
         return self.flash_lines
+
+    def _get_lines_to_highlight(
+            self,
+            focused_block: KaspaLogicalBlock,
+            context_blocks: List[KaspaLogicalBlock],
+            relationship_type: str  # "past", "future", or "anticone"
+    ) -> Set[int]:
+        """Determine which lines should remain highlighted based on relationship type.
+
+        Returns a set of line IDs (using Python's id()) that should NOT be faded.
+        """
+        lines_to_keep = set()
+        context_set = set(context_blocks)
+
+        if relationship_type == "past":
+            # RULE: Highlight lines where BOTH child and parent are in past cone
+            for block in context_blocks:
+                for parent_line, parent in zip(block.visual_block.parent_lines, block.parents):
+                    if parent in context_set or parent == focused_block:
+                        lines_to_keep.add(id(parent_line))
+
+        elif relationship_type == "future":
+            # RULE: Highlight lines where BOTH child and parent are in future cone
+            for block in context_blocks:
+                # Check lines FROM this block TO its children
+                for child in block.children:
+                    if child in context_set or child == focused_block:
+                        # Find the line from child to this block
+                        for parent_line, parent in zip(child.visual_block.parent_lines, child.parents):
+                            if parent == block:
+                                lines_to_keep.add(id(parent_line))
+
+        elif relationship_type == "anticone":
+            # RULE 1: Highlight lines WITHIN anticone (both endpoints in anticone)
+            for block in context_blocks:
+                for parent_line, parent in zip(block.visual_block.parent_lines, block.parents):
+                    if parent in context_set:
+                        lines_to_keep.add(id(parent_line))
+
+                        # RULE 2: Highlight lines FROM non-anticone TO anticone
+            for anticone_block in context_blocks:
+                for child in anticone_block.children:
+                    if child not in context_set and child != focused_block:
+                        for parent_line, parent in zip(child.visual_block.parent_lines, child.parents):
+                            if parent == anticone_block:
+                                lines_to_keep.add(id(parent_line))
+
+        return lines_to_keep
 
     def _highlight_with_context(
             self,
             focused_block: KaspaLogicalBlock,
-            context_blocks: Optional[List[KaspaLogicalBlock]] = None
+            context_blocks: Optional[List[KaspaLogicalBlock]] = None,
+            relationship_type: str = "anticone"
     ) -> List:
-        """Highlight a block and its context with directional line animations.
-
-        Lines always flash from child to parent (DAG directional relationship).
-        """
+        """Highlight a block and its context with directional line animations."""
         self.currently_highlighted_block = focused_block
 
         if context_blocks is None:
             context_blocks = []
 
-            # Collect fade animations using visual block methods
+        context_set = set(context_blocks)
+
+        # Get set of line IDs that should remain highlighted
+        lines_to_keep = self._get_lines_to_highlight(
+            focused_block, context_blocks, relationship_type
+        )
+
+        # Fade non-context blocks and selectively fade their lines
         fade_animations = []
         for block in self.all_blocks:
-            if block not in context_blocks and block != focused_block:
-                # Use visual_block property instead of ._visual
+            if block not in context_set and block != focused_block:
+                # Fade the block itself
                 fade_animations.extend(block.visual_block.create_fade_animation())
-                fade_animations.extend(block.visual_block.create_line_fade_animations())
 
-                # Fade focused block's parent lines if parents not in context
+                # Selectively fade lines NOT in lines_to_keep
+                for parent_line in block.visual_block.parent_lines:
+                    if id(parent_line) not in lines_to_keep:
+                        fade_animations.append(
+                            parent_line.animate.set_stroke(opacity=self.config.fade_opacity)
+                        )
+
+                        # Fade focused block's parent lines if parents not in context
         if focused_block.visual_block.parent_lines:
-            for parent in focused_block.parents:
-                if parent not in context_blocks:
-                    fade_animations.extend(focused_block.visual_block.create_line_fade_animations())
-                    break
+            for parent_line, parent in zip(focused_block.visual_block.parent_lines, focused_block.parents):
+                if parent not in context_set:
+                    fade_animations.append(
+                        parent_line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
 
         if fade_animations:
             self.scene.play(*fade_animations)
 
-            # Add pulsing highlight to focused block using visual block method
+            # Add pulsing highlight to focused block
         pulse_updater = focused_block.visual_block.create_pulsing_highlight()
         focused_block.visual_block.square.add_updater(pulse_updater)
 
-        # Highlight context blocks using visual block methods
+        # Highlight context blocks
         context_animations = []
         for block in context_blocks:
             context_animations.append(block.visual_block.create_highlight_animation())
@@ -840,9 +906,10 @@ class KaspaDAG:
         else:
             self.scene.play(Wait(0.01))
 
-            # Create directional line flashes (always child → parent)
+            # Flash lines that are in lines_to_keep
         flash_lines = []
         if self.config.flash_connections:
+            # Flash lines within context blocks
             for block in context_blocks:
                 block_flash_lines = block.visual_block.create_directional_line_flash()
                 for flash_line in block_flash_lines:
@@ -852,12 +919,35 @@ class KaspaDAG:
                     # Flash focused block's lines if parents in context
             if focused_block.visual_block.parent_lines:
                 for parent in focused_block.parents:
-                    if parent in context_blocks:
+                    if parent in context_set:
                         block_flash_lines = focused_block.visual_block.create_directional_line_flash()
                         for flash_line in block_flash_lines:
                             self.scene.add(flash_line)
                             flash_lines.append(flash_line)
                         break
+
+                        # Flash lines FROM non-context blocks TO context blocks (for anticone/future)
+            if relationship_type in ["anticone", "future"]:
+                for block in self.all_blocks:
+                    if block not in context_set and block != focused_block:
+                        for parent_line, parent in zip(block.visual_block.parent_lines, block.parents):
+                            if id(parent_line) in lines_to_keep:
+                                # Create flash animation
+                                flash_copy = parent_line.copy()
+                                flash_copy.set_stroke(
+                                    color=self.config.highlight_color,
+                                    width=self.config.line_stroke_width
+                                )
+                                from manim import ShowPassingFlash, cycle_animation
+                                cycle_animation(
+                                    ShowPassingFlash(
+                                        flash_copy,
+                                        time_width=0.5,
+                                        run_time=self.config.highlight_line_cycle_time
+                                    )
+                                )
+                                self.scene.add(flash_copy)
+                                flash_lines.append(flash_copy)
 
         return flash_lines
 

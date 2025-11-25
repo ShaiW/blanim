@@ -44,7 +44,7 @@ class KaspaLogicalBlock:
         # Create visual (composition)
         parent_visuals = [p.visual_block for p in self.parents]
         self._visual = KaspaVisualBlock(
-            label_text=str(self.weight),
+            label_text=str(""),#TODO update this
             position=position,
             parents=parent_visuals,
             kaspa_config=kaspa_config

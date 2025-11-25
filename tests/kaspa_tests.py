@@ -456,7 +456,7 @@ class TestComplexDAGStructure(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO does not work (highlighting not yet implemented)
+
 class TestHighlightingPast(HUD2DScene):
     """Test highlighting past cone in DAG structure."""
 
@@ -485,7 +485,7 @@ class TestHighlightingPast(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO does not work (highlighting not yet implemented)
+
 class TestHighlightingFuture(HUD2DScene):
     """Test highlighting future cone in DAG structure."""
 
@@ -514,7 +514,7 @@ class TestHighlightingFuture(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
-#TODO does not work (highlighting not yet implemented)
+
 class TestHighlightingAnticone(HUD2DScene):
     """Test highlighting anticone in DAG structure."""
 
@@ -527,9 +527,16 @@ class TestHighlightingAnticone(HUD2DScene):
         b2 = dag.add_block(parents=[genesis])
         b3 = dag.add_block(parents=[b1])
         b4 = dag.add_block(parents=[b2])
+
+        # Add merge block connecting both branches
+        merge = dag.add_block(parents=[b3, b4])
+
+        # Add one more block after merge
+        final = dag.add_block(parents=[merge])
+
         self.wait(1)
 
-        # Highlight anticone of b3 (should highlight b4)
+        # Highlight anticone of b3 (should now show b4 only, not merge or final)
         self.caption("Highlighting anticone of b3 (should show b4)")
         dag.highlight_anticone(b3)
         self.wait(5)
@@ -542,6 +549,103 @@ class TestHighlightingAnticone(HUD2DScene):
         text = Text("Anticone Highlighting Test Passed", color=GREEN).to_edge(UP)
         self.play(Write(text))
         self.wait(2)
+
+
+class TestHighlightingFutureWithAnticone(HUD2DScene):
+    """Test highlighting future cone when focused block has anticone relationships."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Create structure with clear anticone (same as TestHighlightingAnticone)
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+        b2 = dag.add_block(parents=[genesis])
+        b3 = dag.add_block(parents=[b1])
+        b4 = dag.add_block(parents=[b2])
+
+        # Add merge block connecting both branches
+        merge = dag.add_block(parents=[b3, b4])
+
+        # Add one more block after merge
+        final = dag.add_block(parents=[merge])
+
+        self.wait(1)
+
+        # Highlight future cone of b1 (should show b3, merge, final)
+        # b4 and b2 are in b1's anticone
+        self.caption("Highlighting future cone of b1 (should show b3, merge, final)")
+        dag.highlight_future(b1)
+        self.wait(5)
+
+        # Reset
+        dag.reset_highlighting()
+        self.wait(1)
+        self.clear_caption()
+
+        # Highlight future cone of b4 (should show merge, final)
+        # b3 and b1 are in b4's anticone
+        self.caption("Highlighting future cone of b4 (should show merge, final)")
+        dag.highlight_future(b4)
+        self.wait(5)
+
+        # Reset
+        dag.reset_highlighting()
+        self.wait(1)
+        self.clear_caption()
+
+        text = Text("Future Highlighting with Anticone Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestHighlightingPastWithAnticone(HUD2DScene):
+    """Test highlighting past cone when focused block has anticone relationships."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Create structure with clear anticone (same as TestHighlightingAnticone)
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+        b2 = dag.add_block(parents=[genesis])
+        b3 = dag.add_block(parents=[b1])
+        b4 = dag.add_block(parents=[b2])
+
+        # Add merge block connecting both branches
+        merge = dag.add_block(parents=[b3, b4])
+
+        # Add one more block after merge
+        final = dag.add_block(parents=[merge])
+
+        self.wait(1)
+
+        # Highlight past cone of b1 (should show genesis only)
+        # b4 and b2 are in b1's anticone
+        self.caption("Highlighting past cone of b1 (should show genesis)")
+        dag.highlight_past(b1)
+        self.wait(5)
+
+        # Reset
+        dag.reset_highlighting()
+        self.wait(1)
+        self.clear_caption()
+
+        # Highlight past cone of b4 (should show b2, genesis)
+        # b3 and b1 are in b4's anticone
+        self.caption("Highlighting past cone of b4 (should show b2, genesis)")
+        dag.highlight_past(b4)
+        self.wait(5)
+
+        # Reset
+        dag.reset_highlighting()
+        self.wait(1)
+        self.clear_caption()
+
+        text = Text("Past Highlighting with Anticone Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
 
 class TestQueueRepositioning(HUD2DScene):
     """Test manual repositioning queue control."""
@@ -638,3 +742,4 @@ class TestWeightCalculation(HUD2DScene):
         text = Text("Weight Calculation Test Passed", color=GREEN).to_edge(UP)
         self.play(Write(text))
         self.wait(2)
+

@@ -2,8 +2,10 @@
 
 from blanim import *
 from blanim.blockDAGs.bitcoin import BitcoinConfig
-from blanim.blockDAGs.kaspa import KaspaBlockConfig
+from blanim.blockDAGs.kaspa import KaspaConfig
 import random
+
+from blanim.blockDAGs.kaspa.dag import KaspaDAG
 
 # ============================================================================
 # CUSTOM CONFIGURATIONS - Override ALL settings
@@ -32,7 +34,7 @@ CUSTOM_BITCOIN_CONFIG = BitcoinConfig(
 )
 
 # Custom Kaspa configuration with all settings overridden
-CUSTOM_KASPA_CONFIG = KaspaBlockConfig(
+CUSTOM_KASPA_CONFIG = KaspaConfig(
     # Visual styling
     block_color=GREEN,
     fill_opacity=0.4,
@@ -50,8 +52,8 @@ CUSTOM_KASPA_CONFIG = KaspaBlockConfig(
     movement_run_time=1.2,
 
     # Line styling (Kaspa-specific: multiple parents)
-    selected_parent_color=PINK,
-    other_parent_color=LIGHT_GRAY,
+#    selected_parent_color=PINK,
+#    other_parent_color=LIGHT_GRAY,
     line_stroke_width=6
 )
 
@@ -568,4 +570,182 @@ class SimpleKaspaExample(HUD2DScene):
         self.wait(2)
 
         self.clear_narrate()
+        self.clear_caption()
+
+######################
+#TODO figure out how to show a chain, explain the limitations of bitcoin, then continue on as a dag making a wide DAG
+class BlockchainToDAGNarration(HUD2DScene):
+    """Demonstrate blockchain chain transitioning to DAG with narration."""
+
+    def construct(self):
+        # Initialize DAG with invisible labels
+        dag = KaspaDAG(scene=self)
+        dag.config.label_opacity = 0
+
+        # Phase 1: Build initial chain to block height 5
+#        self.caption("Starting with genesis block")
+        self.narrate(r"Kaspa is Inclusive Bitcoin")
+        genesis = dag.queue_block()
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+#        self.caption("Adding blocks to form a chain")
+        self.caption(r"Bitcoin blocks point to a Parent")
+        b1 = dag.queue_block(parents=[genesis])
+        dag.next_step()
+        dag.next_step()
+        self.wait(0.5)
+
+        self.caption(r"The result is a Chain")
+        b2 = dag.queue_block(parents=[b1])
+        dag.next_step()
+        dag.next_step()
+        self.wait(0.5)
+
+        self.caption(r"This limits how many blocks can be produced")
+        b3 = dag.queue_block(parents=[b2])
+        dag.next_step()
+        dag.next_step()
+        self.wait(0.5)
+
+        self.caption(r"Only a single block per round can be accepted")
+        b4 = dag.queue_block(parents=[b3])
+        dag.next_step()
+        dag.next_step()
+        self.wait(0.5)
+
+        self.caption(r"If multiple blocks are produced in a single round")
+        b5 = dag.queue_block(parents=[b4])
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+        # Phase 2: Fork happens at block height 5
+#        self.caption("A competing block appears - creating a fork")
+        self.caption(r"Bitcoin Security is harmed")
+        fork_block = dag.queue_block(parents=[b4], name="Fork")
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+#        self.caption("Main chain continues - fork block abandoned")
+        self.caption(r"Wasted Work = Lower Security")
+        b6 = dag.queue_block(parents=[b5])
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+        # 4 more chain blocks (total 5 after fork)
+        self.caption(r"So we must avoid forks in Bitcoin")
+        b7 = dag.queue_block(parents=[b6])
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+        self.caption(r"Kaspa fixes this")
+        b8 = dag.queue_block(parents=[b7])
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+        self.caption(r"Kaspa allows blocks to point to multiple parents")
+        b9 = dag.queue_block(parents=[b8])
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+        self.caption(r"Kaspa remains Secure when multiple blocks are created")
+        b10 = dag.queue_block(parents=[b9])
+        dag.next_step()
+        dag.next_step()
+        self.wait(1)
+
+        # Phase 3: Transition to inclusive DAG structure
+#        self.caption("Network now creates parallel blocks")
+
+        # Round 1: 2 parallel blocks (both reference b10)
+        self.caption(r"We could look at Kaspa as Inclusive Bitcoin")
+        parallel_1_1 = dag.queue_block(parents=[b10])
+        parallel_1_2 = dag.queue_block(parents=[b10])
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+#        self.wait(1)
+
+#        self.caption("Blocks can now reference multiple parents")
+
+        # Round 2: 2 parallel blocks (both reference both parents from round 1)
+        self.caption(r"Instead of wasting work")
+        parallel_2_1 = dag.queue_block(parents=[parallel_1_1, parallel_1_2])
+        parallel_2_2 = dag.queue_block(parents=[parallel_1_1, parallel_1_2])
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+#        self.wait(1)
+
+        # Round 3: 3 parallel blocks (all reference both parents from round 2)
+        self.caption(r"Work is included")
+        parallel_3_1 = dag.queue_block(parents=[parallel_2_1, parallel_2_2])
+        parallel_3_2 = dag.queue_block(parents=[parallel_2_1, parallel_2_2])
+        parallel_3_3 = dag.queue_block(parents=[parallel_2_1, parallel_2_2])
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+#        self.wait(1)
+
+#        self.caption("DAG structure continues to expand")
+
+        # Round 4: 3 parallel blocks (all reference all 3 parents from round 3)
+        self.caption(r"Solving the Security-Scalability Tradeoff")
+        parallel_4_1 = dag.queue_block(parents=[parallel_3_1, parallel_3_2, parallel_3_3])
+        parallel_4_2 = dag.queue_block(parents=[parallel_3_1, parallel_3_2, parallel_3_3])
+        parallel_4_3 = dag.queue_block(parents=[parallel_3_1, parallel_3_2, parallel_3_3])
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+#        self.wait(1)
+
+        # Round 5: 4 parallel blocks (all reference all 3 parents from round 4)
+        self.caption(r"While maintaining Decentralization")
+        parallel_5_1 = dag.queue_block(parents=[parallel_4_1, parallel_4_2, parallel_4_3])
+        parallel_5_2 = dag.queue_block(parents=[parallel_4_1, parallel_4_2, parallel_4_3])
+        parallel_5_3 = dag.queue_block(parents=[parallel_4_1, parallel_4_2, parallel_4_3])
+        parallel_5_4 = dag.queue_block(parents=[parallel_4_1, parallel_4_2, parallel_4_3])
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+#        self.wait(1)
+
+#        self.caption("Final merge combines all parallel branches")
+
+        # Final: 4 blocks (all reference all 4 parents from round 5)
+        self.caption(r"Security-Scalability-Decentralization, Kaspa solved the Trilemma")
+        final_1 = dag.queue_block(parents=[parallel_5_1, parallel_5_2, parallel_5_3, parallel_5_4])
+        final_2 = dag.queue_block(parents=[parallel_5_1, parallel_5_2, parallel_5_3, parallel_5_4])
+        final_3 = dag.queue_block(parents=[parallel_5_1, parallel_5_2, parallel_5_3, parallel_5_4])
+        final_4 = dag.queue_block(parents=[parallel_5_1, parallel_5_2, parallel_5_3, parallel_5_4])
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        dag.next_step()
+        self.wait(5)
+
         self.clear_caption()

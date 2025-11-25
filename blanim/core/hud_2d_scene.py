@@ -822,8 +822,8 @@ class UniversalNarrationManager:
             text_type: Literal["Tex", "MathTex", "Text"] = "Tex",
     ) -> None:
         self.scene = scene
-        self.narration_font_size: int = 32
-        self.caption_font_size: int = 26
+        self.narration_font_size: int = 32 #TODO modified for an example video from 32, breaks at 40
+        self.caption_font_size: int = 26 #TODO modified for an example video from 26, breaks at 32
         self.narration_color = WHITE
         self.caption_color = WHITE
         self.narration_position = UP

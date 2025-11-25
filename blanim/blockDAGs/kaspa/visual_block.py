@@ -446,8 +446,7 @@ class KaspaVisualBlock(BaseVisualBlock):
                 ShowPassingFlash(
                     flash_line,
                     time_width=0.5,
-                    run_time=cycle_time,
-                    reverse_rate_function=True
+                    run_time=cycle_time
                 )
             )
 
