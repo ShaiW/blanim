@@ -773,7 +773,7 @@ class KaspaDAG:
         ]
 
     ########################################
-    # Highlighting Blocks #TODO currently fails to filter highlighted lines from a future block to an anticone block (check tests)
+    # Highlighting Blocks #TODO COMPLETE
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock) -> List:

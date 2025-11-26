@@ -770,3 +770,64 @@ class TestWeightCalculation(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
+
+class ComprehensiveHighlightingExample(HUD2DScene):
+    """Comprehensive example demonstrating past, future, and anticone highlighting."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+        self.narrate("Kaspa DAG Relationships")
+
+        # Create a complex DAG structure with anticone relationships
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+        b2 = dag.add_block(parents=[genesis])
+        b3 = dag.add_block(parents=[b1])
+        b4 = dag.add_block(parents=[b2])
+        merge = dag.add_block(parents=[b3, b4])
+        final = dag.add_block(parents=[merge])
+        self.wait(1)
+
+        # 1. Highlight past of a block (b3)
+        self.caption("Past of Yellow Block")
+        dag.highlight_past(b3)
+        self.wait(4)
+        dag.reset_highlighting()
+        self.wait(1)
+
+        # 2. Highlight past of the merge block
+        self.caption("Past of a Different Block")
+        dag.highlight_past(merge)
+        self.wait(4)
+        dag.reset_highlighting()
+        self.wait(1)
+
+        # 3. Highlight future of a block in an anticone (b1)
+        # b4 and b2 are in b1's anticone
+        self.caption("Future of Yellow Block")
+        dag.highlight_future(b1)
+        self.wait(4)
+        dag.reset_highlighting()
+        self.wait(1)
+
+        # 4. Highlight future of genesis
+        self.caption("Future of Genesis")
+        dag.highlight_future(genesis)
+        self.wait(4)
+        dag.reset_highlighting()
+        self.wait(1)
+
+        # 5. Highlight anticone of an anticone block (b3)
+        # b4 is in b3's anticone, then we highlight b4's anticone
+        self.caption("Anticone of Yellow Block")
+        dag.highlight_anticone(b3)
+        self.wait(4)
+        dag.reset_highlighting()
+        self.wait(1)
+
+        # Bonus: Show anticone of b4 to demonstrate the reverse relationship
+        self.caption("Anticone of Different block")
+        dag.highlight_anticone(b4)
+        self.wait(4)
+        dag.reset_highlighting()
+        self.wait(1)

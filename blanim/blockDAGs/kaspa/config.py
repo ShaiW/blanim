@@ -1,7 +1,7 @@
 # blanim\blanim\blockDAGs\kaspa\config.py
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, ParsableManimColor
+from manim import BLUE, WHITE, ParsableManimColor, YELLOW
 from ...core.base_config import BaseBlockConfig
 
 __all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig"]
@@ -14,6 +14,10 @@ class KaspaConfig(BaseBlockConfig):
     Combines visual styling and spatial layout into a single config.
     Each section is clearly separated for maintainability.
     """
+    # ========================================
+    # GHOSTDAG - Parameter
+    # ========================================
+    k: int = 1
 
     # ========================================
     # VISUAL STYLING - Block Appearance
@@ -52,7 +56,7 @@ class KaspaConfig(BaseBlockConfig):
     # HIGHLIGHTING BEHAVIOR
     # ========================================
     # Context Block is the block we show relationships of during highlighting
-    context_block_color: ParsableManimColor = WHITE # Color of pulsing stroke
+    context_block_color: ParsableManimColor = YELLOW # Color of pulsing stroke
     context_block_cycle_time: float = 2.0  # Seconds per complete pulse cycle
     context_block_stroke_width: float = 8
 
