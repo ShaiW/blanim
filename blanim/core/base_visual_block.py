@@ -96,6 +96,8 @@ class BaseVisualBlock(VGroup):
         new_label.move_to(self.square.get_center())
         return new_label
 
+#TODO creates label by default but setting "" or " " breaks positioning of get_center on vgroup, figure out how to create invisible label that does not break positioning,
+#   similar to narrate/caption
     def create_with_label(self):
 
         run_time = self.config.create_run_time
@@ -134,7 +136,6 @@ class BaseVisualBlock(VGroup):
 
         return AnimationGroup(*anims)
 
-#TODO remove all references to config and use properties, the config should only exist at the DAG level and pass parameters to everything
     def create_highlight_animation(self, color=None, stroke_width=None):
         """Returns animation for highlighting this block's stroke."""
         if color is None:

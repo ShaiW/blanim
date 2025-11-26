@@ -10,7 +10,7 @@ from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from .visual_block import KaspaVisualBlock
 from typing import Optional, List, Set, Any
 
-#TODO instead of passing config around, use config as a single instance for the DAG
+#TODO verify passing config around only passes the reference to a single instance of config
 class KaspaLogicalBlock:
     """Kaspa logical block with GHOSTDAG consensus.
 
@@ -44,7 +44,7 @@ class KaspaLogicalBlock:
         # Create visual (composition)
         parent_visuals = [p.visual_block for p in self.parents]
         self._visual = KaspaVisualBlock(
-            label_text=str(" "),#TODO update this  NOTE: when passing an empty string, manim breaks.  for an empty label, pass " ", not "" #TODO figure out a better way to do this
+            label_text=str(" "),#TODO update this  NOTE: when passing an empty string, movement breaks when using move, use SHIFT
             position=position,
             parents=parent_visuals,
             kaspa_config=kaspa_config

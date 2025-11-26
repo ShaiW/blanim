@@ -368,7 +368,7 @@ class KaspaDAG:
             if not column_blocks:
                 continue
 
-                # Calculate current center and target shift
+            # Calculate current center and target shift
             current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
             current_center_y = (max(current_ys) + min(current_ys)) / 2
             shift_y = genesis_y - current_center_y
@@ -510,7 +510,7 @@ class KaspaDAG:
         return self.all_blocks[-1]
 
     ########################################
-    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify #TODO figure out why blocks move y positions when using qh and remain correctly positioned when using ql to render/might have broke when changing narration font sizes
+    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify
     ########################################
 
     def move(self, blocks, positions):
@@ -547,6 +547,7 @@ class KaspaDAG:
         This method works in conjunction with the z-index layering system:
         - Lines: z_index 0-10 (regular at 0, selected parent at 5)
         - Blocks: z_index 11-20 (background 11, square 12, label 13)
+        - Narrate/Caption: z_index 1000 (always on top)
 
         By ensuring block animations execute first, then line updates, we maintain
         the visual hierarchy where lines always render behind blocks, even during
@@ -822,22 +823,17 @@ class KaspaDAG:
         elif relationship_type == "future":
             # RULE: Highlight lines where BOTH child and parent are in future cone
             for block in context_blocks:
-                # Check lines FROM this block TO its children
-                for child in block.children:
-                    if child in context_set or child == focused_block:
-                        # Find the line from child to this block
-                        for parent_line, parent in zip(child.visual_block.parent_lines, child.parents):
-                            if parent == block:
-                                lines_to_keep.add(id(parent_line))
-
-        elif relationship_type == "anticone":
-            # RULE 1: Highlight lines WITHIN anticone (both endpoints in anticone)
-            for block in context_blocks:
                 for parent_line, parent in zip(block.visual_block.parent_lines, block.parents):
-                    if parent in context_set:
+                    if parent in context_set or parent == focused_block:
                         lines_to_keep.add(id(parent_line))
 
-                        # RULE 2: Highlight lines FROM non-anticone TO anticone
+        elif relationship_type == "anticone":
+            # RULE 1: Highlight ALL lines from context blocks
+            for block in context_blocks:
+                for parent_line in block.visual_block.parent_lines:
+                    lines_to_keep.add(id(parent_line))
+
+            # RULE 2: Highlight lines FROM non-anticone TO anticone
             for anticone_block in context_blocks:
                 for child in anticone_block.children:
                     if child not in context_set and child != focused_block:
@@ -880,7 +876,7 @@ class KaspaDAG:
                             parent_line.animate.set_stroke(opacity=self.config.fade_opacity)
                         )
 
-                        # Fade focused block's parent lines if parents not in context
+        # Fade focused block's parent lines if parents not in context
         if focused_block.visual_block.parent_lines:
             for parent_line, parent in zip(focused_block.visual_block.parent_lines, focused_block.parents):
                 if parent not in context_set:
@@ -888,10 +884,18 @@ class KaspaDAG:
                         parent_line.animate.set_stroke(opacity=self.config.fade_opacity)
                     )
 
+        # Also fade lines within context blocks that should not be highlighted
+        for block in context_blocks:
+            for parent_line in block.visual_block.parent_lines:
+                if id(parent_line) not in lines_to_keep:
+                    fade_animations.append(
+                        parent_line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+
         if fade_animations:
             self.scene.play(*fade_animations)
 
-            # Add pulsing highlight to focused block
+        # Add pulsing highlight to focused block
         pulse_updater = focused_block.visual_block.create_pulsing_highlight()
         focused_block.visual_block.square.add_updater(pulse_updater)
 
@@ -905,17 +909,31 @@ class KaspaDAG:
         else:
             self.scene.play(Wait(0.01))
 
-            # Flash lines that are in lines_to_keep
+        # Flash lines that are in lines_to_keep
         flash_lines = []
         if self.config.flash_connections:
-            # Flash lines within context blocks
+            # Flash lines within context blocks (only those in lines_to_keep)
             for block in context_blocks:
-                block_flash_lines = block.visual_block.create_directional_line_flash()
-                for flash_line in block_flash_lines:
-                    self.scene.add(flash_line)
-                    flash_lines.append(flash_line)
+                for parent_line in block.visual_block.parent_lines:
+                    if id(parent_line) in lines_to_keep:
+                        # Create flash animation for this specific line
+                        flash_copy = parent_line.copy()
+                        flash_copy.set_stroke(
+                            color=self.config.highlight_color,
+                            width=self.config.line_stroke_width
+                        )
+                        from manim import ShowPassingFlash, cycle_animation
+                        cycle_animation(
+                            ShowPassingFlash(
+                                flash_copy,
+                                time_width=0.5,
+                                run_time=self.config.highlight_line_cycle_time
+                            )
+                        )
+                        self.scene.add(flash_copy)
+                        flash_lines.append(flash_copy)
 
-                    # Flash focused block's lines if parents in context
+            # Flash focused block's lines if parents in context
             if focused_block.visual_block.parent_lines:
                 for parent in focused_block.parents:
                     if parent in context_set:
@@ -925,8 +943,8 @@ class KaspaDAG:
                             flash_lines.append(flash_line)
                         break
 
-                        # Flash lines FROM non-context blocks TO context blocks (for anticone/future)
-            if relationship_type in ["anticone", "future"]:
+            # Flash lines FROM non-context blocks TO context blocks (for anticone)
+            if relationship_type in "anticone":
                 for block in self.all_blocks:
                     if block not in context_set and block != focused_block:
                         for parent_line, parent in zip(block.visual_block.parent_lines, block.parents):
