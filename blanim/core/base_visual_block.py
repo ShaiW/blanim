@@ -87,6 +87,8 @@ class BaseVisualBlock(VGroup):
         self.label.set_z_index(13)
 
     def _get_label(self, text: str) -> Text:
+        if not text or text.isspace():
+            text = "\u200B"  # Zero-width space maintains position
 
         new_label = Text(
             text,
@@ -169,3 +171,12 @@ class BaseVisualBlock(VGroup):
             mob.set_stroke(color, width=width)
 
         return pulse_stroke
+
+    ####################
+    # Override Functions
+    ####################
+
+    # Override get_center() so it returns the center of the visual block
+    def get_center(self) -> np.ndarray:
+        """Override to return only the square's center, ignoring label positioning."""
+        return self.square.get_center()

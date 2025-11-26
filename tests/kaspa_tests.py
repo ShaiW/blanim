@@ -170,7 +170,24 @@ class TestDAGPositioning(HUD2DScene):
         b2 = dag.add_block(parents=[genesis])
         merge = dag.add_block(parents=[b1, b2])
 
-        # Verify positioning
+        # Test all logical blocks return square center
+        blocks_to_test = [genesis, b1, b2, merge]
+        for block in blocks_to_test:
+            logical_center = block.get_center()
+            vgroup_center = block.visual_block.get_center()
+            square_center = block.visual_block.square.get_center()
+
+            print(f"{block.name} logical center: {logical_center}")
+            print(f"{block.name} VGroup center: {vgroup_center}")
+            print(f"{block.name} square center: {square_center}")
+
+            # Verify logical block center matches VGroup center
+            assert np.allclose(logical_center,
+                               vgroup_center), f"Logical and VGroup centers don't match for {block.name}"
+            # Verify VGroup center matches square center
+            assert np.allclose(vgroup_center, square_center), f"VGroup and square centers don't match for {block.name}"
+
+            # Original positioning checks
         gen_pos = genesis.visual_block.square.get_center()
         b1_pos = b1.visual_block.square.get_center()
         b2_pos = b2.visual_block.square.get_center()
