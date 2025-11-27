@@ -9,15 +9,18 @@ from dataclasses import dataclass, field
 
 from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from .visual_block import KaspaVisualBlock
-from typing import Optional, List, Set, Any
+from typing import Optional, List, Set, Any, Dict
+
 
 @dataclass
 class GhostDAGData:
     """GHOSTDAG consensus data for a block."""
-    is_blue: bool = False
     blue_score: int = 0  # Total blue work in past cone
-    mergeset: List['KaspaLogicalBlock'] = field(default_factory=list)
+    unordered_mergeset: List['KaspaLogicalBlock'] = field(default_factory=list)
     blue_anticone: Set['KaspaLogicalBlock'] = field(default_factory=set)
+
+    # NEW: Store local POV - blue status of all blocks evaluated from this block's perspective
+    local_blue_pov: Dict['KaspaLogicalBlock', bool] = field(default_factory=dict)
 
 class KaspaLogicalBlock:
     """Kaspa logical block with GHOSTDAG consensus.
@@ -35,7 +38,7 @@ class KaspaLogicalBlock:
         # Identity
         self.name = name
         # Tie-breaker (instead of actually hashing, just use a random number like a cryptographic hash)
-        self.hash = secrets.randbits(32)  # 32-bit random integer
+        self.hash = secrets.randbits(32)  # 32-bit random integer to keep prob(collision) = low
 
         # DAG structure (single source of truth)
         self.parents = parents if parents else []
@@ -48,13 +51,13 @@ class KaspaLogicalBlock:
         # Parent selection and GHOSTDAG computation (before visualization)
         if self.parents:
             self.selected_parent = self._select_parent()
-            self._compute_mergeset()
+            self._create_unordered_mergeset()
             self._compute_ghostdag(kaspa_config.k)
 
         # Create visual after GHOSTDAG computation
         parent_visuals = [p.visual_block for p in self.parents]
         self._visual = KaspaVisualBlock(
-            label_text=str(" "),#TODO update this  NOTE: when passing an empty string, movement breaks when using move_to, use SHIFT
+            label_text=str(self.ghostdag.blue_score),#TODO update this  NOTE: when passing an empty string, positioning breaks (fixed moving blocks by overriding move_to with only visual.square)
             position=position,
             parents=parent_visuals,
             kaspa_config=kaspa_config
@@ -67,7 +70,7 @@ class KaspaLogicalBlock:
 
     def _get_sort_key(self, block: 'KaspaLogicalBlock') -> tuple:
         """Standardized tie-breaking: (blue_score, -hash) for ascending order."""
-        return (block.ghostdag.blue_score, -block.hash)
+        return block.ghostdag.blue_score, -block.hash
 
     def _select_parent(self) -> Optional['KaspaLogicalBlock']:
         """Select parent with highest blue score, deterministic hash tie-breaker."""
@@ -82,53 +85,88 @@ class KaspaLogicalBlock:
         )
         return sorted_parents[0]
 
-    def _compute_mergeset(self):
-        """Compute mergeset with topological ordering by blue work + hash tiebreaker."""
+    def _create_unordered_mergeset(self):
+        """Compute mergeset without sorting."""
         if not self.selected_parent:
-            self.ghostdag.mergeset = []
+            self.ghostdag.unordered_mergeset = []
             return
 
         self_past = set(self.get_past_cone())
         selected_past = set(self.selected_parent.get_past_cone())
-        mergeset = list(self_past - selected_past)
+        self.ghostdag.unordered_mergeset = list(self_past - selected_past)
 
-        # Topological sort: ascending blue work, hash as tiebreaker
-        mergeset.sort(key=self._get_sort_key)
-        self.ghostdag.mergeset = mergeset
+    def _get_sorted_mergeset_with_sp(self) -> List['KaspaLogicalBlock']:
+        """Get sorted mergeset with selected parent at index 0."""
+        if not self.selected_parent:
+            return []
+
+            # Start with selected parent
+        sorted_mergeset = [self.selected_parent]
+
+        # Add and sort the rest (excluding selected parent)
+        remaining = [block for block in self.ghostdag.unordered_mergeset if block != self.selected_parent]
+        remaining.sort(key=self._get_sort_key)
+        sorted_mergeset.extend(remaining)
+
+        return sorted_mergeset
+
+    def _get_sorted_mergeset_without_sp(self) -> List['KaspaLogicalBlock']:
+        """Get sorted mergeset excluding selected parent."""
+        evaluation_mergeset = [block for block in self.ghostdag.unordered_mergeset if block != self.selected_parent]
+        evaluation_mergeset.sort(key=self._get_sort_key)
+        return evaluation_mergeset
 
     def _compute_ghostdag(self, k: int):
         """Compute GHOSTDAG consensus with parameter k."""
         if not self.selected_parent:
             return
 
-        # The "total view" for GHOSTDAG is just the past cone of this block
         total_view = set(self.get_past_cone())
+        selected_parent_blue_score = self.selected_parent.ghostdag.blue_score
 
-        # Start with selected parent as blue
-        blue_blocks = {self.selected_parent}
-        self.selected_parent.ghostdag.is_blue = True
+        # Start with selected parent's local POV as baseline
+        local_blue_status = self.selected_parent.ghostdag.local_blue_pov.copy()
 
-        # Process mergeset in topological order
-        for candidate in self.ghostdag.mergeset:
-            if self._can_be_blue(candidate, blue_blocks, k, total_view):
-                candidate.ghostdag.is_blue = True
-                blue_blocks.add(candidate)
+        # Add selected parent itself as blue
+        local_blue_status[self.selected_parent] = True
+
+        blue_candidates = self._get_sorted_mergeset_without_sp()
+
+        # Initialize all candidates as not blue locally
+        for candidate in blue_candidates:
+            local_blue_status[candidate] = False
+
+        blue_in_mergeset = 0
+
+        # Process candidates using local blue status
+        for candidate in blue_candidates:
+            if self._can_be_blue_local(candidate, local_blue_status, k, total_view):
+                local_blue_status[candidate] = True
+                blue_in_mergeset += 1
             else:
-                candidate.ghostdag.is_blue = False
+                local_blue_status[candidate] = False
 
-        self.ghostdag.blue_score = len(blue_blocks)
+                # Store the complete local POV (removed is_blue assignment)
+        self.ghostdag.local_blue_pov = local_blue_status.copy()
+        self.ghostdag.blue_score = selected_parent_blue_score + 1 + blue_in_mergeset
 
-    def _can_be_blue(self, candidate: 'KaspaLogicalBlock',
-                     blue_blocks: Set['KaspaLogicalBlock'], k: int,
-                     total_view: Set['KaspaLogicalBlock']) -> bool:
-        """Check if candidate can be blue according to GHOSTDAG rules."""
+    def _can_be_blue_local(self,
+                           candidate: 'KaspaLogicalBlock',
+                           local_blue_status: Dict['KaspaLogicalBlock', bool],
+                           k: int,
+                           total_view: Set['KaspaLogicalBlock']) -> bool:
+        """Check if candidate can be blue using local perspective."""
+
+        # Get blue blocks from local perspective
+        blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
+
         # Check 1: <= k blue blocks in candidate's anticone
         candidate_anticone = self._get_anticone(candidate, total_view)
         blue_in_anticone = len(candidate_anticone & blue_blocks)
         if blue_in_anticone > k:
             return False
 
-        # Check 2: Adding candidate doesn't cause existing blues to have > k blues in anticone
+            # Check 2: Adding candidate doesn't cause existing blues to have > k blues in anticone
         for blue_block in blue_blocks:
             blue_anticone = self._get_anticone(blue_block, total_view)
             if candidate in blue_anticone:
@@ -138,8 +176,11 @@ class KaspaLogicalBlock:
 
         return True
 
-    def _get_anticone(self, block: 'KaspaLogicalBlock',
-                      total_view: Set['KaspaLogicalBlock']) -> Set['KaspaLogicalBlock']:
+    # TODO filter this to only check total view for anticone, since running it on a block later will show additional blocks in the future
+    def _get_anticone(self,
+                      block: 'KaspaLogicalBlock',
+                      total_view: Set['KaspaLogicalBlock']
+                      ) -> Set['KaspaLogicalBlock']:
         """Get anticone of a block within the given total view."""
         past = set(block.get_past_cone())
         future = set(block.get_future_cone())
@@ -147,6 +188,18 @@ class KaspaLogicalBlock:
         # Anticone = total_view - past - future - block itself
         return total_view - past - future - {block}
 
+    def get_dag_pov(self, target_block: 'KaspaLogicalBlock') -> Dict['KaspaLogicalBlock', bool]:
+        """Get the DAG blue status from target_block's perspective recursively."""
+        if target_block == self:
+            return self.ghostdag.local_blue_pov.copy()
+
+            # Recursively find the target block in the past cone
+        for parent in self.parents:
+            pov = parent.get_dag_pov(target_block)
+            if pov is not None:
+                return pov
+
+        return {}
     ########################################
     # Collecting Past/Future
     ########################################
