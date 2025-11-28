@@ -92,36 +92,8 @@ State Tracking:
 - `pending_repositioning`: Set of x-positions needing column recentering
 - `next_step()` auto-detects when to queue repositioning after all block creations
 
-Highlighting System (TODO):
---------------------------
-The highlighting methods currently use protected `._visual` access and need refactoring:
-1. Fading unrelated blocks and their parent lines to fade_opacity
-2. Highlighting context blocks (past/future cone) with colored strokes
-3. Adding a pulsing white stroke to the focused block via updater
-4. Flashing parent lines that connect blocks within the highlighted context
-
-Reset is achieved by reading original values from config, ensuring blocks always
-return to their defined neutral state without needing to store temporary state.
-
 TODO / Future Improvements:
 ---------------------------
-1. **Refactor highlighting to use visual block methods**: Currently, highlighting methods
-   manually construct fade/highlight animations and use `._visual` protected access.
-   Should use:
-   - `BaseVisualBlock.create_fade_animation()` for fading blocks
-   - `BaseVisualBlock.create_reset_animation()` for resetting to neutral state
-   - `BaseVisualBlock.create_pulsing_highlight()` instead of manual updaters
-   - Access via public `visual_block` property instead of `._visual`
-
-2. **Add line fade methods to visual block**: Parent line fading logic should move to
-   visual block layer with a `create_line_fade_animation()` method.
-
-3. **Complete proxy pattern migration**: Replace all remaining `._visual` access with
-   `visual_block` property throughout highlighting methods.
-
-4. **Persistent visual state**: Ensure DAG methods only set visual state without blocking
-   scene execution, so timing can be handled at scene level and narration/captions/
-   camera movements can happen while visual state persists.
 
 5. **Block naming convention**: Current naming (Gen, B1, B2, ...) is inherited from
    blockchain implementation. May need updating for Kaspa-specific conventions.
@@ -133,7 +105,7 @@ from __future__ import annotations
 from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
-from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc
+from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG
@@ -773,7 +745,7 @@ class KaspaDAG:
         ]
 
     ########################################
-    # Highlighting Blocks #TODO COMPLETE
+    # Highlighting Relationships #TODO COMPLETE
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock) -> List:
@@ -992,3 +964,198 @@ class KaspaDAG:
 
         if reset_animations:
             self.scene.play(*reset_animations)
+
+    ########################################
+    # Highlighting GHOSTDAG #TODO test and refine this
+    ########################################
+
+    def animate_ghostdag_process(
+            self,
+            context_block: KaspaLogicalBlock | str,
+            narrate: bool = True,
+            step_delay: float = 1.0
+    ) -> None:
+        """Animate the complete GhostDAG process for a context block."""
+        if isinstance(context_block, str):
+            context_block = self.get_block(context_block)
+            if context_block is None:
+                return
+
+        try:
+            # Step 1: Fade to past cone
+            if narrate:
+                self.scene.narrate("Focusing on past cone of context block")
+            self._ghostdag_fade_to_past(context_block)
+            self.scene.wait(step_delay)
+
+            # Step 2: Show parents
+            if narrate:
+                self.scene.narrate("Highlighting all parent blocks")
+            self._ghostdag_highlight_parents(context_block)
+            self.scene.wait(step_delay)
+
+            # Step 3: Show selected parent
+            if narrate:
+                self.scene.narrate("Selected parent chosen with highest blue score")
+            self._ghostdag_show_selected_parent(context_block)
+            self.scene.wait(step_delay)
+
+            # Step 4: Show mergeset
+            if narrate:
+                self.scene.narrate("Creating mergeset from past cone differences")
+            self._ghostdag_show_mergeset(context_block)
+            self.scene.wait(step_delay)
+
+            # Step 5: Show ordering
+            if narrate:
+                self.scene.narrate("Ordering mergeset by blue score and hash")
+            self._ghostdag_show_ordering(context_block)
+            self.scene.wait(step_delay)
+
+            # Step 6: Blue candidate process
+            if narrate:
+                self.scene.narrate("Evaluating blue candidates (k-parameter constraint)")
+            self._ghostdag_show_blue_process(context_block)
+            self.scene.wait(step_delay)
+
+        finally:
+            # Always cleanup
+            if narrate:
+                self.scene.clear_narrate()
+                self.scene.clear_caption()
+            self.reset_highlighting()
+
+
+    def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
+        """Fade everything not in context block's past cone."""
+        past_blocks = set(context_block.get_past_cone())
+        past_blocks.add(context_block)
+
+        fade_animations = []
+        for block in self.all_blocks:
+            if block not in past_blocks:
+                fade_animations.extend(block.visual_block.create_fade_animation())
+                # Also fade lines from/to these blocks
+                for line in block.visual_block.parent_lines:
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+
+        if fade_animations:
+            self.scene.play(*fade_animations)
+
+    def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
+        """Highlight all parents of context block."""
+        if not context_block.parents:
+            return
+
+        parent_animations = []
+
+        # Highlight all parent blocks
+        for parent in context_block.parents:
+            parent_animations.append(
+                parent.visual_block.square.animate.set_stroke(
+                    color=self.config.ghostdag_parent_color,
+                    width=self.config.ghostdag_highlight_width
+                )
+            )
+
+            # Highlight all parent lines (they always connect to parents)
+        for line in context_block.visual_block.parent_lines:
+            parent_animations.append(
+                line.animate.set_stroke(
+                    color=self.config.ghostdag_parent_color,
+                    width=self.config.ghostdag_line_width
+                )
+            )
+
+        self.scene.play(*parent_animations)
+
+
+    def _ghostdag_show_selected_parent(self, context_block: KaspaLogicalBlock):
+        """Highlight selected parent and fade its past cone."""
+        if not context_block.selected_parent:
+            return
+
+        selected = context_block.selected_parent
+
+        # Fade selected parent's past cone (except context block)
+        selected_past = set(selected.get_past_cone())
+        fade_animations = []
+        for block in selected_past:
+            if block != context_block:
+                fade_animations.extend(block.visual_block.create_fade_animation())
+
+        self.scene.play(*fade_animations)
+
+        # Highlight selected parent with unique style
+        self.scene.play(
+            selected.visual_block.square.animate.set_stroke(
+                color=self.config.ghostdag_selected_color,
+                width=self.config.ghostdag_selected_width
+            ).set_fill(
+                color=self.config.ghostdag_selected_fill,
+                opacity=self.config.ghostdag_selected_opacity
+            )
+        )
+
+
+    def _ghostdag_show_mergeset(self, context_block: KaspaLogicalBlock):
+        """Visualize mergeset creation."""
+        mergeset = context_block.ghostdag.unordered_mergeset
+
+        # Highlight mergeset blocks
+        mergeset_animations = []
+        for block in mergeset:
+            mergeset_animations.append(
+                block.visual_block.square.animate.set_stroke(
+                    color=self.config.ghostdag_mergeset_color,
+                    width=self.config.ghostdag_mergeset_width
+                )
+            )
+
+        self.scene.play(*mergeset_animations)
+
+    def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
+        """Show sorted ordering without temporary text objects."""
+        sorted_mergeset = context_block._get_sorted_mergeset_with_sp()
+
+        # Just highlight in sequence, no text overlays
+        for i, block in enumerate(sorted_mergeset):
+            self.scene.play(
+                Indicate(block.visual_block.square, scale=1.1),
+                run_time=0.3
+            )
+            self.scene.wait(0.1)
+
+    def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
+        """Animate blue evaluation with captions instead of text objects."""
+        blue_candidates = context_block._get_sorted_mergeset_without_sp()
+        local_blue_pov = context_block.ghostdag.local_blue_pov
+
+        for candidate in blue_candidates:
+            # Show candidate being evaluated
+            self.scene.play(
+                Indicate(candidate.visual_block.square, scale=1.2),
+                run_time=0.5
+            )
+
+            # Use caption for status instead of text overlays
+            if local_blue_pov.get(candidate, False):
+                self.scene.caption(f"Block {candidate.name}: BLUE (accepted)")
+                self.scene.play(
+                    candidate.visual_block.square.animate.set_fill(
+                        color=self.config.ghostdag_blue_color,
+                        opacity=self.config.ghostdag_blue_opacity
+                    )
+                )
+            else:
+                self.scene.caption(f"Block {candidate.name}: RED (rejected)")
+                self.scene.play(
+                    candidate.visual_block.square.animate.set_fill(
+                        color=self.config.ghostdag_red_color,
+                        opacity=self.config.ghostdag_red_opacity
+                    )
+                )
+
+            self.scene.wait(0.3)

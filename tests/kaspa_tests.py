@@ -577,6 +577,42 @@ class TestHighlightingAnticone(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
+# TODO troubleshoot showing GHOSTDAG
+class TestGHOSTDAGProcess(HUD2DScene):
+    """Test GhostDAG process visualization in DAG structure."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Create structure with clear anticone
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+        b2 = dag.add_block(parents=[genesis])
+        b3 = dag.add_block(parents=[b1])
+        b4 = dag.add_block(parents=[b2])
+
+        # Add merge block connecting both branches
+        merge = dag.add_block(parents=[b3, b4])
+
+        # Add one more block after merge
+        final = dag.add_block(parents=[merge])
+
+        self.wait(1)
+
+        # Show GhostDAG process for b3 (demonstrates parent selection and blue candidate evaluation)
+        self.caption("Showing GhostDAG process for block b3")
+        dag.animate_ghostdag_process(b3, narrate=True, step_delay=0.5)
+        self.wait(2)
+
+        # Show GhostDAG process for merge (demonstrates mergeset with multiple parents)
+        self.caption("Showing GhostDAG process for merge block")
+        dag.animate_ghostdag_process(merge, narrate=True, step_delay=0.5)
+        self.wait(2)
+
+        text = Text("GhostDAG Process Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
 
 class TestHighlightingFutureWithAnticone(HUD2DScene):
     """Test highlighting future cone when focused block has anticone relationships."""

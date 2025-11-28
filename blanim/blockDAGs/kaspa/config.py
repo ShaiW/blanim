@@ -1,7 +1,7 @@
 # blanim\blanim\blockDAGs\kaspa\config.py
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, ParsableManimColor, YELLOW
+from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, ORANGE, PURPLE, RED
 from ...core.base_config import BaseBlockConfig
 
 __all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig"]
@@ -18,6 +18,27 @@ class KaspaConfig(BaseBlockConfig):
     # GHOSTDAG - Parameter
     # ========================================
     k: int = 1
+
+    # ========================================
+    # GHOSTDAG - GhostDAG-specific colors and styling
+    # ========================================
+
+    ghostdag_parent_color = YELLOW
+    ghostdag_selected_color = GREEN
+    ghostdag_mergeset_color = ORANGE
+    ghostdag_order_color = PURPLE
+    ghostdag_blue_color = BLUE
+    ghostdag_red_color = RED
+
+    ghostdag_highlight_width = 4
+    ghostdag_line_width = 3
+    ghostdag_selected_width = 6
+    ghostdag_mergeset_width = 3
+
+    ghostdag_selected_opacity = 0.3
+    ghostdag_blue_opacity = 0.5
+    ghostdag_red_opacity = 0.3
+    ghostdag_selected_fill = GREEN
 
     # ========================================
     # VISUAL STYLING - Block Appearance
