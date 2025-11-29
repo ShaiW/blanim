@@ -1,352 +1,18 @@
 from __future__ import annotations
 
-from typing import Optional, Any, Literal, Type
-
-from manim import *
-from manim.utils.deprecation import deprecated
-
-
-"""MARKED FOR DELETION"""
-
-
-##all sort of stuff that manim should have but doesn't
-
-##########START Properly Documented Stuff##########
-
-# Reccomend moving everything to HUD2DScene
-class MovingCameraFixedLayerScene(MovingCameraScene):
-    """A scene with a moving camera and support for fixed-layer elements (attribute-based).
-
-    This scene extends :class:`~.MovingCameraScene` to provide HUD-like functionality where
-    certain mobjects remain fixed in screen space regardless of camera movements (panning or
-    zooming). This is the original implementation using attribute-based tracking.
-
-    .. warning::
-        This implementation has been superseded by :class:`MovingCameraHUDScene`, which uses
-        set-based tracking for better performance. The optimized version has not yet been
-        fully tested in production. This class is kept for backward compatibility and
-        comparison purposes.
-
-    The scene marks mobjects with a ``fixedLayer`` attribute and applies inverse transformations
-    after each animation to counteract camera movements. Unlike :class:`~.ThreeDScene`'s
-    ``add_fixed_in_frame_mobjects()``, this implementation is designed for 2D scenes.
-
-    Performance Considerations
-    --------------------------
-    This implementation has several performance limitations:
-
-    - Iterates through all scene mobjects on every ``play()`` call using ``filter()``
-    - Uses ``hasattr()`` checks which add overhead
-    - Applies cumulative scaling via ``scale()`` which can compound over multiple animations
-    - No early exit when no fixed mobjects exist or camera hasn't moved
-
-    For better performance, consider using :class:`MovingCameraHUDScene` instead.
-
-    Examples
-    --------
-
-    .. code-block:: python
-
-        class FixedLayerExample(MovingCameraFixedLayerScene):
-            def construct(self):
-                # Create HUD title that stays fixed
-                title = Text("Fixed HUD Title").to_corner(UL)
-                self.add(self.fix(title))
-
-                # Create regular content that moves with camera
-                square = Square()
-                self.add(square)
-
-                # Camera zooms, but title stays fixed
-                self.play(self.camera.frame.animate.scale(2))
-                self.play(self.camera.frame.animate.shift(RIGHT * 3))
-
-    .. code-block:: python
-
-        class BlockchainFixedLayerExample(MovingCameraFixedLayerScene):
-            def construct(self):
-                # Fixed state indicator
-                state_text = Text("State: 0").to_edge(DOWN)
-                self.add(self.fix(state_text))
-
-                # Moving blockchain blocks
-                blocks = VGroup(*[Square().shift(RIGHT * i * 2) for i in range(5)])
-                self.add(blocks)
-
-                # Zoom out to show all blocks, state text stays readable
-                self.play(self.camera.frame.animate.scale(3))
-
-                # Toggle fixed status
-                self.toggle_fix(state_text)  # Now moves with camera
-                self.play(self.camera.frame.animate.shift(LEFT * 2))
-
-    See Also
-    --------
-    :class:`~.MovingCameraHUDScene` : Optimized version using set-based tracking
-    :class:`~.MovingCameraScene` : Base class for moving camera functionality
-    :class:`~.ThreeDScene` : 3D scene with ``add_fixed_in_frame_mobjects()`` method
-
-    Notes
-    -----
-    - Fixed mobjects are tracked via ``fixedLayer`` attribute on each mobject
-    - Scaling uses cumulative ``scale()`` which may cause drift over multiple animations
-    - All mobjects are checked on every ``play()`` call regardless of camera movement
-    - The optimized :class:`MovingCameraHUDScene` addresses these performance issues
-
-    Attributes
-    ----------
-    camera_height : float
-        Cached camera frame height from previous animation
-    camera_shift : list[float]
-        Cached camera frame center position from previous animation
-    """
-
-                square = Square()
-                self.add(square)
-
-                self.play(self.camera.frame.animate.scale(2))
-
-    .. code-block:: python
-
-        # Blockchain example with deprecated class
-        class BlockchainFixedLayerExample(MovingCameraFixedLayerScene):
-            def construct(self):
-                # Fixed state indicator
-                state_text = Text("State: 0").to_edge(DOWN)
-                self.add(self.fix(state_text))
-
-                # Moving blockchain blocks
-                blocks = VGroup(*[Square().shift(RIGHT * i * 2) for i in range(5)])
-                self.add(blocks)
-
-                # Zoom out to show all blocks, state text stays readable
-                self.play(self.camera.frame.animate.scale(3))
-
-    See Also
-    --------
-    :class:`HUD2DScene` : Recommended replacement with narration and transcript support
-    :class:`~.MovingCameraScene` : Base class for moving camera functionality
-    :class:`~.ThreeDScene` : 3D scene with ``add_fixed_in_frame_mobjects()`` method
-
-    Notes
-    -----
-    - Fixed mobjects are tracked via ``fixedLayer`` attribute on each mobject
-    - Scaling uses cumulative ``scale()`` which WILL cause drift over multiple animations
-    - All mobjects are checked on every ``play()`` call regardless of camera movement
-    - This class is kept only for backward compatibility; all new code should use :class:`HUD2DScene`
-
-    Attributes
-    ----------
-    camera_height : float
-        Cached camera frame height from previous animation
-    camera_shift : list[float]
-        Cached camera frame center position from previous animation
-    """
-    camera_height: float
-    camera_shift: list[float]
-
-    def __init__(self, **kwargs):
-        """Initialize the MovingCameraFixedLayerScene.
-
-        Parameters
-        ----------
-        **kwargs
-            Keyword arguments passed to :class:`~.MovingCameraScene`
-        """
-        super().__init__(camera_class=MovingCamera, **kwargs)
-        self.camera_height = self.camera.frame_height
-        self.camera_shift = self.camera.frame_center
-
-    def play(self, *args, **kwargs):
-        """Play animations and apply fixed-layer corrections.
-
-        After playing animations via the parent class, this method automatically
-        repositions and rescales fixed mobjects to counteract camera transformations,
-        keeping them at constant screen position and size.
-
-        .. warning::
-            This method iterates through all scene mobjects on every call, which may
-            impact performance in scenes with many mobjects. Consider using
-            :class:`MovingCameraHUDScene` for better performance.
-
-        Parameters
-        ----------
-        *args
-            Positional arguments passed to :meth:`~.Scene.play`
-        **kwargs
-            Keyword arguments passed to :meth:`~.Scene.play`
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        The method applies corrections in three steps:
-
-        1. Shift mobjects to counteract camera position change
-        2. Scale mobjects to counteract camera zoom change (cumulative)
-        3. Adjust position based on distance from camera center
-
-        The cumulative scaling may cause drift over many animations.
-        """
-        res = super().play(*args, **kwargs)
-
-        # Reposition fixed objects after animation
-        for mob in filter(lambda x: (hasattr(x, 'fixedLayer') and x.fixedLayer), self.mobjects):
-            dshift = self.camera.frame_center - self.camera_shift
-            mob.shift(dshift)
-            dheight = self.camera.frame.height / self.camera_height
-            mob.scale(dheight)
-            mob.shift((mob.get_center() - self.camera.frame_center) * (dheight - 1))
-
-        self.camera_shift = self.camera.frame_center
-        self.camera_height = self.camera.frame_height
-        return res
-
-    def get_moving_mobjects(self, *animations):
-        """Get moving mobjects, excluding fixed-layer elements.
-
-        This method filters out fixed mobjects from the moving mobjects list,
-        preventing them from triggering full scene redraws during animations.
-
-        .. warning::
-            Uses ``hasattr()`` checks on all moving mobjects, which adds overhead.
-            The optimized :class:`MovingCameraHUDScene` uses set membership for O(1) lookup.
-
-        Parameters
-        ----------
-        *animations : Animation
-            The animations to check for moving mobjects
-
-        Returns
-        -------
-        list[Mobject]
-            List of moving mobjects, excluding those marked with ``fixedLayer=True``
-
-        See Also
-        --------
-        :meth:`~.Scene.get_moving_mobjects` : Parent class implementation
-        """
-        # This causes fixed objects to not be animated
-        return list(filter(lambda x: not (hasattr(x, 'fixedLayer') and x.fixedLayer),
-                           super().get_moving_mobjects(*animations)))
-
-    @staticmethod
-    def fix(mob):
-        """Mark a mobject as fixed in the camera frame (HUD element).
-
-        Fixed mobjects maintain constant screen position and size regardless of
-        camera movements. This is useful for UI elements, titles, state indicators,
-        and other heads-up display components.
-
-        Parameters
-        ----------
-        mob : Mobject
-            The mobject to mark as fixed
-
-        Returns
-        -------
-        Mobject
-            The same mobject (for method chaining)
-
-        Examples
-        --------
-        .. code-block:: python
-
-            # Mark and add in one line
-            self.add(self.fix(Text("HUD Title")))
-
-            # Or separately
-            title = Text("HUD Title")
-            self.fix(title)
-            self.add(title)
-
-        See Also
-        --------
-        :meth:`unfix` : Remove fixed status from a mobject
-        :meth:`toggle_fix` : Toggle fixed status
-
-        Notes
-        -----
-        Sets the ``fixedLayer`` attribute to ``True`` on the mobject.
-        """
-        mob.fixedLayer = True
-        return mob
-
-    @staticmethod
-    def unfix(mob):
-        """Remove fixed status from a mobject.
-
-        After calling this method, the mobject will move and scale normally
-        with camera transformations.
-
-        Parameters
-        ----------
-        mob : Mobject
-            The mobject to unmark as fixed
-
-        Returns
-        -------
-        Mobject
-            The same mobject (for method chaining)
-
-        See Also
-        --------
-        :meth:`fix` : Mark a mobject as fixed in frame
-        :meth:`toggle_fix` : Toggle fixed status
-
-        Notes
-        -----
-        Sets the ``fixedLayer`` attribute to ``False`` on the mobject.
-        """
-        mob.fixedLayer = False
-        return mob
-
-    @staticmethod
-    def toggle_fix(mob):
-        """Toggle the fixed status of a mobject.
-
-        If the mobject is currently fixed, it becomes unfixed, and vice versa.
-        If the mobject has no ``fixedLayer`` attribute, it is set to fixed.
-
-        Parameters
-        ----------
-        mob : Mobject
-            The mobject whose fixed status should be toggled
-
-        Returns
-        -------
-        Mobject
-            The same mobject (for method chaining)
-
-        Examples
-        --------
-        .. code-block:: python
-
-            title = Text("Toggle Me")
-            self.add(self.fix(title))
-
-            # Camera moves, title stays fixed
-            self.play(self.camera.frame.animate.shift(RIGHT * 2))
-
-            # Toggle to unfixed
-            self.toggle_fix(title)
-
-            # Camera moves, title moves with it
-            self.play(self.camera.frame.animate.shift(LEFT * 2))
-
-        See Also
-        --------
-        :meth:`fix` : Mark a mobject as fixed in frame
-        :meth:`unfix` : Remove fixed status from a mobject
-
-        Notes
-        -----
-        Uses ``hasattr()`` to check for existing ``fixedLayer`` attribute.
-        """
-        mob.fixedLayer = (not mob.fixedLayer) if hasattr(mob, "fixedLayer") else True
-        return mob
+__all__ = [
+    "HUD2DScene",
+    "UniversalNarrationManager",
+    "Frame2DWrapper",
+    "Frame2DAnimateWrapper",
+    "TranscriptManager"
+    # Add any other scene-related classes/functions you export
+]
+
+from typing import Literal, Type, Union, Any, Optional
+
+from manim import Scene, logger, AnimationGroup, ThreeDScene, WHITE, UP, DOWN, Text, MathTex, Tex, BLACK, Mobject, \
+    DEGREES, Transform
 
 
 #####START everything related to HUD2DScene#####
@@ -540,8 +206,8 @@ class HUD2DScene(ThreeDScene):
         """
         super().__init__(**kwargs)
 
-        self.narration: Optional[UniversalNarrationManager] = None  # manim warns against overriding init
-        self.transcript: Optional[TranscriptManager] = None  # manim warns against overriding init
+        self.narration: Optional[UniversalNarrationManager] = None # manim warns against overriding init
+        self.transcript: Optional[TranscriptManager] = None # manim warns against overriding init
 
     def setup(self) -> None:
         """Set up the scene with 2D orthographic camera orientation.
@@ -679,7 +345,7 @@ class HUD2DScene(ThreeDScene):
         return super().play(*processed_args, **kwargs)
 
     def narrate(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
-        """Update upper narration text with animation.
+        r"""Update upper narration text with animation.
 
         Uses the primer pattern to transform the upper narration text. The primer
         mobject is mutated to display the new text while remaining fixed in frame.
@@ -791,7 +457,7 @@ class HUD2DScene(ThreeDScene):
         )
 
     def caption(self, text: str, run_time: float = 0.5, **kwargs: Any) -> None:
-        """Update lower caption text with animation.
+        r"""Update lower caption text with animation.
 
         Uses the primer pattern to transform the lower caption text. The primer
         mobject is mutated to display the new text while remaining fixed in frame.
@@ -1008,12 +674,12 @@ class HUD2DScene(ThreeDScene):
         )
 
     def narrate_and_clear(
-            self,
-            text: str,
-            display_time: float = 2.0,
-            fade_time: float = 0.5,
-            upper: bool = True,
-            **kwargs: Any
+        self,
+        text: str,
+        display_time: float = 2.0,
+        fade_time: float = 0.5,
+        upper: bool = True,
+        **kwargs: Any
     ) -> None:
         """Display narration temporarily, then auto-clear.
 
@@ -1098,7 +764,8 @@ class HUD2DScene(ThreeDScene):
             self.wait(display_time)
             self.clear_caption(run_time=fade_time, **kwargs)
 
-
+#TODO added z index to naration and caption
+#    appear to have worked, BUT may require a bg to ensure visibility when something renders below it in z space
 class UniversalNarrationManager:
     """Internal HUD text manager using the primer pattern (not user-facing).
 
@@ -1155,8 +822,8 @@ class UniversalNarrationManager:
             text_type: Literal["Tex", "MathTex", "Text"] = "Tex",
     ) -> None:
         self.scene = scene
-        self.narration_font_size: int = 32
-        self.caption_font_size: int = 26
+        self.narration_font_size: int = 40 #TODO modified for an example video from 32
+        self.caption_font_size: int = 32 #TODO modified for an example video from 26
         self.narration_color = WHITE
         self.caption_color = WHITE
         self.narration_position = UP
@@ -1195,6 +862,10 @@ class UniversalNarrationManager:
 
         # Register primers as fixed-in-frame
         self.scene.add_fixed_in_frame_mobjects(narration_primer, caption_primer)
+
+        # SET Z-INDEX HERE - after registration but before storing references
+        narration_primer.set_z_index(1000)
+        caption_primer.set_z_index(1000)
 
         self.current_narration_text = narration_primer
         self.current_caption_text = caption_primer
@@ -1346,7 +1017,7 @@ class UniversalNarrationManager:
         """
         self.caption_color = caption_color
 
-
+#TODO was able to break positioning of narration and caption during an example, attempt to break again(possibly from using movingcamera in 3dscene)
 class Frame2DWrapper:
     """Internal wrapper that mimics MovingCamera.frame API for ThreeDCamera in 2D mode (not user-facing).
 
@@ -1460,7 +1131,7 @@ class Frame2DWrapper:
             self.play(self.camera.frame.animate.move_to(RIGHT * 2))
         """
         # noinspection PyProtectedMember
-        self.camera._frame_center.move_to(point)  # type: ignore[attr-defined]  # noqa: SLF001
+        self.camera._frame_center.move_to(point) # type: ignore[attr-defined]  # noqa: SLF001
         return self
 
     def shift(self, vector):
@@ -1490,7 +1161,7 @@ class Frame2DWrapper:
             self.play(self.camera.frame.animate.shift(UP * 3))
         """
         # noinspection PyProtectedMember
-        self.camera._frame_center.shift(vector)  # type: ignore[attr-defined]  # noqa: SLF001
+        self.camera._frame_center.shift(vector) # type: ignore[attr-defined]  # noqa: SLF001
         return self
 
     def scale(self, scale_factor: float):
@@ -1595,8 +1266,7 @@ class Frame2DWrapper:
             self.play(self.camera.frame.animate.move_to(target_pos))
         """
         # noinspection PyProtectedMember
-        return self.camera._frame_center.get_center()  # type: ignore[attr-defined]  # noqa: SLF001
-
+        return self.camera._frame_center.get_center() # type: ignore[attr-defined]  # noqa: SLF001
 
 class Frame2DAnimateWrapper:
     """Animation builder for chaining camera movements (user-facing).
@@ -1658,10 +1328,8 @@ class Frame2DAnimateWrapper:
         self.frame = frame_wrapper
         # Store initial state
         # noinspection PyProtectedMember
-        self.target_center = self.frame.camera._frame_center.copy()  # type: ignore[attr-defined]  # noqa: SLF001
+        self.target_center = self.frame.camera._frame_center.copy() # type: ignore[attr-defined]  # noqa: SLF001
         self.target_zoom = self.frame.camera.zoom_tracker.get_value()
-
-    #        self.operations = []
 
     def move_to(self, point):
         """Chain a move_to transformation.
@@ -1692,7 +1360,7 @@ class Frame2DAnimateWrapper:
                     self.play(self.camera.frame.animate.move_to(square))
         """
         self.target_center.move_to(point)
-        #        self.operations.append(('move_to', point))
+
         return self
 
     def shift(self, vector):
@@ -1721,7 +1389,7 @@ class Frame2DAnimateWrapper:
                     self.play(self.camera.frame.animate.shift(RIGHT * 2 + UP))
         """
         self.target_center.shift(vector)
-        #        self.operations.append(('shift', vector))
+
         return self
 
     def scale(self, scale_factor: float):
@@ -1759,7 +1427,7 @@ class Frame2DAnimateWrapper:
         Negative scale factors are not supported and will produce undefined behavior.
         """
         self.target_zoom = self.target_zoom / scale_factor
-        #        self.operations.append(('scale', scale_factor))
+
         return self
 
     def set(self, width: float = None, height: float = None):
@@ -1800,11 +1468,11 @@ class Frame2DAnimateWrapper:
         if width is not None:
             from manim import config
             self.target_zoom = config["frame_width"] / width
-        #            self.operations.append(('set', {'width': width}))
+
         elif height is not None:
             from manim import config
             self.target_zoom = config["frame_height"] / height
-        #            self.operations.append(('set', {'height': height}))
+
         return self
 
     # noinspection PyProtectedMember
@@ -1828,7 +1496,7 @@ class Frame2DAnimateWrapper:
         """
         animations = [
             # Always create animation for frame center (even if unchanged)
-            self.frame.camera._frame_center.animate.move_to(  # type: ignore[attr-defined]  # noqa: SLF001
+            self.frame.camera._frame_center.animate.move_to( # type: ignore[attr-defined]  # noqa: SLF001
                 self.target_center.get_center()
             ),
             # Always create animation for zoom (even if unchanged)
@@ -1836,7 +1504,6 @@ class Frame2DAnimateWrapper:
         ]
 
         return AnimationGroup(*animations)
-
 
 class TranscriptManager:
     """Internal manager for transcript output (not directly user-facing).
@@ -2018,9 +1685,6 @@ class TranscriptManager:
             )
 
 
-##########END Properly Documented Stuff##########
-
-
 """  
 BASELINE ALIGNMENT PLAN FOR TEXT/MATHTEX/TEX MOBJECTS  
 
@@ -2058,7 +1722,3 @@ preventing vertical drift across text changes, similar to how text aligns in a b
 See DecimalNumber class (manim/mobject/text/numbers.py:168-197) for similar baseline  
 alignment implementation with aligned_edge=DOWN.  
 """
-
-##########START Untested Stuff##########
-
-##########END Untested Stuff##########
