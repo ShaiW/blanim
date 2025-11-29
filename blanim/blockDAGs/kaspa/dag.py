@@ -949,7 +949,7 @@ class KaspaDAG:
                     self.currently_highlighted_block.visual_block.square.updaters[-1]
                 )
 
-                # Remove flash line copies
+        # Remove flash line copies
         for flash_line in self.flash_lines:
             self.scene.remove(flash_line)
         self.flash_lines = []
@@ -984,7 +984,7 @@ class KaspaDAG:
         try:
             # Step 1: Fade to past cone
             if narrate:
-                self.scene.narrate("Focusing on past cone of context block")
+                self.scene.narrate("Fade all except past cone of context block(inclusive)")
             self._ghostdag_fade_to_past(context_block)
             self.scene.wait(step_delay)
 
@@ -1060,12 +1060,12 @@ class KaspaDAG:
                 )
             )
 
-            # Highlight all parent lines (they always connect to parents)
+        # Highlight all parent lines (they always connect to parents)
         for line in context_block.visual_block.parent_lines:
             parent_animations.append(
                 line.animate.set_stroke(
                     color=self.config.ghostdag_parent_color,
-                    width=self.config.ghostdag_line_width
+#                    width=self.config.ghostdag_line_width
                 )
             )
 
@@ -1079,15 +1079,6 @@ class KaspaDAG:
 
         selected = context_block.selected_parent
 
-        # Fade selected parent's past cone (except context block)
-        selected_past = set(selected.get_past_cone())
-        fade_animations = []
-        for block in selected_past:
-            if block != context_block:
-                fade_animations.extend(block.visual_block.create_fade_animation())
-
-        self.scene.play(*fade_animations)
-
         # Highlight selected parent with unique style
         self.scene.play(
             selected.visual_block.square.animate.set_stroke(
@@ -1099,6 +1090,21 @@ class KaspaDAG:
             )
         )
 
+        # Fade selected parent's past cone
+        selected_past = set(selected.get_past_cone())
+        fade_animations = []
+        for block in selected_past:
+            fade_animations.extend(block.visual_block.create_fade_animation())
+            for line in block.visual_block.parent_lines:
+                fade_animations.append(
+                    line.animate.set_stroke(opacity=self.config.fade_opacity)
+                )
+        # Fade selected parents parent lines as well
+        for line in context_block.selected_parent.parent_lines:
+            fade_animations.append(
+                line.animate.set_stroke(opacity=self.config.fade_opacity)
+            )
+        self.scene.play(*fade_animations)
 
     def _ghostdag_show_mergeset(self, context_block: KaspaLogicalBlock):
         """Visualize mergeset creation."""

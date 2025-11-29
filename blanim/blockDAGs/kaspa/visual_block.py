@@ -8,7 +8,8 @@ import copy
 from typing import TYPE_CHECKING, Callable, Any
 
 import numpy as np
-from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation
+from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation, \
+    UpdateFromAlphaFunc, Mobject
 
 from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
@@ -349,10 +350,28 @@ class KaspaVisualBlock(BaseVisualBlock):
 
     def create_fade_animation(self) -> list[Any]:
         """Create animations to fade this block using config opacity."""
+
+        # Special handling required for labels due to use of Transform
+        def fade_label(mob, alpha):
+            # Get current opacity values for all submobjects
+            start_opacities = {}
+            for submob in mob.submobjects:
+                start_opacities[submob] = submob.get_fill_opacity()
+
+                # Only animate submobjects that are currently visible
+            for submob in mob.submobjects:
+                if start_opacities[submob] > 0:  # Only affect visible submobjects
+                    # Interpolate from current opacity to target opacity
+                    current_opacity = start_opacities[submob]
+                    target_opacity = self.kaspa_config.fade_opacity
+                    new_opacity = current_opacity + alpha * (target_opacity - current_opacity)
+                    submob.set_fill(opacity=new_opacity, family=False)
+            return mob
+
         return [
             self.square.animate.set_fill(opacity=self.kaspa_config.fade_opacity),
             self.square.animate.set_stroke(opacity=self.kaspa_config.fade_opacity),
-            self.label.animate.set_fill(opacity=self.kaspa_config.fade_opacity)
+            UpdateFromAlphaFunc(self.label, fade_label)
         ]
 
     def create_highlight_animation(self, color=None, stroke_width=None) -> Any:
@@ -381,14 +400,33 @@ class KaspaVisualBlock(BaseVisualBlock):
 
     def create_reset_animation(self) -> list[Any]:
         """Create animations to reset block to neutral state from config."""
+
+        # Special handling required for labels due to use of Transform
+        def reset_label(mob, alpha):
+            # Get current opacity values for all submobjects
+            start_opacities = {}
+            for submob in mob.submobjects:
+                start_opacities[submob] = submob.get_fill_opacity()
+
+                # Only animate submobjects that are currently visible
+            for submob in mob.submobjects:
+                if start_opacities[submob] > 0:  # Only affect visible submobjects
+                    # Interpolate from current opacity to target opacity
+                    current_opacity = start_opacities[submob]
+                    target_opacity = self.kaspa_config.label_opacity
+                    new_opacity = current_opacity + alpha * (target_opacity - current_opacity)
+                    submob.set_fill(opacity=new_opacity, family=False)
+            return mob
+
         return [
-            self.square.animate.set_fill(opacity=self.kaspa_config.fill_opacity),
-            self.square.animate.set_stroke(
-                self.kaspa_config.stroke_color,
-                width=self.kaspa_config.stroke_width,
-                opacity=self.kaspa_config.stroke_opacity
+            self.square.animate.set_style(
+                fill_color=self.kaspa_config.block_color,
+                fill_opacity=self.kaspa_config.fill_opacity,
+                stroke_color=self.kaspa_config.stroke_color,
+                stroke_width=self.kaspa_config.stroke_width,
+                stroke_opacity=self.kaspa_config.stroke_opacity
             ),
-            self.label.animate.set_fill(opacity=self.kaspa_config.label_opacity)
+            UpdateFromAlphaFunc(self.label, reset_label)
         ]
 
     def create_line_fade_animations(self) -> list[Any]:

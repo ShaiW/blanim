@@ -88,7 +88,7 @@ class BaseVisualBlock(VGroup):
 
     def _get_label(self, text: str) -> Text:
         if not text or text.isspace():
-            text = "\u200B"  # Zero-width space maintains position
+            text = "\u200B"  # Zero-width space maintains position #TODO verify(this does not appear to maintain position)
 
         new_label = Text(
             text,

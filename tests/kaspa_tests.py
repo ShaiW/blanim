@@ -214,6 +214,7 @@ class TestDAGPositioning(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
+#TODO since adding GHOSTDAG, weight may not exist
 class TestGenerateDAG(HUD2DScene):
     """Test generate_dag() with various parameters."""
 
@@ -601,12 +602,12 @@ class TestGHOSTDAGProcess(HUD2DScene):
 
         # Show GhostDAG process for b3 (demonstrates parent selection and blue candidate evaluation)
         self.caption("Showing GhostDAG process for block b3")
-        dag.animate_ghostdag_process(b3, narrate=True, step_delay=0.5)
+        dag.animate_ghostdag_process(b3, narrate=True, step_delay=1.0)
         self.wait(2)
 
         # Show GhostDAG process for merge (demonstrates mergeset with multiple parents)
         self.caption("Showing GhostDAG process for merge block")
-        dag.animate_ghostdag_process(merge, narrate=True, step_delay=0.5)
+        dag.animate_ghostdag_process(merge, narrate=True, step_delay=1.0)
         self.wait(2)
 
         text = Text("GhostDAG Process Test Passed", color=GREEN).to_edge(UP)

@@ -13,6 +13,8 @@ class KaspaConfig(BaseBlockConfig):
 
     Combines visual styling and spatial layout into a single config.
     Each section is clearly separated for maintainability.
+
+    WARNING opacity must ALWAYS be > 0
     """
     # ========================================
     # GHOSTDAG - Parameter
@@ -31,7 +33,7 @@ class KaspaConfig(BaseBlockConfig):
     ghostdag_red_color = RED
 
     ghostdag_highlight_width = 4
-    ghostdag_line_width = 3
+#    ghostdag_line_width = 3
     ghostdag_selected_width = 6
     ghostdag_mergeset_width = 3
 
@@ -44,7 +46,7 @@ class KaspaConfig(BaseBlockConfig):
     # VISUAL STYLING - Block Appearance
     # ========================================
     block_color: ParsableManimColor = BLUE
-    fill_opacity: float = 0.2
+    fill_opacity: float = 0.3
     stroke_color: ParsableManimColor = BLUE
     stroke_width: float = 3
     stroke_opacity: float = 1.0
@@ -85,7 +87,7 @@ class KaspaConfig(BaseBlockConfig):
     highlight_color: ParsableManimColor = "#70C7BA"
     highlight_stroke_width: float = 8
 
-    fade_opacity: float = 0.3 # Opacity to fade unrelated blocks to during a highlight animation
+    fade_opacity: float = 0.1 # Opacity to fade unrelated blocks(and lines) to during a highlight animation
 
     flash_connections: bool = True # Directional flash animation cycling on lines
     highlight_line_cycle_time = 1 # Time for a single flash to pass on lines
