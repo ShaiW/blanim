@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from blanim import *
+from manim.typing import Point3DLike
+from common import *
 import random
 from typing import TYPE_CHECKING, Literal
 
@@ -3076,12 +3077,12 @@ class SelfishMiningSquares:
         --------
         :meth:`_calculate_block_position` : Uses parent to calculate position
         """
-        chain_stub = self.selfish_chain if chain_type == "selfish" else self.honest_chain
+        chain = self.selfish_chain if chain_type == "selfish" else self.honest_chain
 
-        if not chain_stub.blocks:
+        if not chain.blocks:
             return self.genesis
         else:
-            return chain_stub.blocks[-1]
+            return chain.blocks[-1]
 
     def _calculate_block_position(self, parent: Block, chain_type: str) -> Point3DLike:
         """Calculate position for new block based on parent and chain type.
@@ -4381,8 +4382,8 @@ class SelfishMiningSquares:
         :meth:`Block.has_line` : Checks if block has a connecting line
         """
         anims = []
-        for chain_stub in chains:
-            for block in chain_stub.blocks:
+        for chain in chains:
+            for block in chain.blocks:
                 if block.has_line() and isinstance(block.line, FollowLine):
                     anims.append(block.line.create_update_animation())
         return anims
@@ -4580,31 +4581,28 @@ class SelfishMiningManualExample(HUD2DScene):
         sm = SelfishMiningSquares(self, 0.30, 0.1, enable_narration=True)
 
         # Add blocks with optional captions
-#        sm.advance_selfish_chain("A Block")
-        sm.advance_selfish_chain("Selfish miners create a secret chain")
-        sm.advance_selfish_chain("this is a short example video")
-#        sm.update_caption("Narration without Block")  # Update caption independently
-        sm.advance_selfish_chain("that explains Eyal-Sirer")
-        sm.advance_honest_chain("Majority is not enough")
-        sm.advance_selfish_chain("showing states and transitions")
-        sm.advance_honest_chain("while mining a secret chain")
-#        sm.advance_honest_chain("Another Block")  # ← This triggers race resolution (selfish wins)
-        sm.advance_honest_chain("it shows the strategy")  # ← This triggers race resolution (selfish wins)
+        sm.advance_selfish_chain("A Block")
+        sm.advance_selfish_chain()
+        sm.update_caption("Narration without Block")  # Update caption independently
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
+        sm.advance_honest_chain("Another Block")  # ← This triggers race resolution (selfish wins)
 
         # New race starts from winning block as genesis
-        sm.advance_honest_chain("presented in the paper")  # ← First block of new race
+        sm.advance_honest_chain()  # ← First block of new race
 
         # Automatic tiebreak resolution (uses probability)
-        sm.advance_selfish_chain("and uses probability")
-        sm.advance_honest_chain("for tie resolution")
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
 
         # Continue building - automatic resolution when needed
-        sm.advance_selfish_chain("selfish miners always mine in secret")
-        sm.advance_selfish_chain("creating an unknown competing chain")
-        sm.advance_honest_chain("and displacing honest blocks")
+        sm.advance_selfish_chain()
+        sm.advance_selfish_chain()
+        sm.advance_honest_chain()
 
         # Zoom out to show multiple races
-        sm.update_caption("earning disproportionate rewards")
         sm.zoom_out_to_show_races()
         self.wait(1)
 
@@ -4781,13 +4779,11 @@ class SelfishMiningExplanation(HUD2DScene):
 
 #TODO list of things to be implemented
 #   Implement opacity(0.5) for the hidden seflish chain with an animation that changes to full opacity upon reveal .
+#   Narration works with Text OR MathTex OR Tex, add a way on creation to set one option, then use that on option only throughout NarrationManager/TextFactory
 #   Override automatic resolution so animations can be generated that deviate from selfish mining strategy(help explain why the strategy exists)
 #   Add captioning to each part of race resolution (after breaking down into individual public calls, can try advance_animation that always plays the next step in the anim)
 #   Add captioning to any public API
 #   Limit zoom out by depth from current gen, but collect full race for that block.(if depth too deep, will zoom to the point of invisible blocks)
 #   After zoom out to max depth, scroll camera(single animation where time is a func of distance, so scrolling speed remains the same)
+#   Revisit 2dHUD with moving camera using these HUD methods(possible previous attempts failed due to not properly using HUD)
 #   Make AnimationTimingConfig.SHIFT_TO_NEW_GENESIS_TIME dynamic up to 4 blocks (so horizontal shift speed is the same)
-
-#TODO resolved once migrated to use HUD2DScene (has new NarrationManager integrated in scene)
-#   Narration works with Text OR MathTex OR Tex, add a way on creation to set one option, then use that on option only throughout NarrationManager/TextFactory
-#   Camera movements can now be used in HUD2DScene, method chaining also works (wrappers restricted to camera panning and zooming, can still perform 3D movements but blanim is 2D)
