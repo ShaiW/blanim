@@ -591,9 +591,11 @@ class TestGHOSTDAGProcess(HUD2DScene):
         b2 = dag.add_block(parents=[genesis])
         b3 = dag.add_block(parents=[b1])
         b4 = dag.add_block(parents=[b2])
+        b5 = dag.add_block(parents=[genesis])
+        b6 = dag.add_block(parents=[b5])
 
         # Add merge block connecting both branches
-        merge = dag.add_block(parents=[b3, b4])
+        merge = dag.add_block(parents=[b3, b4, b6])
 
         # Add one more block after merge
         final = dag.add_block(parents=[merge])

@@ -25,8 +25,9 @@ class KaspaConfig(BaseBlockConfig):
     # GHOSTDAG - GhostDAG-specific colors and styling
     # ========================================
 
+    #TODO name and define these better
     ghostdag_parent_color = YELLOW
-    ghostdag_selected_color = GREEN
+    ghostdag_selected_parent_stroke_color = GREEN
     ghostdag_mergeset_color = ORANGE
     ghostdag_order_color = PURPLE
     ghostdag_blue_color = BLUE
@@ -37,15 +38,15 @@ class KaspaConfig(BaseBlockConfig):
     ghostdag_selected_width = 6
     ghostdag_mergeset_width = 3
 
-    ghostdag_selected_opacity = 0.3
-    ghostdag_blue_opacity = 0.5
-    ghostdag_red_opacity = 0.3
-    ghostdag_selected_fill = GREEN
+    ghostdag_selected_opacity = 0.6
+    ghostdag_blue_opacity = 0.6
+    ghostdag_red_opacity = 0.6
+    ghostdag_selected_fill = BLUE
 
     # ========================================
     # VISUAL STYLING - Block Appearance
     # ========================================
-    block_color: ParsableManimColor = BLUE
+    block_color: ParsableManimColor = WHITE  #NOTE if block color is BLUE, the is no visible change during GHOSTDAG coloring animation.
     fill_opacity: float = 0.3
     stroke_color: ParsableManimColor = BLUE
     stroke_width: float = 3

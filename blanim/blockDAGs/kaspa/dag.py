@@ -966,7 +966,7 @@ class KaspaDAG:
             self.scene.play(*reset_animations)
 
     ########################################
-    # Highlighting GHOSTDAG #TODO test and refine this
+    # Highlighting GHOSTDAG #TODO test and refine this #TODO change this to play step by step(if desired) as with adding blocks anims
     ########################################
 
     def animate_ghostdag_process(
@@ -996,7 +996,7 @@ class KaspaDAG:
 
             # Step 3: Show selected parent
             if narrate:
-                self.scene.narrate("Selected parent chosen with highest blue score")
+                self.scene.narrate("Selected parent chosen with highest blue score") #TODO SP should be BLUE
             self._ghostdag_show_selected_parent(context_block)
             self.scene.wait(step_delay)
 
@@ -1014,7 +1014,7 @@ class KaspaDAG:
 
             # Step 6: Blue candidate process
             if narrate:
-                self.scene.narrate("Evaluating blue candidates (k-parameter constraint)")
+                self.scene.narrate("Evaluating blue candidates (k-parameter constraint)") #TODO highlight(BLUE) blue blocks in anticone of blue candidate
             self._ghostdag_show_blue_process(context_block)
             self.scene.wait(step_delay)
 
@@ -1079,10 +1079,10 @@ class KaspaDAG:
 
         selected = context_block.selected_parent
 
-        # Highlight selected parent with unique style
+        # Highlight selected parent with unique style #TODO set_fill ot working intermittently (attempt using square.animate.set_style() instead)
         self.scene.play(
             selected.visual_block.square.animate.set_stroke(
-                color=self.config.ghostdag_selected_color,
+                color=self.config.ghostdag_selected_parent_stroke_color,
                 width=self.config.ghostdag_selected_width
             ).set_fill(
                 color=self.config.ghostdag_selected_fill,
