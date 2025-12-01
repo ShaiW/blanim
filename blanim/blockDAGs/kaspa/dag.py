@@ -745,7 +745,7 @@ class KaspaDAG:
         ]
 
     ########################################
-    # Highlighting Relationships #TODO COMPLETE
+    # Highlighting Relationships #TODO COMPLETE  #TODO look at changing this to something more like GHOSTDAG highlighting
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock) -> List:
@@ -982,7 +982,7 @@ class KaspaDAG:
                 return
 
         try:
-            # Step 1: Fade to past cone
+            # Step 1: Fade to context inclusive past cone
             if narrate:
                 self.scene.narrate("Fade all except past cone of context block(inclusive)")
             self._ghostdag_fade_to_past(context_block)
@@ -990,13 +990,13 @@ class KaspaDAG:
 
             # Step 2: Show parents
             if narrate:
-                self.scene.narrate("Highlighting all parent blocks")
+                self.scene.narrate("Highlight all parent blocks")
             self._ghostdag_highlight_parents(context_block)
             self.scene.wait(step_delay)
 
             # Step 3: Show selected parent
             if narrate:
-                self.scene.narrate("Selected parent chosen with highest blue score") #TODO SP should be BLUE
+                self.scene.narrate("Selected parent chosen with highest blue score(with uniform tiebreaking)")
             self._ghostdag_show_selected_parent(context_block)
             self.scene.wait(step_delay)
 
@@ -1028,14 +1028,14 @@ class KaspaDAG:
 
     def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
         """Fade everything not in context block's past cone."""
-        past_blocks = set(context_block.get_past_cone())
-        past_blocks.add(context_block)
+        context_inclusive_past_blocks = set(context_block.get_past_cone())
+        context_inclusive_past_blocks.add(context_block)
 
         fade_animations = []
         for block in self.all_blocks:
-            if block not in past_blocks:
+            if block not in context_inclusive_past_blocks:
                 fade_animations.extend(block.visual_block.create_fade_animation())
-                # Also fade lines from/to these blocks
+                # Also fade lines from these blocks
                 for line in block.visual_block.parent_lines:
                     fade_animations.append(
                         line.animate.set_stroke(opacity=self.config.fade_opacity)
@@ -1044,6 +1044,7 @@ class KaspaDAG:
         if fade_animations:
             self.scene.play(*fade_animations)
 
+#TODO current selected parent line does not match GHOSTDAG Selected Parent
     def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
         """Highlight all parents of context block."""
         if not context_block.parents:
@@ -1054,9 +1055,9 @@ class KaspaDAG:
         # Highlight all parent blocks
         for parent in context_block.parents:
             parent_animations.append(
-                parent.visual_block.square.animate.set_stroke(
-                    color=self.config.ghostdag_parent_color,
-                    width=self.config.ghostdag_highlight_width
+                parent.visual_block.square.animate.set_style(
+                    stroke_color=self.config.ghostdag_parent_stroke_highlight_color,
+                    stroke_width=self.config.ghostdag_parent_stroke_highlight_width
                 )
             )
 
@@ -1064,14 +1065,17 @@ class KaspaDAG:
         for line in context_block.visual_block.parent_lines:
             parent_animations.append(
                 line.animate.set_stroke(
-                    color=self.config.ghostdag_parent_color,
-#                    width=self.config.ghostdag_line_width
+                    color=self.config.ghostdag_parent_line_highlight_color
                 )
             )
 
         self.scene.play(*parent_animations)
 
+        #Change lines back to normal
+        return_lines_animations = context_block.visual_block.create_line_reset_animations()
+        self.scene.play(*return_lines_animations)
 
+#TODO add a step to color the full SP.chain Blue to demonstrate k-cluster
     def _ghostdag_show_selected_parent(self, context_block: KaspaLogicalBlock):
         """Highlight selected parent and fade its past cone."""
         if not context_block.selected_parent:
@@ -1079,14 +1083,13 @@ class KaspaDAG:
 
         selected = context_block.selected_parent
 
-        # Highlight selected parent with unique style #TODO set_fill ot working intermittently (attempt using square.animate.set_style() instead)
+        # Highlight selected parent with unique style
         self.scene.play(
-            selected.visual_block.square.animate.set_stroke(
-                color=self.config.ghostdag_selected_parent_stroke_color,
-                width=self.config.ghostdag_selected_width
-            ).set_fill(
-                color=self.config.ghostdag_selected_fill,
-                opacity=self.config.ghostdag_selected_opacity
+            selected.visual_block.square.animate.set_style(
+                fill_color=self.config.ghostdag_selected_parent_fill_color,
+                fill_opacity=self.config.ghostdag_selected_parent_opacity,
+                stroke_width=self.config.ghostdag_selected_parent_stroke_width,
+                stroke_color=self.config.ghostdag_selected_parent_stroke_color,
             )
         )
 
@@ -1114,9 +1117,9 @@ class KaspaDAG:
         mergeset_animations = []
         for block in mergeset:
             mergeset_animations.append(
-                block.visual_block.square.animate.set_stroke(
-                    color=self.config.ghostdag_mergeset_color,
-                    width=self.config.ghostdag_mergeset_width
+                block.visual_block.square.animate.set_style(
+                    fill_color=self.config.ghostdag_mergeset_color,
+                    stroke_width=self.config.ghostdag_mergeset_width
                 )
             )
 
@@ -1130,10 +1133,11 @@ class KaspaDAG:
         for i, block in enumerate(sorted_mergeset):
             self.scene.play(
                 Indicate(block.visual_block.square, scale=1.1),
-                run_time=0.3
+                run_time=0.5
             )
             self.scene.wait(0.1)
 
+    #TODO refine this to show the blue anticone of each blue candidate
     def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
         """Animate blue evaluation with captions instead of text objects."""
         blue_candidates = context_block._get_sorted_mergeset_without_sp()

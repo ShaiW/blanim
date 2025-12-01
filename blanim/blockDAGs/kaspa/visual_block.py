@@ -447,10 +447,10 @@ class KaspaVisualBlock(BaseVisualBlock):
                 color = self.kaspa_config.other_parent_line_color
 
             animations.append(
-                line.animate.set_stroke(
-                    color,
-                    width=self.kaspa_config.line_stroke_width,
-                    opacity=self.kaspa_config.line_stroke_opacity
+                line.animate.set_style(
+                    stroke_color=color,
+                    stroke_width=self.kaspa_config.line_stroke_width,
+                    stroke_opacity=self.kaspa_config.line_stroke_opacity
                 )
             )
         return animations

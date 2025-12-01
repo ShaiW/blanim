@@ -26,8 +26,11 @@ class KaspaConfig(BaseBlockConfig):
     # ========================================
 
     #TODO name and define these better
-    ghostdag_parent_color = YELLOW
-    ghostdag_selected_parent_stroke_color = GREEN
+    ghostdag_parent_stroke_highlight_color = YELLOW
+    ghostdag_parent_line_highlight_color = YELLOW
+    ghostdag_selected_parent_stroke_color = PURPLE
+    ghostdag_parent_stroke_highlight_width = 6
+    ghostdag_selected_parent_fill_color = BLUE #SP becomes BLUE by default in GHOSTDAG, rec leaving this alone.
     ghostdag_mergeset_color = ORANGE
     ghostdag_order_color = PURPLE
     ghostdag_blue_color = BLUE
@@ -35,10 +38,10 @@ class KaspaConfig(BaseBlockConfig):
 
     ghostdag_highlight_width = 4
 #    ghostdag_line_width = 3
-    ghostdag_selected_width = 6
+    ghostdag_selected_parent_stroke_width = 6
     ghostdag_mergeset_width = 3
 
-    ghostdag_selected_opacity = 0.6
+    ghostdag_selected_parent_opacity = 0.6
     ghostdag_blue_opacity = 0.6
     ghostdag_red_opacity = 0.6
     ghostdag_selected_fill = BLUE
@@ -63,7 +66,7 @@ class KaspaConfig(BaseBlockConfig):
     # ========================================
     # VISUAL STYLING - Line Appearance
     # ========================================
-    selected_parent_line_color: ParsableManimColor = WHITE
+    selected_parent_line_color: ParsableManimColor = BLUE
     other_parent_line_color: ParsableManimColor = WHITE
     line_stroke_width: float = 5
     line_stroke_opacity: float = 1.0
