@@ -16,10 +16,12 @@ class KaspaConfig(BaseBlockConfig):
 
     WARNING opacity must ALWAYS be > 0
     """
+    #TODO need to ensure when a user creates a partial config, blanim will use default IF user config missing a parameter
+
     # ========================================
     # GHOSTDAG - Parameter
     # ========================================
-    k: int = 1
+    k: int = 3
 
     # ========================================
     # GHOSTDAG - GhostDAG-specific colors and styling
@@ -28,18 +30,19 @@ class KaspaConfig(BaseBlockConfig):
     #TODO name and define these better
     ghostdag_parent_stroke_highlight_color = YELLOW
     ghostdag_parent_line_highlight_color = YELLOW
-    ghostdag_selected_parent_stroke_color = PURPLE
+    ghostdag_selected_parent_stroke_color = GREEN
     ghostdag_parent_stroke_highlight_width = 6
     ghostdag_selected_parent_fill_color = BLUE #SP becomes BLUE by default in GHOSTDAG, rec leaving this alone.
-    ghostdag_mergeset_color = ORANGE
-    ghostdag_order_color = PURPLE
+
+    ghostdag_mergeset_color = PURPLE
+    ghostdag_order_color = GREEN
     ghostdag_blue_color = BLUE
     ghostdag_red_color = RED
 
     ghostdag_highlight_width = 4
 #    ghostdag_line_width = 3
     ghostdag_selected_parent_stroke_width = 6
-    ghostdag_mergeset_width = 3
+    ghostdag_mergeset_stroke_width = 3
 
     ghostdag_selected_parent_opacity = 0.6
     ghostdag_blue_opacity = 0.6
