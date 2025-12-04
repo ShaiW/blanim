@@ -578,6 +578,30 @@ class TestHighlightingAnticone(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
+
+class TestNormalConditions(HUD2DScene):
+    """Test highlighting anticone in DAG structure."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        dag.test_block_generation()
+        # Observed conditions
+#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=0.08)
+
+        # Normal conditions (40% of max delay)
+#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=0.4)
+
+        # At max delay
+#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=1.0)
+
+        # Beyond max delay (degraded)
+#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=1.5)
+
+        # Beyond max delay (severely degraded)
+#        dag.generate_dag_from_k_continuous(20, 3, actual_delay_multiplier=5)
+
+
 # TODO troubleshoot showing GHOSTDAG
 class TestGHOSTDAGProcess(HUD2DScene):
     """Test GhostDAG process visualization in DAG structure."""
