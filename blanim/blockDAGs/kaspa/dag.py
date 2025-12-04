@@ -496,9 +496,9 @@ class KaspaDAG:
         print("=" * 60)
 
         # Test parameters
-        duration_seconds = 1000
-        bps = 0.05  # 1 block per seconds
-        actual_delay = 25000  # 1 second network delay in milliseconds
+        duration_seconds = 850
+        bps = 0.05  # 20 seconds per block
+        actual_delay = 400  # 1 second network delay in milliseconds
 
         print(f"\nParameters:")
         print(f"  Duration: {duration_seconds}s")
@@ -535,6 +535,48 @@ class KaspaDAG:
         print(f"  Average parents per block: {avg_parents:.2f}")
 
         return blocks
+
+    def create_blocks_from_simulator_list(
+            self,
+            simulator_blocks: List[dict]
+    ) -> List[KaspaLogicalBlock]:
+        """
+        Convert simulator block dictionaries to actual KaspaLogicalBlock objects.
+        The simulator list is already ordered by creation time.
+        """
+        # Get tips once at the start (ensures genesis exists)
+        initial_tips = self.get_current_tips()
+
+        # Map to track hash -> actual block
+        block_map = {}
+        created_blocks = []
+
+        for block_dict in simulator_blocks:
+            block_hash = block_dict['hash']
+            parent_hashes = block_dict.get('parents', [])
+
+            # Resolve parent hashes to actual blocks
+            parents = []
+            if parent_hashes:
+                # Normal case: has parents from simulator
+                for parent_hash in parent_hashes:
+                    if parent_hash in block_map:
+                        parents.append(block_map[parent_hash])
+                    else:
+                        raise ValueError(f"Parent block {parent_hash} not found for block {block_hash}")
+            else:
+                # Empty parents case: use initial tips
+                parents = initial_tips
+
+                # Create the block using existing infrastructure
+            placeholder = self.queue_block(parents=parents, name=block_hash)
+            self.catch_up()  # Execute the creation
+
+            actual_block = placeholder.actual_block
+            block_map[block_hash] = actual_block
+            created_blocks.append(actual_block)
+
+        return created_blocks
     ####################
     # Generate DAG from parameters  #TODO this does not correctly color blocks when creating since DAG uses a predetermined k set in config #TODO replaced by sim?
     ####################

@@ -585,9 +585,9 @@ class TestNormalConditions(HUD2DScene):
     def construct(self):
         dag = KaspaDAG(scene=self)
 
-        dag.test_block_generation()
+#        dag.test_block_generation()
         # Observed conditions
-#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=0.08)
+        dag.create_blocks_from_simulator_list(dag.test_block_generation())
 
         # Normal conditions (40% of max delay)
 #        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=0.4)
