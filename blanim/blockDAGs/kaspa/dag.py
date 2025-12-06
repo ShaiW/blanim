@@ -129,12 +129,17 @@ class BlockPlaceholder:
             raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
         return getattr(self.actual_block, attr)
 
-#TODO block naming for DAG
-#TODO lines should also retain their own original properties instead of always referring back to config
 class KaspaDAG:
     def __init__(self, scene: HUD2DScene, dag_config: KaspaConfig = DEFAULT_KASPA_CONFIG):
         self.scene = scene
         self.config = dag_config
+
+        # Initialize components
+#        self.block_manager = BlockManager(self)
+#        self.generator = DAGGenerator(self)
+        self.movement = BlockMovement(self)
+#        self.retrieval = BlockRetrieval(self)
+
         self.blocks: dict[str, KaspaLogicalBlock] = {}
         self.all_blocks: List[KaspaLogicalBlock] = []
         self.genesis: Optional[KaspaLogicalBlock] = None
@@ -146,6 +151,10 @@ class KaspaDAG:
 
         # CRITICAL: Enable z-index rendering
         self.scene.renderer.camera.use_z_index = True
+
+    ########################################
+    # Config Setters #TODO create setters instead of dag accepting a config since blanim is built as a package
+    ########################################
 
     ########################################
     # Block Handling
@@ -272,25 +281,6 @@ class KaspaDAG:
         # Return actual blocks
         return [p.actual_block for p in placeholders]
 
-    def shift_camera_to_follow_blocks(self):
-        """Shift camera to keep rightmost blocks in view."""
-        if not self.all_blocks:
-            return
-
-            # Use visual_block property instead of _visual
-        rightmost_x = max(block.visual_block.get_center()[0] for block in self.all_blocks)
-
-        margin = self.config.horizontal_spacing * 2
-        current_center = self.scene.camera.frame.get_center()
-        frame_width = config["frame_width"]
-        right_edge = current_center[0] + (frame_width / 2)
-
-        if rightmost_x > right_edge - margin:
-            shift_amount = rightmost_x - (right_edge - margin)
-            self.scene.play(
-                self.scene.camera.frame.animate.shift(RIGHT * shift_amount),
-                run_time=self.config.camera_follow_time
-            )
 
     def _calculate_dag_position(self, parents: Optional[List[KaspaLogicalBlock]]) -> tuple[float, float]:
         """Calculate position based on rightmost parent and topmost neighbor."""
@@ -496,9 +486,9 @@ class KaspaDAG:
         print("=" * 60)
 
         # Test parameters
-        duration_seconds = 850
-        bps = 0.05  # 20 seconds per block
-        actual_delay = 400  # 1 second network delay in milliseconds
+        duration_seconds = 40
+        bps = 1  # block per second
+        actual_delay = 400  # network delay in milliseconds
 
         print(f"\nParameters:")
         print(f"  Duration: {duration_seconds}s")
@@ -930,206 +920,17 @@ class KaspaDAG:
         return self.all_blocks[-1]
 
     ########################################
-    # Moving Blocks with Synchronized Line Updates  #COMPLETE do NOT modify
+    # Movement
     ########################################
 
     def move(self, blocks, positions):
-        """Move blocks to new positions with synchronized line updates.
+        return self.movement.move(blocks, positions)
 
-        This method orchestrates the movement of multiple blocks while ensuring
-        that all connected lines update correctly and render in the proper order.
-        It implements the core animation deduplication pattern from the reference
-        architecture to prevent rendering issues.
+    def deduplicate_line_animations(self, *animation_groups: AnimationGroup) -> list[Animation]:
+        return self.movement.deduplicate_line_animations(*animation_groups)
 
-        **Architecture Overview**
-
-        The method solves a critical rendering challenge: when multiple blocks move
-        simultaneously, their connected lines must update positions without creating
-        duplicate animations or rendering artifacts. This is achieved through:
-
-        1. **Animation Collection**: Each block creates an AnimationGroup containing
-           its movement animation plus UpdateFromFunc animations for all connected lines
-        2. **Deduplication**: The `deduplicate_line_animations()` helper removes
-           duplicate line updates (since a line connecting two moving blocks would
-           otherwise get two update animations)
-        3. **Ordering**: Animations are ordered to ensure block transforms execute
-           before line updates in each frame
-
-        **Why This Matters**
-
-        Without deduplication and proper ordering:
-        - Lines would render on top of blocks during movement (z-index conflicts)
-        - Lines connecting two moving blocks would update twice per frame (performance)
-        - Animation timing would be inconsistent across the DAG
-
-        **Z-Index Rendering System**
-
-        This method works in conjunction with the z-index layering system:
-        - Lines: z_index 0-10 (regular at 0, selected parent at 5)
-        - Blocks: z_index 11-20 (background 11, square 12, label 13)
-        - Narrate/Caption: z_index 1000 (always on top)
-
-        By ensuring block animations execute first, then line updates, we maintain
-        the visual hierarchy where lines always render behind blocks, even during
-        complex multi-block movements.
-
-        Parameters
-        ----------
-        blocks : list[KaspaLogicalBlock]
-            List of blocks to move. Can be any number of blocks, including blocks
-            with parent-child relationships.
-        positions : list[tuple[float, float]]
-            List of (x, y) target positions, one per block. Z-coordinate is always
-            set to 0 by the block's animate_move_to() method.
-
-        Examples
-        --------
-        ::
-
-            # Move single block
-            dag.move([block1], [(2, 3)])
-
-            # Move multiple blocks simultaneously
-            dag.move([genesis, b1, b2], [(0, 2), (2, 2), (4, 2)])
-
-            # Move parent and child together (lines stay synchronized)
-            dag.move([parent, child], [(1, 1), (3, 1)])
-
-        See Also
-        --------
-        deduplicate_line_animations : Core deduplication logic
-        KaspaVisualBlock.animate_move_to : Creates movement animations with line updates
-        ParentLine.create_update_animation : Creates UpdateFromFunc for line positioning
-
-        Notes
-        -----
-        This method uses the DAG as the single API for all block movements, ensuring
-        consistent animation handling across the entire visualization. Users should
-        never manually create movement animations outside of this method.
-        """
-        animation_groups = []
-        for block, pos in zip(blocks, positions):
-            # Pass x, y coordinates to the new method
-            animation_groups.append(block.visual_block.animate_move_to(pos[0], pos[1]))
-
-            # Deduplicate and order animations
-        animations = self.deduplicate_line_animations(*animation_groups)
-        self.scene.play(*animations)
-
-    @staticmethod
-    def deduplicate_line_animations(*animation_groups: AnimationGroup) -> list[Animation]:
-        """Collect animations, deduplicate UpdateFromFunc, and order them correctly.
-
-        This is the core deduplication algorithm that ensures proper rendering order
-        and prevents duplicate line updates when multiple connected blocks move
-        simultaneously. It implements the same pattern as the reference Manim
-        architecture's TestZIndexRendering.deduplicate_line_animations().
-
-        **The Problem This Solves**
-
-        When two connected blocks move simultaneously, each block's animate_move_to()
-        creates an UpdateFromFunc animation for their shared connecting line. Without
-        deduplication, this line would:
-
-        1. Get two UpdateFromFunc animations in the same frame
-        2. Update its position twice, causing visual glitches
-        3. Potentially render on top of blocks due to animation ordering issues
-
-        **The Solution**
-
-        This method implements a three-step process:
-
-        1. **Separation**: Separate block animations (Transform, etc.) from line
-           updates (UpdateFromFunc)
-        2. **Deduplication**: Track seen mobjects by ID to ensure each line only
-           gets one UpdateFromFunc animation, even if multiple blocks reference it
-        3. **Ordering**: Return block animations first, then line updates, ensuring
-           blocks move before lines update in each frame
-
-        **Why Animation Ordering Matters**
-
-        Manim's render loop processes animations in the order they're provided to
-        Scene.play(). By returning [block_animations] + [line_updates], we guarantee:
-
-        - Frame N: Block positions interpolate to new locations
-        - Frame N: Line UpdateFromFunc reads those updated positions
-        - Frame N: Lines render at correct positions without lag
-
-        If line updates executed first, they would read stale block positions,
-        causing lines to lag one frame behind blocks during movement.
-
-        **Z-Index Integration**
-
-        This ordering works in conjunction with the z-index system:
-        - Lines have z_index 0-10 (render first/behind)
-        - Blocks have z_index 11-20 (render second/on top)
-
-        Even though block animations execute first in the animation list, the
-        z-index system ensures lines render behind blocks in the final frame.
-        The animation ordering ensures correct position updates; the z-index
-        ensures correct rendering order.
-
-        Parameters
-        ----------
-        *animation_groups : AnimationGroup
-            Variable number of AnimationGroup objects, typically one per moving block.
-            Each group contains the block's movement animation plus UpdateFromFunc
-            animations for all connected lines.
-
-        Returns
-        -------
-        list[Animation]
-            Flat list of animations in the correct order:
-            [block_animation_1, block_animation_2, ..., line_update_1, line_update_2, ...]
-
-            Block animations are all Transform/movement animations.
-            Line updates are all deduplicated UpdateFromFunc animations.
-
-        Examples
-        --------
-        ::
-
-            # Internal usage in move() method
-            animation_groups = [
-                block1.visual_block.animate_move_to(2, 3),  # Contains block move + line updates
-                block2.visual_block.animate_move_to(4, 3),  # Contains block move + line updates
-            ]
-            animations = self.deduplicate_line_animations(*animation_groups)
-            # Result: [block1_move, block2_move, line1_update, line2_update]
-            # (with duplicates removed if block1 and block2 share a line)
-
-        See Also
-        --------
-        move : Public API that uses this deduplication
-        KaspaVisualBlock.create_movement_animation : Creates AnimationGroups with line updates
-        ParentLine.create_update_animation : Creates the UpdateFromFunc animations
-
-        Notes
-        -----
-        This implementation matches the reference architecture from the pure Manim
-        sample code (TestZIndexRendering.deduplicate_line_animations), ensuring
-        blanim behaves identically to the proven reference implementation.
-
-        The deduplication uses Python's id() function to track mobjects, which is
-        safe because mobject instances are unique and persistent throughout the
-        animation lifecycle.
-        """
-        block_animations = []
-        line_updates = []
-        seen_mobjects = {}
-
-        for group in animation_groups:
-            for anim in group.animations:
-                if isinstance(anim, UpdateFromFunc):
-                    mob_id = id(anim.mobject)
-                    if mob_id not in seen_mobjects:
-                        seen_mobjects[mob_id] = anim
-                        line_updates.append(anim)
-                else:
-                    block_animations.append(anim)
-
-        # Return block animations first, then line updates
-        return block_animations + line_updates
+    def shift_camera_to_follow_blocks(self):
+        self.movement.shift_camera_to_follow_blocks()
 
     ########################################
     # Get Past/Future/Anticone Blocks #TODO COMPLETE
@@ -1750,3 +1551,239 @@ class KaspaDAG:
                 )
 
             self.scene.wait(0.3)
+
+
+class BlockManager:
+    """Handles block creation, queuing, and workflow management."""
+
+
+class DAGGenerator:
+    """Handles all DAG generation methods and network parameter calculations."""
+
+#TODO occasionally lines render in front of older blocks, intermittent z-index rendering failure
+class BlockMovement:
+    """Handles block movement and animation deduplication."""
+
+    def __init__(self, dag):
+        self.dag = dag
+
+    def move(self, blocks, positions):
+        """Move blocks to new positions with synchronized line updates.
+
+        This method orchestrates the movement of multiple blocks while ensuring
+        that all connected lines update correctly and render in the proper order.
+        It implements the core animation deduplication pattern from the reference
+        architecture to prevent rendering issues.
+
+        **Architecture Overview**
+
+        The method solves a critical rendering challenge: when multiple blocks move
+        simultaneously, their connected lines must update positions without creating
+        duplicate animations or rendering artifacts. This is achieved through:
+
+        1. **Animation Collection**: Each block creates an AnimationGroup containing
+           its movement animation plus UpdateFromFunc animations for all connected lines
+        2. **Deduplication**: The `deduplicate_line_animations()` helper removes
+           duplicate line updates (since a line connecting two moving blocks would
+           otherwise get two update animations)
+        3. **Ordering**: Animations are ordered to ensure block transforms execute
+           before line updates in each frame
+
+        **Why This Matters**
+
+        Without deduplication and proper ordering:
+        - Lines would render on top of blocks during movement (z-index conflicts)
+        - Lines connecting two moving blocks would update twice per frame (performance)
+        - Animation timing would be inconsistent across the DAG
+
+        **Z-Index Rendering System**
+
+        This method works in conjunction with the z-index layering system:
+        - Lines: z_index 0-10 (regular at 0, selected parent at 5)
+        - Blocks: z_index 11-20 (background 11, square 12, label 13)
+        - Narrate/Caption: z_index 1000 (always on top)
+
+        By ensuring block animations execute first, then line updates, we maintain
+        the visual hierarchy where lines always render behind blocks, even during
+        complex multi-block movements.
+
+        Parameters
+        ----------
+        blocks : list[KaspaLogicalBlock]
+            List of blocks to move. Can be any number of blocks, including blocks
+            with parent-child relationships.
+        positions : list[tuple[float, float]]
+            List of (x, y) target positions, one per block. Z-coordinate is always
+            set to 0 by the block's animate_move_to() method.
+
+        Examples
+        --------
+        ::
+
+            # Move single block
+            dag.move([block1], [(2, 3)])
+
+            # Move multiple blocks simultaneously
+            dag.move([genesis, b1, b2], [(0, 2), (2, 2), (4, 2)])
+
+            # Move parent and child together (lines stay synchronized)
+            dag.move([parent, child], [(1, 1), (3, 1)])
+
+        See Also
+        --------
+        deduplicate_line_animations : Core deduplication logic
+        KaspaVisualBlock.animate_move_to : Creates movement animations with line updates
+        ParentLine.create_update_animation : Creates UpdateFromFunc for line positioning
+
+        Notes
+        -----
+        This method uses the DAG as the single API for all block movements, ensuring
+        consistent animation handling across the entire visualization. Users should
+        never manually create movement animations outside of this method.
+        """
+        animation_groups = []
+        for block, pos in zip(blocks, positions):
+            # Pass x, y coordinates to the new method
+            animation_groups.append(block.visual_block.animate_move_to(pos[0], pos[1]))
+
+        # Deduplicate and order animations
+        animations = self.deduplicate_line_animations(*animation_groups)
+        self.dag.scene.play(*animations)
+
+    @staticmethod
+    def deduplicate_line_animations(*animation_groups: AnimationGroup) -> list[Animation]:
+        """Collect animations, deduplicate UpdateFromFunc, and order them correctly.
+
+        This is the core deduplication algorithm that ensures proper rendering order
+        and prevents duplicate line updates when multiple connected blocks move
+        simultaneously. It implements the same pattern as the reference Manim
+        architecture's TestZIndexRendering.deduplicate_line_animations().
+
+        **The Problem This Solves**
+
+        When two connected blocks move simultaneously, each block's animate_move_to()
+        creates an UpdateFromFunc animation for their shared connecting line. Without
+        deduplication, this line would:
+
+        1. Get two UpdateFromFunc animations in the same frame
+        2. Update its position twice, causing visual glitches
+        3. Potentially render on top of blocks due to animation ordering issues
+
+        **The Solution**
+
+        This method implements a three-step process:
+
+        1. **Separation**: Separate block animations (Transform, etc.) from line
+           updates (UpdateFromFunc)
+        2. **Deduplication**: Track seen mobjects by ID to ensure each line only
+           gets one UpdateFromFunc animation, even if multiple blocks reference it
+        3. **Ordering**: Return block animations first, then line updates, ensuring
+           blocks move before lines update in each frame
+
+        **Why Animation Ordering Matters**
+
+        Manim's render loop processes animations in the order they're provided to
+        Scene.play(). By returning [block_animations] + [line_updates], we guarantee:
+
+        - Frame N: Block positions interpolate to new locations
+        - Frame N: Line UpdateFromFunc reads those updated positions
+        - Frame N: Lines render at correct positions without lag
+
+        If line updates executed first, they would read stale block positions,
+        causing lines to lag one frame behind blocks during movement.
+
+        **Z-Index Integration**
+
+        This ordering works in conjunction with the z-index system:
+        - Lines have z_index 0-10 (render first/behind)
+        - Blocks have z_index 11-20 (render second/on top)
+
+        Even though block animations execute first in the animation list, the
+        z-index system ensures lines render behind blocks in the final frame.
+        The animation ordering ensures correct position updates; the z-index
+        ensures correct rendering order.
+
+        Parameters
+        ----------
+        *animation_groups : AnimationGroup
+            Variable number of AnimationGroup objects, typically one per moving block.
+            Each group contains the block's movement animation plus UpdateFromFunc
+            animations for all connected lines.
+
+        Returns
+        -------
+        list[Animation]
+            Flat list of animations in the correct order:
+            [block_animation_1, block_animation_2, ..., line_update_1, line_update_2, ...]
+
+            Block animations are all Transform/movement animations.
+            Line updates are all deduplicated UpdateFromFunc animations.
+
+        Examples
+        --------
+        ::
+
+            # Internal usage in move() method
+            animation_groups = [
+                block1.visual_block.animate_move_to(2, 3),  # Contains block move + line updates
+                block2.visual_block.animate_move_to(4, 3),  # Contains block move + line updates
+            ]
+            animations = self.deduplicate_line_animations(*animation_groups)
+            # Result: [block1_move, block2_move, line1_update, line2_update]
+            # (with duplicates removed if block1 and block2 share a line)
+
+        See Also
+        --------
+        move : Public API that uses this deduplication
+        KaspaVisualBlock.create_movement_animation : Creates AnimationGroups with line updates
+        ParentLine.create_update_animation : Creates the UpdateFromFunc animations
+
+        Notes
+        -----
+        This implementation matches the reference architecture from the pure Manim
+        sample code (TestZIndexRendering.deduplicate_line_animations), ensuring
+        blanim behaves identically to the proven reference implementation.
+
+        The deduplication uses Python's id() function to track mobjects, which is
+        safe because mobject instances are unique and persistent throughout the
+        animation lifecycle.
+        """
+        block_animations = []
+        line_updates = []
+        seen_mobjects = {}
+
+        for group in animation_groups:
+            for anim in group.animations:
+                if isinstance(anim, UpdateFromFunc):
+                    mob_id = id(anim.mobject)
+                    if mob_id not in seen_mobjects:
+                        seen_mobjects[mob_id] = anim
+                        line_updates.append(anim)
+                else:
+                    block_animations.append(anim)
+
+        # Return block animations first, then line updates
+        return block_animations + line_updates
+
+    def shift_camera_to_follow_blocks(self):
+        """Shift camera to keep rightmost blocks in view."""
+        if not self.dag.all_blocks:
+            return
+
+            # Use visual_block property instead of _visual
+        rightmost_x = max(block.visual_block.get_center()[0] for block in self.dag.all_blocks)
+
+        margin = self.dag.config.horizontal_spacing * 2
+        current_center = self.dag.scene.camera.frame.get_center()
+        frame_width = config["frame_width"]
+        right_edge = current_center[0] + (frame_width / 2)
+
+        if rightmost_x > right_edge - margin:
+            shift_amount = rightmost_x - (right_edge - margin)
+            self.dag.scene.play(
+                self.dag.scene.camera.frame.animate.shift(RIGHT * shift_amount),
+                run_time=self.dag.config.camera_follow_time
+            )
+
+class BlockRetrieval:
+    """Handles block lookup, naming, and cone calculations."""
