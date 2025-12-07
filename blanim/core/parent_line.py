@@ -3,12 +3,12 @@ from __future__ import annotations
 __all__ = ["ParentLine"]
 
 from manim import Line, WHITE, CapStyleType, UpdateFromFunc, ParsableManimColor
+from manim import Mobject
 
 
-#TODO ensure lines have their own properties preserved so animations can be created by accessing lines properties
 class ParentLine(Line):
     """Uses no updater, update from func during movement anims on either parent or child block.square"""
-    def __init__(self, this_block, parent_block, line_color: ParsableManimColor = WHITE, is_selected_parent_line = False):#TODO is sp.line is defined in visual block, NOT line
+    def __init__(self, this_block:Mobject, parent_block:Mobject, line_color: ParsableManimColor = WHITE, is_selected_parent_line = False):
         """A line connecting parent and child blocks with automatic position updates.
 
         This line uses the UpdateFromFunc pattern to maintain its position during block
@@ -111,7 +111,7 @@ class ParentLine(Line):
         self.is_selected = is_selected_parent_line
         self.set_z_index(5 if is_selected_parent_line else 1)
 
-    def _update_position_and_size(self, mobject):
+    def _update_position_and_size(self, _mobject):
         new_start = self.this_block.get_left()
         new_end = self.parent_block.get_right()
 

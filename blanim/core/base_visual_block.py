@@ -99,7 +99,7 @@ class BaseVisualBlock(VGroup):
         return new_label
 
 #TODO creates label by default but setting "" or " " breaks positioning of get_center on vgroup, figure out how to create invisible label that does not break positioning,
-#   similar to narrate/caption
+#   similar to narrate/caption  (Pretty sure positioning is fixed by overriding get_center() to return center of square, need to test label after setting to empty)
     def create_with_label(self):
 
         run_time = self.config.create_run_time

@@ -1,7 +1,7 @@
 # blanim\blanim\blockDAGs\kaspa\config.py
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, ORANGE, PURPLE, RED
+from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, PURPLE, RED
 from ...core.base_config import BaseBlockConfig
 
 __all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig"]
@@ -16,7 +16,7 @@ class KaspaConfig(BaseBlockConfig):
 
     WARNING opacity must ALWAYS be > 0
     """
-    #TODO need to ensure when a user creates a partial config, blanim will use default IF user config missing a parameter
+    #TODO change to using setters instead of user defining config, user can overwrite partially without breaking blanim(blanim is a python package)
 
     # ========================================
     # GHOSTDAG - Parameter

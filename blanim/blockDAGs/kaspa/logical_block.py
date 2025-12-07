@@ -66,7 +66,8 @@ class KaspaLogicalBlock:
         for parent in self.parents:
             parent.children.append(self)
 
-    def _get_sort_key(self, block: 'KaspaLogicalBlock') -> tuple:
+    @staticmethod
+    def _get_sort_key(block: 'KaspaLogicalBlock') -> tuple:
         """Standardized tie-breaking: (blue_score, -hash) for ascending order."""
         return block.ghostdag.blue_score, -block.hash
 
@@ -174,9 +175,9 @@ class KaspaLogicalBlock:
 
         return True
 
-    # TODO filter this to only check total view for anticone, since running it on a block later will show additional blocks in the future
-    def _get_anticone(self,
-                      block: 'KaspaLogicalBlock',
+    # TODO figure out if this can be replaced or if dag.get_anticone can be replaced
+    @staticmethod
+    def _get_anticone(block: 'KaspaLogicalBlock',
                       total_view: Set['KaspaLogicalBlock']
                       ) -> Set['KaspaLogicalBlock']:
         """Get anticone of a block within the given total view."""
