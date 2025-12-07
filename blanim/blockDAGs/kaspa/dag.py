@@ -854,65 +854,20 @@ class KaspaDAG:
         self.movement.shift_camera_to_follow_blocks()
 
     ########################################
-    # Get Past/Future/Anticone Blocks #TODO COMPLETE
+    # Get Past/Future/Anticone Blocks
     ########################################
 
     def get_past_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Get all ancestors via depth-first search.
-
-        Args:
-            block: Either a KaspaLogicalBlock instance or a block name string.
-                   If a string is provided, fuzzy matching will be used.
-
-        Returns:
-            List of ancestor blocks.
-        """
-        if isinstance(block, str):
-            block = self.get_block(block)
-            if block is None:
-                return []
-
-        return block.get_past_cone()
+        """Get all ancestors of a block."""
+        return self.retrieval.get_past_cone(block)
 
     def get_future_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Get all descendants via depth-first search.
-
-        Args:
-            block: Either a KaspaLogicalBlock instance or a block name string.
-                   If a string is provided, fuzzy matching will be used.
-
-        Returns:
-            List of descendant blocks.
-        """
-        if isinstance(block, str):
-            block = self.get_block(block)
-            if block is None:
-                return []
-
-        return block.get_future_cone()
+        """Get all descendants of a block."""
+        return self.retrieval.get_future_cone(block)
 
     def get_anticone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Get blocks that are neither ancestors nor descendants.
-
-        Args:
-            block: Either a KaspaLogicalBlock instance or a block name string.
-                   If a string is provided, fuzzy matching will be used.
-
-        Returns:
-            List of blocks in the anticone.
-        """
-        if isinstance(block, str):
-            block = self.get_block(block)
-            if block is None:
-                return []
-
-        past = set(block.get_past_cone())
-        future = set(block.get_future_cone())
-
-        return [
-            b for b in self.all_blocks
-            if b != block and b not in past and b not in future
-        ]
+        """Get all anticone of a block."""
+        return self.retrieval.get_anticone(block)
 
     ########################################
     # Highlighting Relationships #TODO COMPLETE  #TODO look at changing this to something more like GHOSTDAG highlighting
@@ -1527,7 +1482,6 @@ class DAGGenerator:
     ):
         """Move k-based generation here"""
 
-#TODO occasionally lines render in front of older blocks, intermittent z-index rendering failure
 class Movement:
     """Handles block/camera movement and animation deduplication."""
 
@@ -1771,7 +1725,7 @@ class BlockRetrieval:
         return round_num
 
     def get_block(self, name: str) -> Optional[KaspaLogicalBlock]:
-        """Test and Document this"""
+        """Retrieve a block by name with fuzzy matching support."""
         # Try exact match first
         if name in self.dag.blocks:
             return self.dag.blocks[name]
@@ -1798,16 +1752,67 @@ class BlockRetrieval:
         return self.dag.all_blocks[-1]
 
     def get_past_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Move cone calculations here"""
+        """Get all ancestors via depth-first search.
+
+        Args:
+            block: Either a KaspaLogicalBlock instance or a block name string.
+                   If a string is provided, fuzzy matching will be used.
+
+        Returns:
+            List of ancestor blocks.
+        """
+        if isinstance(block, str):
+            block = self.get_block(block)
+            if block is None:
+                return []
+
+        return block.get_past_cone()
 
     def get_future_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Move cone calculations here"""
+        """Get all descendants via depth-first search.
+
+        Args:
+            block: Either a KaspaLogicalBlock instance or a block name string.
+                   If a string is provided, fuzzy matching will be used.
+
+        Returns:
+            List of descendant blocks.
+        """
+        if isinstance(block, str):
+            block = self.get_block(block)
+            if block is None:
+                return []
+
+        return block.get_future_cone()
+
+    def get_anticone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
+        """Get blocks that are neither ancestors nor descendants.
+
+        Args:
+            block: Either a KaspaLogicalBlock instance or a block name string.
+                   If a string is provided, fuzzy matching will be used.
+
+        Returns:
+            List of blocks in the anticone.
+        """
+        if isinstance(block, str):
+            block = self.get_block(block)
+            if block is None:
+                return []
+
+        past = set(block.get_past_cone())
+        future = set(block.get_future_cone())
+
+        return [
+            b for b in self.dag.all_blocks
+            if b != block and b not in past and b not in future
+        ]
 
     def get_current_tips(self) -> List[KaspaLogicalBlock]:
         """Get current DAG tips (blocks without children)."""
         # If no blocks exist, create genesis and return it
         if not self.dag.all_blocks:
-            genesis = self.dag.add_block(name="genesis")
+            genesis = self.dag.add_block()
             return [genesis]
 
         # Find all blocks that are parents of other blocks
