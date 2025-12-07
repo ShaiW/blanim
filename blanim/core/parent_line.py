@@ -20,7 +20,7 @@ class ParentLine(Line):
 
         Lines use z-index range 0-10 to ensure they render behind blocks (11-20):
 
-        - Regular lines: z_index = 0 (bottom layer)
+        - Regular lines: z_index = 1 (bottom layer)
         - Selected parent lines: z_index = 5 (middle of line range, above regular lines)
         - Blocks (backgrounds): z_index = 11
         - Blocks (squares): z_index = 12
@@ -101,15 +101,15 @@ class ParentLine(Line):
             end=parent_block.get_right(),
             buff=0.1,
             color=line_color,
-            stroke_width=5,
-            cap_style = CapStyleType.ROUND
+            stroke_width=4,
+            cap_style = CapStyleType.ROUND,
         )
 
         self.this_block = this_block
         self.parent_block = parent_block
 
         self.is_selected = is_selected_parent_line
-        self.set_z_index(5 if is_selected_parent_line else 0)
+        self.set_z_index(5 if is_selected_parent_line else 1)
 
     def _update_position_and_size(self, mobject):
         new_start = self.this_block.get_left()

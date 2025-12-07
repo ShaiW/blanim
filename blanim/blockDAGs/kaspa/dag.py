@@ -137,8 +137,8 @@ class KaspaDAG:
         # Initialize components
 #        self.block_manager = BlockManager(self)
 #        self.generator = DAGGenerator(self)
-        self.movement = BlockMovement(self)
-#        self.retrieval = BlockRetrieval(self)
+        self.movement = Movement(self)
+        self.retrieval = BlockRetrieval(self)
 
         self.blocks: dict[str, KaspaLogicalBlock] = {}
         self.all_blocks: List[KaspaLogicalBlock] = []
@@ -486,9 +486,9 @@ class KaspaDAG:
         print("=" * 60)
 
         # Test parameters
-        duration_seconds = 40
+        duration_seconds = 20
         bps = 1  # block per second
-        actual_delay = 400  # network delay in milliseconds
+        actual_delay = 1200  # network delay in milliseconds
 
         print(f"\nParameters:")
         print(f"  Duration: {duration_seconds}s")
@@ -831,105 +831,26 @@ class KaspaDAG:
 
     def get_current_tips(self) -> List[KaspaLogicalBlock]:
         """Get current DAG tips (blocks without children)."""
-        # If no blocks exist, create genesis and return it
-        if not self.all_blocks:
-            genesis = self.add_block(name="genesis")
-            return [genesis]
-
-        # Find all blocks that are parents of other blocks
-        non_tips = set()
-        for block in self.all_blocks:
-            non_tips.update(block.parents)
-
-        # Tips are blocks that are not parents of any other block
-        tips = [block for block in self.all_blocks if block not in non_tips]
-
-        # There will always be at least one tip (genesis or others)
-        return tips if tips else [self.genesis]
+        return self.retrieval.get_current_tips()
 
     def _generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
-        """Generate automatic block name based on round from genesis.
+        """Generate automatic block name based on round from genesis."""
+        return self.retrieval.generate_block_name(parents)
 
-        Uses selected parent (parents[0]) to determine round/depth from genesis.
-        Round 0: Genesis ("Gen")
-        Round 1: "B1", "B1a", "B1b", ... (parallel blocks)
-        Round 2: "B2", "B2a", "B2b", ...
-        """
-        if not parents:
-            return "Gen"
-
-            # Calculate round by following selected parent chain back to genesis
-        selected_parent = parents[0]
-        round_number = 1
-        current = selected_parent
-
-        while current.parents:  # Traverse back to genesis
-            current = current.parents[0]  # Follow selected parent chain
-            round_number += 1
-
-            # Count parallel blocks at this round (blocks already in all_blocks)
-        blocks_at_round = [
-            b for b in self.all_blocks
-            if b != self.genesis and self._get_round(b) == round_number
-        ]
-
-        # Generate name
-        if len(blocks_at_round) == 0:
-            return f"B{round_number}"
-        else:
-            # Subtract 1 to get correct suffix: 1 existing block → 'a', 2 → 'b', etc.
-            suffix = chr(ord('a') + len(blocks_at_round) - 1)
-            return f"B{round_number}{suffix}"
-
-    def _get_round(self, block: KaspaLogicalBlock) -> int:
-        """Helper to get round number for a block."""
-        if not block.parents:
-            return 0
-        round_num = 1
-        current = block.parents[0]
-        while current.parents:
-            current = current.parents[0]
-            round_num += 1
-        return round_num
-
-#TODO may need to adjust fuzzy retrieval if naming convention changes
     def get_block(self, name: str) -> Optional[KaspaLogicalBlock]:
         """Retrieve a block by name with fuzzy matching support."""
-        # Try exact match first
-        if name in self.blocks:
-            return self.blocks[name]
-
-        if not self.all_blocks:
-            return None
-
-        # Extract round number and find closest
-        import re
-        match = re.search(r'B?(\d+)', name)
-        if not match:
-            return self.all_blocks[-1]
-
-        target_round = int(match.group(1))
-        max_round = max(self._get_round(b) for b in self.all_blocks)
-        actual_round = min(target_round, max_round)
-
-        # Find first block at this round
-        for block in self.all_blocks:
-            if self._get_round(block) == actual_round:
-                return block
-
-        return self.all_blocks[-1]
+        return self.retrieval.get_block(name)
 
     ########################################
     # Movement
     ########################################
 
     def move(self, blocks, positions):
+        """Move blocks to new positions with synchronized line updates."""
         return self.movement.move(blocks, positions)
 
-    def deduplicate_line_animations(self, *animation_groups: AnimationGroup) -> list[Animation]:
-        return self.movement.deduplicate_line_animations(*animation_groups)
-
     def shift_camera_to_follow_blocks(self):
+        """Shift camera to keep rightmost blocks in view."""
         self.movement.shift_camera_to_follow_blocks()
 
     ########################################
@@ -1556,13 +1477,59 @@ class KaspaDAG:
 class BlockManager:
     """Handles block creation, queuing, and workflow management."""
 
+    def __init__(self, dag):
+        self.dag = dag
+
+    def queue_block(self, parents=None, name=None) -> BlockPlaceholder:
+        """Move existing queue_block logic here"""
+
+    def add_block(self, parents=None, name=None) -> KaspaLogicalBlock:
+        """Move existing add_block logic here"""
+
+    def next_step(self) -> None:
+        """Move workflow step execution logic here"""
+
+    def catch_up(self):
+        """Move catch_up logic here"""
 
 class DAGGenerator:
     """Handles all DAG generation methods and network parameter calculations."""
 
+    def __init__(self, dag):
+        self.dag = dag
+
+    def k_from_x(self, x_val: float, delta: float = 0.01) -> int:
+        """Move k calculation methods here"""
+
+    def find_k_thresholds_iterative(
+            self,
+            max_delay: float = 5.0,
+            delta: float = 0.01,
+            max_seconds_per_block: int = 100
+    ):
+        """Move threshold finding logic here"""
+
+    def generate_kaspa_dag(
+            self,
+            num_rounds: int,
+            bps: float,
+            max_delay: float,
+            actual_delay: float,
+            delta: float = 0.01
+    ):
+        """Move network-based generation here"""
+
+    def generate_dag_from_k(
+            self,
+            num_rounds: int,
+            target_k: int,
+            actual_delay_multiplier: float = 1.0
+    ):
+        """Move k-based generation here"""
+
 #TODO occasionally lines render in front of older blocks, intermittent z-index rendering failure
-class BlockMovement:
-    """Handles block movement and animation deduplication."""
+class Movement:
+    """Handles block/camera movement and animation deduplication."""
 
     def __init__(self, dag):
         self.dag = dag
@@ -1787,3 +1754,103 @@ class BlockMovement:
 
 class BlockRetrieval:
     """Handles block lookup, naming, and cone calculations."""
+
+    def __init__(self, dag):
+        self.dag = dag
+
+    @staticmethod
+    def get_round(block: KaspaLogicalBlock) -> int:
+        """Helper to get round number for a block."""
+        if not block.parents:
+            return 0
+        round_num = 1
+        current = block.parents[0]
+        while current.parents:
+            current = current.parents[0]
+            round_num += 1
+        return round_num
+
+    def get_block(self, name: str) -> Optional[KaspaLogicalBlock]:
+        """Test and Document this"""
+        # Try exact match first
+        if name in self.dag.blocks:
+            return self.dag.blocks[name]
+
+        # If empty, return None
+        if not self.dag.all_blocks:
+            return None
+
+        # Extract round number and find closest
+        import re
+        match = re.search(r'B?(\d+)', name)
+        if not match:
+            return self.dag.all_blocks[-1]
+
+        target_round = int(match.group(1))
+        max_round = max(self.get_round(b) for b in self.dag.all_blocks)
+        actual_round = min(target_round, max_round)
+
+        # Find first block at this round
+        for block in self.dag.all_blocks:
+            if self.get_round(block) == actual_round:
+                return block
+
+        return self.dag.all_blocks[-1]
+
+    def get_past_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
+        """Move cone calculations here"""
+
+    def get_future_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
+        """Move cone calculations here"""
+
+    def get_current_tips(self) -> List[KaspaLogicalBlock]:
+        """Get current DAG tips (blocks without children)."""
+        # If no blocks exist, create genesis and return it
+        if not self.dag.all_blocks:
+            genesis = self.dag.add_block(name="genesis")
+            return [genesis]
+
+        # Find all blocks that are parents of other blocks
+        non_tips = set()
+        for block in self.dag.all_blocks:
+            non_tips.update(block.parents)
+
+        # Tips are blocks that are not parents of any other block
+        tips = [block for block in self.dag.all_blocks if block not in non_tips]
+
+        # There will always be at least one tip (genesis or others)
+        return tips if tips else [self.dag.genesis]
+
+    def generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
+        """Generate automatic block name based on round from genesis.
+
+        Uses selected parent (parents[0]) to determine round/depth from genesis.
+        Round 0: Genesis ("Gen")
+        Round 1: "B1", "B1a", "B1b", ... (parallel blocks)
+        Round 2: "B2", "B2a", "B2b", ...
+        """
+        if not parents:
+            return "Gen"
+
+        # Calculate round by following selected parent chain back to genesis
+        selected_parent = parents[0]
+        round_number = 1
+        current = selected_parent
+
+        while current.parents:  # Traverse back to genesis
+            current = current.parents[0]  # Follow selected parent chain
+            round_number += 1
+
+        # Count parallel blocks at this round (blocks already in all_blocks)
+        blocks_at_round = [
+            b for b in self.dag.all_blocks
+            if b != self.dag.genesis and self.get_round(b) == round_number
+        ]
+
+        # Generate name
+        if len(blocks_at_round) == 0:
+            return f"B{round_number}"
+        else:
+            # Subtract 1 to get correct suffix: 1 existing block → 'a', 2 → 'b', etc.
+            suffix = chr(ord('a') + len(blocks_at_round) - 1)
+            return f"B{round_number}{suffix}"

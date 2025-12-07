@@ -403,6 +403,40 @@ class TestFutureCone(HUD2DScene):
         self.play(Write(text))
         self.wait(2)
 
+class TestZIndexBugReproduce(HUD2DScene):
+    """Test highlighting anticone in DAG structure."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Create structure with clear anticone
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+        b2 = dag.add_block(parents=[b1, genesis])
+        b3 = dag.add_block(parents=[b1, genesis])
+        b4 = dag.add_block(parents=[b2, b1])
+        b5 = dag.add_block(parents=[b4, b2])
+        b6 = dag.add_block(parents=[b5, b4])
+
+        # Add merge block connecting both branches
+        merge = dag.add_block(parents=[b2, b4])
+        merge2 = dag.add_block(parents=[b2, b4])
+
+class TestZIndexScene(HUD2DScene):
+    def construct(self):
+        # Create objects with different z-index values
+        line = Line(LEFT * 2, RIGHT * 2).set_z_index(5)
+        square = Square(fill_color=BLUE, fill_opacity=0.9).set_z_index(10)
+
+        # Add in order that would normally be wrong
+        self.play(Create(square))  # Higher z-index but added first
+
+        # Move camera (this triggers the bug)
+        self.play(self.camera.frame.animate.shift(RIGHT * 2))
+
+        self.play(Create(line))  # Lower z-index but added second
+        self.wait(1)
+
 
 class TestAnticone(HUD2DScene):
     """Test get_anticone() with DAG structure."""
