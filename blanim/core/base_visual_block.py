@@ -15,7 +15,7 @@ from manim import (
     BLACK,
     Create,
     AnimationGroup,
-    VGroup, BackgroundRectangle, Rectangle
+    VGroup
 )
 
 if TYPE_CHECKING:
@@ -166,7 +166,6 @@ class BaseVisualBlock(VGroup):
             max_width = self.config.highlight_stroke_width
 
         def pulse_stroke(mob, dt):
-            import numpy as np
             t = getattr(mob, 'time', 0) + dt
             mob.time = t
             width = min_width + (max_width - min_width) * (np.sin(t * np.pi) + 1) / 2
