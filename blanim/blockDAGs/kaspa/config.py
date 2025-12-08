@@ -21,7 +21,7 @@ class KaspaConfig(BaseBlockConfig):
     # ========================================
     # GHOSTDAG - Parameter
     # ========================================
-    k: int = 3
+    k: int = 18
 
     # ========================================
     # GHOSTDAG - GhostDAG-specific colors and styling
