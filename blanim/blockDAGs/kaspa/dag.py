@@ -114,28 +114,13 @@ from .config import KaspaConfig, DEFAULT_KASPA_CONFIG
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
 
-class BlockPlaceholder:
-    """Placeholder for a block that will be created later."""
-
-    def __init__(self, dag, parents, name):
-        self.dag = dag
-        self.parents = parents
-        self.name = name
-        self.actual_block = None  # Will be set automatically when created
-
-    def __getattr__(self, attr):
-        """Automatically delegate to actual_block once it's created."""
-        if self.actual_block is None:
-            raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
-        return getattr(self.actual_block, attr)
-
 class KaspaDAG:
     def __init__(self, scene: HUD2DScene, dag_config: KaspaConfig = DEFAULT_KASPA_CONFIG):
         self.scene = scene
         self.config = dag_config
 
         # Initialize components
-#        self.block_manager = BlockManager(self)
+        self.block_manager = BlockManager(self)
 #        self.generator = DAGGenerator(self)
         self.movement = Movement(self)
         self.retrieval = BlockRetrieval(self)
@@ -153,200 +138,76 @@ class KaspaDAG:
         self.scene.renderer.camera.use_z_index = True
 
     ########################################
-    # Config Setters #TODO create setters instead of dag accepting a config since blanim is built as a package
+    # Block Retrieval #Complete
     ########################################
 
+    def get_current_tips(self) -> List[KaspaLogicalBlock]:
+        """Get current DAG tips (blocks without children)."""
+        return self.retrieval.get_current_tips()
+
+    def _generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
+        """Generate automatic block name based on round from genesis."""
+        return self.retrieval.generate_block_name(parents)
+
+    def get_block(self, name: str) -> Optional[KaspaLogicalBlock]:
+        """Retrieve a block by name with fuzzy matching support."""
+        return self.retrieval.get_block(name)
+
     ########################################
-    # Block Handling
+    # Movement #Complete
     ########################################
 
-    def queue_block(
-            self,
-            parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None,
-            name: Optional[str] = None
-    ) -> BlockPlaceholder:
-        """Queue block creation, return placeholder that auto-resolves."""
+    def move(self, blocks, positions):
+        """Move blocks to new positions with synchronized line updates."""
+        return self.movement.move(blocks, positions)
 
-        placeholder = BlockPlaceholder(self, parents, name)
+    def shift_camera_to_follow_blocks(self):
+        """Shift camera to keep rightmost blocks in view."""
+        self.movement.shift_camera_to_follow_blocks()
 
-        def create_and_animate_block():
-            # Resolve parent placeholders to actual blocks
-            resolved_parents = []
-            if parents:
-                for p in parents:
-                    if isinstance(p, BlockPlaceholder):
-                        if p.actual_block is None:
-                            raise ValueError(f"Parent block hasn't been created yet")
-                        resolved_parents.append(p.actual_block)
-                    else:
-                        resolved_parents.append(p)
+    ########################################
+    # Get Past/Future/Anticone Blocks #Complete
+    ########################################
 
-            # Create the actual block
-            block_name = name if name else self._generate_block_name(resolved_parents)
-            position = self._calculate_dag_position(resolved_parents)
+    def get_past_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
+        """Get all ancestors of a block."""
+        return self.retrieval.get_past_cone(block)
 
-            block = KaspaLogicalBlock(
-                name=block_name,
-                parents=resolved_parents if resolved_parents else [],
-                position=position,
-                kaspa_config=self.config,
-            )
+    def get_future_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
+        """Get all descendants of a block."""
+        return self.retrieval.get_future_cone(block)
 
-            self.blocks[block_name] = block
-            self.all_blocks.append(block)
+    def get_anticone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
+        """Get all anticone of a block."""
+        return self.retrieval.get_anticone(block)
 
-            if not resolved_parents:
-                self.genesis = block
+    ########################################
+    # Block Handling #Complete
+    ########################################
 
-            # AUTOMATICALLY link placeholder to actual block
-            placeholder.actual_block = block
-
-            # Animate it
-            self._animate_block_creation(block)
-
-            return block
-
-        self.workflow_steps.append(create_and_animate_block)
-
-        # Queue repositioning
-        def reposition_column():
-            if self.all_blocks:
-                x_pos = self.all_blocks[-1].visual_block.square.get_center()[0]
-                self._animate_dag_repositioning({x_pos})
-
-        reposition_column.is_repositioning = True
-        self.workflow_steps.append(reposition_column)
-
-        return placeholder
+    def queue_block(self, parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None, name: Optional[str] = None) -> BlockPlaceholder:
+        """Queue a block that will be created later."""
+        return self.block_manager.queue_block(parents, name)
 
     def next_step(self)-> None:
-        """Execute the next queued function, skipping empty repositioning."""
-        if not self.workflow_steps:
-            return None
-
-        func = self.workflow_steps.pop(0)
-
-        # Check if this is a marked repositioning function
-        if getattr(func, 'is_repositioning', False):
-            if self.all_blocks:
-                x_pos = self.all_blocks[-1].visual_block.square.get_center()[0]
-                column_blocks = [
-                    b for b in self.all_blocks
-                    if abs(b.visual_block.square.get_center()[0] - x_pos) < 0.01
-                ]
-
-                if column_blocks:
-                    current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
-                    current_center_y = (max(current_ys) + min(current_ys)) / 2
-                    shift_y = self.config.genesis_y - current_center_y
-
-                    # Skip if negligible shift
-                    if abs(shift_y) < 0.01:
-                        return self.next_step()
-
-        func()
-        return None
+        """Play next pending block creation/shift animation"""
+        return self.block_manager.next_step()  #TODO can return be removed?
 
     def catch_up(self):
-        """Execute all queued functions in sequence."""
-        while self.workflow_steps:
-            self.next_step()
+        """Play all pending block creation/shift animations"""
+        self.block_manager.catch_up()
 
-    def add_block(
-            self,
-            parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None,
-            name: Optional[str] = None
-    ) -> KaspaLogicalBlock:
-        """Create and animate a block immediately."""
-        placeholder = self.queue_block(parents=parents, name=name)
-        self.next_step()  # Execute block creation
-        self.next_step()  # Execute repositioning
-        return placeholder.actual_block  # Return actual block, not placeholder
+    def add_block(self, parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None, name: Optional[str] = None) -> KaspaLogicalBlock:
+        """Add a block to the DAG and animate"""
+        return self.block_manager.add_block(parents, name)
 
-    def add_blocks(
-            self,
-            blocks_data: List[tuple[Optional[List[BlockPlaceholder | KaspaLogicalBlock]], Optional[str]]]
-    ) -> List[KaspaLogicalBlock]:
+    def add_blocks(self, blocks_data: List[tuple[Optional[List[BlockPlaceholder | KaspaLogicalBlock]], Optional[str]]]) -> List[KaspaLogicalBlock]:
         """Add multiple blocks and complete all animations automatically."""
-        placeholders = []
+        return self.block_manager.add_blocks(blocks_data)
 
-        # Queue all blocks
-        for parents, name in blocks_data:
-            placeholder = self.queue_block(parents=parents, name=name)
-            placeholders.append(placeholder)
-
-            # Execute all queued steps
-        self.catch_up()
-
-        # Return actual blocks
-        return [p.actual_block for p in placeholders]
-
-
-    def _calculate_dag_position(self, parents: Optional[List[KaspaLogicalBlock]]) -> tuple[float, float]:
-        """Calculate position based on rightmost parent and topmost neighbor."""
-        if not parents:
-            return self.config.genesis_x, self.config.genesis_y
-
-        # Use rightmost parent for x-position
-        rightmost_parent = max(parents, key=lambda p: p.visual_block.square.get_center()[0])
-        parent_pos = rightmost_parent.visual_block.square.get_center()
-        x_position = parent_pos[0] + self.config.horizontal_spacing
-
-        # Find blocks at same x-position
-        same_x_blocks = [
-            b for b in self.all_blocks
-            if abs(b.visual_block.square.get_center()[0] - x_position) < 0.01
-        ]
-
-        if not same_x_blocks:
-            # First block at this x - use gen_y y
-            y_position = self.config.genesis_y
-        else:
-            # Stack above topmost neighbor
-            topmost_y = max(b.visual_block.get_center()[1] for b in same_x_blocks)
-            y_position = topmost_y + self.config.vertical_spacing
-
-        return x_position, y_position
-
-    def _animate_block_creation(self, block: KaspaLogicalBlock):
-        """Animate the creation of a block and its lines."""
-        self.shift_camera_to_follow_blocks()
-        self.scene.play(block.visual_block.create_with_lines())
-
-    def _animate_dag_repositioning(self, x_positions: Set[float]):
-        """Center columns of blocks around genesis y-position."""
-        if not x_positions:
-            return
-
-        animations = []
-        genesis_y = self.config.genesis_y
-
-        for x_pos in x_positions:
-            # Find all blocks at this x-position
-            column_blocks = [
-                b for b in self.all_blocks
-                if abs(b.visual_block.get_center()[0] - x_pos) < 0.01
-            ]
-
-            if not column_blocks:
-                continue
-
-            # Calculate current center and target shift
-            current_ys = [b.visual_block.get_center()[1] for b in column_blocks]
-            current_center_y = (max(current_ys) + min(current_ys)) / 2
-            shift_y = genesis_y - current_center_y
-
-            # Create shift animations for all blocks in column
-            for block in column_blocks:
-                # Use shift instead of move_to to preserve x-position
-                animations.append(
-                    block.visual_block.create_movement_animation(
-                        block.visual_block.animate.shift(np.array([0, shift_y, 0]))
-                    )
-                )
-
-        if animations:
-            self.scene.play(*animations)
+    ########################################
+    # Config Setters #TODO create setters instead of dag accepting a config since blanim is built as a package
+    ########################################
 
     ####################
     # Helper functions for finding k thresholds
@@ -829,48 +690,9 @@ class KaspaDAG:
 
             current_tips.extend(new_blocks)
 
-    def get_current_tips(self) -> List[KaspaLogicalBlock]:
-        """Get current DAG tips (blocks without children)."""
-        return self.retrieval.get_current_tips()
-
-    def _generate_block_name(self, parents: List[KaspaLogicalBlock]) -> str:
-        """Generate automatic block name based on round from genesis."""
-        return self.retrieval.generate_block_name(parents)
-
-    def get_block(self, name: str) -> Optional[KaspaLogicalBlock]:
-        """Retrieve a block by name with fuzzy matching support."""
-        return self.retrieval.get_block(name)
 
     ########################################
-    # Movement
-    ########################################
-
-    def move(self, blocks, positions):
-        """Move blocks to new positions with synchronized line updates."""
-        return self.movement.move(blocks, positions)
-
-    def shift_camera_to_follow_blocks(self):
-        """Shift camera to keep rightmost blocks in view."""
-        self.movement.shift_camera_to_follow_blocks()
-
-    ########################################
-    # Get Past/Future/Anticone Blocks
-    ########################################
-
-    def get_past_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Get all ancestors of a block."""
-        return self.retrieval.get_past_cone(block)
-
-    def get_future_cone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Get all descendants of a block."""
-        return self.retrieval.get_future_cone(block)
-
-    def get_anticone(self, block: KaspaLogicalBlock | str) -> List[KaspaLogicalBlock]:
-        """Get all anticone of a block."""
-        return self.retrieval.get_anticone(block)
-
-    ########################################
-    # Highlighting Relationships #TODO COMPLETE  #TODO look at changing this to something more like GHOSTDAG highlighting
+    # Highlighting Relationships #TODO COMPLETE  #TODO look at changing this to something more like GHOSTDAG highlighting (or the other way around)
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock) -> List:
@@ -1428,7 +1250,23 @@ class KaspaDAG:
 
             self.scene.wait(0.3)
 
+#Complete
+class BlockPlaceholder:
+    """Placeholder for a block that will be created later."""
 
+    def __init__(self, dag, parents, name):
+        self.dag = dag
+        self.parents = parents
+        self.name = name
+        self.actual_block = None  # Will be set automatically when created
+
+    def __getattr__(self, attr):
+        """Automatically delegate to actual_block once it's created."""
+        if self.actual_block is None:
+            raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
+        return getattr(self.actual_block, attr)
+
+#Complete
 class BlockManager:
     """Handles block creation, queuing, and workflow management."""
 
@@ -1436,16 +1274,180 @@ class BlockManager:
         self.dag = dag
 
     def queue_block(self, parents=None, name=None) -> BlockPlaceholder:
-        """Move existing queue_block logic here"""
+        """Queue block creation, return placeholder that auto-resolves."""
+
+        placeholder = BlockPlaceholder(self, parents, name)
+
+        def create_and_animate_block():
+            # Resolve parent placeholders to actual blocks
+            resolved_parents = []
+            if parents:
+                for p in parents:
+                    if isinstance(p, BlockPlaceholder):
+                        if p.actual_block is None:
+                            raise ValueError(f"Parent block hasn't been created yet")
+                        resolved_parents.append(p.actual_block)
+                    else:
+                        resolved_parents.append(p)
+
+            # Create the actual block
+            block_name = name if name else self.dag.retrieval.generate_block_name(resolved_parents)
+            position = self._calculate_dag_position(resolved_parents)
+
+            block = KaspaLogicalBlock(
+                name=block_name,
+                parents=resolved_parents if resolved_parents else [],
+                position=position,
+                kaspa_config=self.dag.config,
+            )
+
+            self.dag.blocks[block_name] = block
+            self.dag.all_blocks.append(block)
+
+            if not resolved_parents:
+                self.genesis = block
+
+            # AUTOMATICALLY link placeholder to actual block
+            placeholder.actual_block = block
+
+            # Animate it
+            self._animate_block_creation(block)
+
+            return block
+
+        self.dag.workflow_steps.append(create_and_animate_block)
+
+        # Queue repositioning
+        def reposition_column():
+            if self.dag.all_blocks:
+                x_pos = self.dag.all_blocks[-1].visual_block.square.get_center()[0]
+                self._animate_dag_repositioning({x_pos})
+
+        reposition_column.is_repositioning = True
+        self.dag.workflow_steps.append(reposition_column)
+
+        return placeholder
 
     def add_block(self, parents=None, name=None) -> KaspaLogicalBlock:
-        """Move existing add_block logic here"""
+        """Create and animate a block immediately."""
+        placeholder = self.queue_block(parents=parents, name=name)
+        self.next_step()  # Execute block creation TODO does this break IF there is a pending queue of blocks when this is called
+        self.next_step()  # Execute repositioning
+        return placeholder.actual_block  # Return actual block, not placeholder
+
+    def add_blocks(self, blocks_data: List[tuple[Optional[List[BlockPlaceholder | KaspaLogicalBlock]], Optional[str]]]) -> List[KaspaLogicalBlock]:
+        """Add multiple blocks and complete all animations automatically."""
+        placeholders = []
+
+        # Queue all blocks
+        for parents, name in blocks_data:
+            placeholder = self.queue_block(parents, name)
+            placeholders.append(placeholder)
+
+            # Execute all queued steps
+        self.catch_up()
+
+        # Return actual blocks
+        return [p.actual_block for p in placeholders]
 
     def next_step(self) -> None:
-        """Move workflow step execution logic here"""
+        """Execute the next queued function, skipping empty repositioning."""
+        if not self.dag.workflow_steps:
+            return None
+
+        func = self.dag.workflow_steps.pop(0)
+
+        # Check if this is a marked repositioning function
+        if getattr(func, 'is_repositioning', False):
+            if self.dag.all_blocks:
+                x_pos = self.dag.all_blocks[-1].visual_block.square.get_center()[0] #TODO pretty sure get_center() on block is overridden to return squares center only
+                column_blocks = [
+                    b for b in self.dag.all_blocks
+                    if abs(b.visual_block.square.get_center()[0] - x_pos) < 0.01
+                ]
+
+                if column_blocks:
+                    current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
+                    current_center_y = (max(current_ys) + min(current_ys)) / 2
+                    shift_y = self.dag.config.genesis_y - current_center_y
+
+                    # Skip if negligible shift
+                    if abs(shift_y) < 0.01:
+                        return self.next_step()
+
+        func()
+        return None
 
     def catch_up(self):
-        """Move catch_up logic here"""
+        """Execute all queued functions in sequence."""
+        while self.dag.workflow_steps:
+            self.next_step()
+
+    def _calculate_dag_position(self, parents: Optional[List[KaspaLogicalBlock]]) -> tuple[float, float]:
+        """Calculate position based on rightmost parent and topmost neighbor."""
+        if not parents:
+            return self.dag.config.genesis_x, self.dag.config.genesis_y
+
+        # Use rightmost parent for x-position
+        rightmost_parent = max(parents, key=lambda p: p.visual_block.square.get_center()[0])
+        parent_pos = rightmost_parent.visual_block.square.get_center()
+        x_position = parent_pos[0] + self.dag.config.horizontal_spacing
+
+        # Find blocks at same x-position
+        same_x_blocks = [
+            b for b in self.dag.all_blocks
+            if abs(b.visual_block.square.get_center()[0] - x_position) < 0.01
+        ]
+
+        if not same_x_blocks:
+            # First block at this x - use gen_y y
+            y_position = self.dag.config.genesis_y
+        else:
+            # Stack above topmost neighbor
+            topmost_y = max(b.visual_block.get_center()[1] for b in same_x_blocks)
+            y_position = topmost_y + self.dag.config.vertical_spacing
+
+        return x_position, y_position
+
+    def _animate_dag_repositioning(self, x_positions: Set[float]):
+        """Center columns of blocks around genesis y-position."""
+        if not x_positions:
+            return
+
+        animations = []
+        genesis_y = self.dag.config.genesis_y
+
+        for x_pos in x_positions:
+            # Find all blocks at this x-position
+            column_blocks = [
+                b for b in self.dag.all_blocks
+                if abs(b.visual_block.get_center()[0] - x_pos) < 0.01
+            ]
+
+            if not column_blocks:
+                continue
+
+            # Calculate current center and target shift
+            current_ys = [b.visual_block.get_center()[1] for b in column_blocks]
+            current_center_y = (max(current_ys) + min(current_ys)) / 2
+            shift_y = genesis_y - current_center_y
+
+            # Create shift animations for all blocks in column
+            for block in column_blocks:
+                # Use shift instead of move_to to preserve x-position
+                animations.append(
+                    block.visual_block.create_movement_animation(
+                        block.visual_block.animate.shift(np.array([0, shift_y, 0]))
+                    )
+                )
+
+        if animations:
+            self.dag.scene.play(*animations)
+
+    def _animate_block_creation(self, block: KaspaLogicalBlock):
+        """Animate the creation of a block and its lines."""
+        self.dag.shift_camera_to_follow_blocks()
+        self.dag.scene.play(block.visual_block.create_with_lines())
 
 class DAGGenerator:
     """Handles all DAG generation methods and network parameter calculations."""
@@ -1482,6 +1484,7 @@ class DAGGenerator:
     ):
         """Move k-based generation here"""
 
+#Complete
 class Movement:
     """Handles block/camera movement and animation deduplication."""
 
@@ -1706,6 +1709,7 @@ class Movement:
                 run_time=self.dag.config.camera_follow_time
             )
 
+#Complete
 class BlockRetrieval:
     """Handles block lookup, naming, and cone calculations."""
 
