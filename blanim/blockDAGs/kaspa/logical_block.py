@@ -23,10 +23,7 @@ class GhostDAGData:
     local_blue_pov: Dict['KaspaLogicalBlock', bool] = field(default_factory=dict)
 
 class KaspaLogicalBlock:
-    """Kaspa logical block with GHOSTDAG consensus.
-
-    1. Always place Selected Parent in the [0] position.
-    """
+    """Kaspa logical block with GHOSTDAG consensus."""
 
     def __init__(
             self,
@@ -51,6 +48,7 @@ class KaspaLogicalBlock:
         # Parent selection and GHOSTDAG computation (before visualization)
         if self.parents:
             self.selected_parent = self._select_parent()
+            self.parents.sort(key=lambda p: p != self.selected_parent) #move SP to the index 0 before sending to visual
             self._create_unordered_mergeset()
             self._compute_ghostdag(kaspa_config.k)
 
@@ -68,7 +66,8 @@ class KaspaLogicalBlock:
         for parent in self.parents:
             parent.children.append(self)
 
-    def _get_sort_key(self, block: 'KaspaLogicalBlock') -> tuple:
+    @staticmethod
+    def _get_sort_key(block: 'KaspaLogicalBlock') -> tuple:
         """Standardized tie-breaking: (blue_score, -hash) for ascending order."""
         return block.ghostdag.blue_score, -block.hash
 
@@ -95,7 +94,7 @@ class KaspaLogicalBlock:
         selected_past = set(self.selected_parent.get_past_cone())
         self.ghostdag.unordered_mergeset = list(self_past - selected_past)
 
-    def _get_sorted_mergeset_with_sp(self) -> List['KaspaLogicalBlock']:
+    def get_sorted_mergeset_with_sp(self) -> List['KaspaLogicalBlock']:
         """Get sorted mergeset with selected parent at index 0."""
         if not self.selected_parent:
             return []
@@ -110,7 +109,7 @@ class KaspaLogicalBlock:
 
         return sorted_mergeset
 
-    def _get_sorted_mergeset_without_sp(self) -> List['KaspaLogicalBlock']:
+    def get_sorted_mergeset_without_sp(self) -> List['KaspaLogicalBlock']:
         """Get sorted mergeset excluding selected parent."""
         evaluation_mergeset = [block for block in self.ghostdag.unordered_mergeset if block != self.selected_parent]
         evaluation_mergeset.sort(key=self._get_sort_key)
@@ -130,7 +129,7 @@ class KaspaLogicalBlock:
         # Add selected parent itself as blue
         local_blue_status[self.selected_parent] = True
 
-        blue_candidates = self._get_sorted_mergeset_without_sp()
+        blue_candidates = self.get_sorted_mergeset_without_sp()
 
         # Initialize all candidates as not blue locally
         for candidate in blue_candidates:
@@ -176,9 +175,9 @@ class KaspaLogicalBlock:
 
         return True
 
-    # TODO filter this to only check total view for anticone, since running it on a block later will show additional blocks in the future
-    def _get_anticone(self,
-                      block: 'KaspaLogicalBlock',
+    # TODO figure out if this can be replaced or if dag.get_anticone can be replaced
+    @staticmethod
+    def _get_anticone(block: 'KaspaLogicalBlock',
                       total_view: Set['KaspaLogicalBlock']
                       ) -> Set['KaspaLogicalBlock']:
         """Get anticone of a block within the given total view."""

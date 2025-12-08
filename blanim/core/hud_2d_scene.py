@@ -244,6 +244,10 @@ class HUD2DScene(ThreeDScene):
         Creates the :class:`TranscriptManager` instance for transcript output.
         """
         super().setup()
+
+#        # Enable z-index sorting on the camera
+#        self.camera.use_z_index = True
+
         # Set camera to orthographic 2D view (looking straight down)
         self.set_camera_orientation(phi=0, theta=-90 * DEGREES)
 

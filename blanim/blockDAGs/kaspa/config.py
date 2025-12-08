@@ -1,7 +1,7 @@
 # blanim\blanim\blockDAGs\kaspa\config.py
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, ORANGE, PURPLE, RED
+from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, PURPLE, RED
 from ...core.base_config import BaseBlockConfig
 
 __all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig"]
@@ -16,36 +16,43 @@ class KaspaConfig(BaseBlockConfig):
 
     WARNING opacity must ALWAYS be > 0
     """
+    #TODO change to using setters instead of user defining config, user can overwrite partially without breaking blanim(blanim is a python package)
+
     # ========================================
     # GHOSTDAG - Parameter
     # ========================================
-    k: int = 1
+    k: int = 18
 
     # ========================================
     # GHOSTDAG - GhostDAG-specific colors and styling
     # ========================================
 
-    ghostdag_parent_color = YELLOW
-    ghostdag_selected_color = GREEN
-    ghostdag_mergeset_color = ORANGE
-    ghostdag_order_color = PURPLE
+    #TODO name and define these better
+    ghostdag_parent_stroke_highlight_color = YELLOW
+    ghostdag_parent_line_highlight_color = YELLOW
+    ghostdag_selected_parent_stroke_color = GREEN
+    ghostdag_parent_stroke_highlight_width = 6
+    ghostdag_selected_parent_fill_color = BLUE #SP becomes BLUE by default in GHOSTDAG, rec leaving this alone.
+
+    ghostdag_mergeset_color = PURPLE
+    ghostdag_order_color = GREEN
     ghostdag_blue_color = BLUE
     ghostdag_red_color = RED
 
     ghostdag_highlight_width = 4
 #    ghostdag_line_width = 3
-    ghostdag_selected_width = 6
-    ghostdag_mergeset_width = 3
+    ghostdag_selected_parent_stroke_width = 6
+    ghostdag_mergeset_stroke_width = 3
 
-    ghostdag_selected_opacity = 0.3
-    ghostdag_blue_opacity = 0.5
-    ghostdag_red_opacity = 0.3
-    ghostdag_selected_fill = GREEN
+    ghostdag_selected_parent_opacity = 0.6
+    ghostdag_blue_opacity = 0.6
+    ghostdag_red_opacity = 0.6
+    ghostdag_selected_fill = BLUE
 
     # ========================================
     # VISUAL STYLING - Block Appearance
     # ========================================
-    block_color: ParsableManimColor = BLUE
+    block_color: ParsableManimColor = WHITE  #NOTE if block color is BLUE, the is no visible change during GHOSTDAG coloring animation.
     fill_opacity: float = 0.3
     stroke_color: ParsableManimColor = BLUE
     stroke_width: float = 3
@@ -62,7 +69,7 @@ class KaspaConfig(BaseBlockConfig):
     # ========================================
     # VISUAL STYLING - Line Appearance
     # ========================================
-    selected_parent_line_color: ParsableManimColor = WHITE
+    selected_parent_line_color: ParsableManimColor = BLUE
     other_parent_line_color: ParsableManimColor = WHITE
     line_stroke_width: float = 5
     line_stroke_opacity: float = 1.0

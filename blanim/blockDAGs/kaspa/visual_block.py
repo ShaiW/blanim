@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Callable, Any
 
 import numpy as np
 from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation, \
-    UpdateFromAlphaFunc, Mobject
+    UpdateFromAlphaFunc
 
 from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from .logical_block import KaspaLogicalBlock
 
 # noinspection PyProtectedMember
-#TODO instead of using a config for every single block, we can pass parameters from the DAG - low priority
 class KaspaVisualBlock(BaseVisualBlock):
     """Kaspa block visualization with multi-parent DAG structure.
 
@@ -447,10 +446,10 @@ class KaspaVisualBlock(BaseVisualBlock):
                 color = self.kaspa_config.other_parent_line_color
 
             animations.append(
-                line.animate.set_stroke(
-                    color,
-                    width=self.kaspa_config.line_stroke_width,
-                    opacity=self.kaspa_config.line_stroke_opacity
+                line.animate.set_style(
+                    stroke_color=color,
+                    stroke_width=self.kaspa_config.line_stroke_width,
+                    stroke_opacity=self.kaspa_config.line_stroke_opacity
                 )
             )
         return animations
