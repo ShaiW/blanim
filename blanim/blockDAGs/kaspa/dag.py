@@ -106,18 +106,18 @@ import math
 from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
-from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW
+from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger
 
 from .logical_block import KaspaLogicalBlock
-from .config import KaspaConfig, DEFAULT_KASPA_CONFIG
+from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
 
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
 
 class KaspaDAG:
-    def __init__(self, scene: HUD2DScene, dag_config: KaspaConfig = DEFAULT_KASPA_CONFIG):
+    def __init__(self, scene: HUD2DScene):
         self.scene = scene
-        self.config = dag_config
+        self.config_manager = KaspaConfigManager(_KaspaConfigInternal(**DEFAULT_KASPA_CONFIG.__dict__))
 
         # Initialize components
         self.block_manager = BlockManager(self)
@@ -125,7 +125,8 @@ class KaspaDAG:
         self.movement = Movement(self)
         self.retrieval = BlockRetrieval(self)
         self.relationship_highlighter = RelationshipHighlighter(self)
-#        self.ghostdag_highlighter = GhostDAGHighlighter(self)
+        self.ghostdag_highlighter = GhostDAGHighlighter(self)
+
 
         self.blocks: dict[str, KaspaLogicalBlock] = {}
         self.all_blocks: List[KaspaLogicalBlock] = []
@@ -136,6 +137,25 @@ class KaspaDAG:
 
         # CRITICAL: Enable z-index rendering
         self.scene.renderer.camera.use_z_index = True
+
+    ########################################
+    # Config
+    ########################################
+
+    @property
+    def config(self) -> _KaspaConfigInternal:
+        """Access config through manager."""
+        return self.config_manager.config
+
+    def set_k(self, k: int) -> 'KaspaDAG':
+        """Set k with genesis lock protection."""
+        self.config_manager.set_k(k, len(self.all_blocks) > 0)
+        return self
+
+    def apply_config(self, user_config: KaspaConfig) -> 'KaspaDAG':
+        """Apply typed configuration with chaining."""
+        self.config_manager.apply_config(user_config, len(self.all_blocks) > 0)
+        return self
 
     ########################################
     # Block Retrieval #Complete
@@ -209,15 +229,15 @@ class KaspaDAG:
     # Highlighting Relationships #TODO look at changing this to something more like GHOSTDAG highlighting (or the other way around)
     ########################################
 
-    def highlight_past(self, focused_block: KaspaLogicalBlock) -> None:
+    def highlight_past(self, focused_block: KaspaLogicalBlock | str) -> None:
         """Highlight a block's past cone with child-to-parent line animations."""
         self.relationship_highlighter.highlight_past(focused_block)
 
-    def highlight_future(self, focused_block: KaspaLogicalBlock) -> None:
+    def highlight_future(self, focused_block: KaspaLogicalBlock | str) -> None:
         """Highlight a block's future cone with child-to-parent line animations."""
         self.relationship_highlighter.highlight_future(focused_block)
 
-    def highlight_anticone(self, focused_block: KaspaLogicalBlock) -> None:
+    def highlight_anticone(self, focused_block: KaspaLogicalBlock | str) -> None:
         """Highlight a block's anticone with child-to-parent line animations."""
         self.relationship_highlighter.highlight_anticone(focused_block)
 
@@ -226,8 +246,12 @@ class KaspaDAG:
         self.relationship_highlighter.reset_highlighting()
 
     ########################################
-    # Config Setters #TODO create setters instead of dag accepting a config since blanim is built as a package
+    # Highlighting GHOSTDAG
     ########################################
+
+    def animate_ghostdag_process(self, context_block: KaspaLogicalBlock | str, narrate: bool = True, step_delay: float = 1.0) -> None:
+        """Animate the complete GhostDAG process for a context block."""
+        self.ghostdag_highlighter.animate_ghostdag_process(context_block, narrate=narrate, step_delay=step_delay)
 
     ####################
     # Helper functions for finding k thresholds
@@ -358,7 +382,7 @@ class KaspaDAG:
 
         return blocks
 
-    # Tested TODO create blocks from this return
+    # Tested TODO create blocks from this return #TODO add timestamp to logical block (possible to display the progress of time)
     def test_block_generation(self, duration_in_seconds: float, bps_float: float, actual_delay_in_ms: float):
         """Test function to visualize block generation and relationships."""
 
@@ -710,345 +734,43 @@ class KaspaDAG:
 
             current_tips.extend(new_blocks)
 
-    ########################################
-    # Highlighting GHOSTDAG #TODO test and refine this #TODO change this to play step by step(if desired) as with adding blocks anims
-    ########################################
 
-    def animate_ghostdag_process(
-            self,
-            context_block: KaspaLogicalBlock | str,
-            narrate: bool = True,
-            step_delay: float = 1.0
-    ) -> None:
-        """Animate the complete GhostDAG process for a context block."""
-        if isinstance(context_block, str):
-            context_block = self.get_block(context_block)
-            if context_block is None:
-                return
+class KaspaConfigManager:
+    """Manages configuration for a KaspaDAG instance."""
 
-        try:
-            # Step 1: Fade to context inclusive past cone
-            if narrate:
-                self.scene.narrate("Fade all except past cone of context block(inclusive)")
-            self._ghostdag_fade_to_past(context_block)
-            self.scene.wait(step_delay)
+    def __init__(self, user_config: _KaspaConfigInternal):
+        self.config = user_config
 
-            # Step 2: Show parents
-            if narrate:
-                self.scene.narrate("Highlight all parent blocks")
-            self._ghostdag_highlight_parents(context_block)
-            self.scene.wait(step_delay)
+    def apply_config(self, user_config: KaspaConfig, is_locked: bool = False) -> None:
+        """Apply typed config with genesis lock protection."""
+        critical_params = {'k'}
 
-            # Step 3: Show selected parent
-            if narrate:
-                self.scene.narrate("Selected parent chosen with highest blue score(with uniform tiebreaking)")
-            self._ghostdag_show_selected_parent(context_block)
-            self.scene.wait(step_delay)
+        for key, value in user_config.items():
+            if key in critical_params and is_locked:
+                logger.warning(
+                    f"Cannot change {key} after blocks have been added. "
+                    "DAG parameters must remain consistent throughout the DAG lifecycle."
+                )
+                continue
 
-            # Step 4: Show mergeset
-            if narrate:
-                self.scene.narrate("Creating mergeset from past cone differences")
-            self._ghostdag_show_mergeset(context_block)
-            self.scene.wait(step_delay)
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+                if hasattr(self.config, '__post_init__'):
+                    self.config.__post_init__()
 
-            # Step 5: Show ordering
-            if narrate:
-                self.scene.narrate("Ordering mergeset by blue score and hash")
-            self._ghostdag_show_ordering(context_block)
-            self.scene.wait(step_delay)
-
-            # Step 6: Blue candidate process
-            if narrate:
-                self.scene.narrate("Evaluating blue candidates (k-parameter constraint)") #TODO highlight(BLUE) blue blocks in anticone of blue candidate OR show candidate.SP k-cluster
-            self._ghostdag_show_blue_process(context_block)
-            self.scene.wait(step_delay)
-
-        finally:
-            # Always cleanup
-            if narrate:
-                self.scene.clear_narrate()
-                self.scene.clear_caption()
-            self.reset_highlighting()
-
-
-    def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
-        """Fade everything not in context block's past cone."""
-        context_inclusive_past_blocks = set(context_block.get_past_cone())
-        context_inclusive_past_blocks.add(context_block)
-
-        fade_animations = []
-        for block in self.all_blocks:
-            if block not in context_inclusive_past_blocks:
-                fade_animations.extend(block.visual_block.create_fade_animation())
-                # Also fade lines from these blocks
-                for line in block.visual_block.parent_lines:
-                    fade_animations.append(
-                        line.animate.set_stroke(opacity=self.config.fade_opacity)
-                    )
-
-        if fade_animations:
-            self.scene.play(*fade_animations)
-
-    def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
-        """Highlight all parents of context block."""
-        if not context_block.parents:
+    def set_k(self, k: int, is_locked: bool = False) -> None:
+        """Set k with lock protection."""
+        if is_locked:
+            logger.warning(
+                "Cannot change k after blocks have been added. "
+                "DAG parameters must remain consistent throughout the DAG lifecycle."
+            )
             return
+        self.config.k = k
+        if hasattr(self.config, '__post_init__'):
+            self.config.__post_init__()
 
-        parent_animations = []
-
-        # Highlight all parent blocks
-        for parent in context_block.parents:
-            parent_animations.append(
-                parent.visual_block.square.animate.set_style(
-                    stroke_color=self.config.ghostdag_parent_stroke_highlight_color,
-                    stroke_width=self.config.ghostdag_parent_stroke_highlight_width
-                )
-            )
-
-        # Highlight all parent lines (they always connect to parents)
-        for line in context_block.visual_block.parent_lines:
-            parent_animations.append(
-                line.animate.set_stroke(
-                    color=self.config.ghostdag_parent_line_highlight_color
-                )
-            )
-
-        self.scene.play(*parent_animations)
-
-        #Change lines back to normal
-        return_lines_animations = context_block.visual_block.create_line_reset_animations()
-        self.scene.play(*return_lines_animations)
-
-    def _ghostdag_show_selected_parent(self, context_block: KaspaLogicalBlock):
-        """Highlight selected parent and fade its past cone."""
-        if not context_block.selected_parent:
-            return
-
-        selected = context_block.selected_parent
-
-        # Highlight selected parent with unique style
-        self.scene.play(
-            selected.visual_block.square.animate.set_style(
-                fill_color=self.config.ghostdag_selected_parent_fill_color,
-                fill_opacity=self.config.ghostdag_selected_parent_opacity,
-                stroke_width=self.config.ghostdag_selected_parent_stroke_width,
-                stroke_color=self.config.ghostdag_selected_parent_stroke_color,
-            )
-        )
-
-        # Fade selected parent's past cone
-        selected_past = set(selected.get_past_cone())
-        fade_animations = []
-        for block in selected_past:
-            fade_animations.extend(block.visual_block.create_fade_animation())
-            for line in block.visual_block.parent_lines:
-                fade_animations.append(
-                    line.animate.set_stroke(opacity=self.config.fade_opacity)
-                )
-        # Fade selected parents parent lines as well
-        for line in context_block.selected_parent.parent_lines:
-            fade_animations.append(
-                line.animate.set_stroke(opacity=self.config.fade_opacity)
-            )
-        self.scene.play(*fade_animations)
-
-    def _ghostdag_show_mergeset(self, context_block: KaspaLogicalBlock):
-        """Visualize mergeset creation."""
-        mergeset = context_block.get_sorted_mergeset_without_sp()
-
-        # Early return if no blocks to animate
-        if not mergeset:
-            return
-
-        # Highlight mergeset blocks
-        mergeset_animations = []
-        for block in mergeset:
-            mergeset_animations.append(
-                block.visual_block.square.animate.set_style(
-                    fill_color=self.config.ghostdag_mergeset_color,
-                    stroke_width=self.config.ghostdag_mergeset_stroke_width
-                )
-            )
-
-        self.scene.play(*mergeset_animations)
-
-    def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
-        """Show sorted ordering without temporary text objects."""
-        sorted_mergeset = context_block.get_sorted_mergeset_without_sp()
-
-        # Just highlight in sequence, no text overlays
-        for i, block in enumerate(sorted_mergeset):
-            self.scene.play(
-                Indicate(block.visual_block.square, scale=1.1),
-                run_time=1
-            )
-            self.scene.wait(0.1)
-
-    #TODO clean this up AND check, it appears the first check misses sp as blue
-    def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
-        """Animate blue evaluation with blue anticone visualization."""
-        blue_candidates = context_block.get_sorted_mergeset_without_sp()
-        total_view = set(context_block.get_past_cone())
-        total_view.add(context_block)
-
-        # Start with selected parent's local POV as baseline
-        local_blue_status = context_block.selected_parent.ghostdag.local_blue_pov.copy()
-        local_blue_status[context_block.selected_parent] = True
-
-        # Initialize all candidates as not blue locally
-        for candidate in blue_candidates:
-            local_blue_status[candidate] = False
-
-        for candidate in blue_candidates:
-            # Show candidate being evaluated
-            self.scene.play(
-                Indicate(candidate.visual_block.square, scale=1.2),
-                run_time=1.0
-            )
-
-            # Get blue blocks from CURRENT local perspective
-            blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
-
-            # FIRST CHECK: Highlight blue blocks in candidate's anticone
-            candidate_anticone = context_block._get_anticone(candidate, total_view)
-            blue_in_anticone = candidate_anticone & blue_blocks
-
-            # Highlight first check
-            anticone_animations = []
-            for block in blue_in_anticone:
-                anticone_animations.append(
-                    block.visual_block.square.animate.set_style(
-                        fill_color=self.config.ghostdag_blue_color,
-                        stroke_width=8,
-                        stroke_opacity=0.9,
-                        fill_opacity=0.9,
-                    )
-                )
-
-            if anticone_animations:
-                self.scene.play(*anticone_animations)
-                self.scene.wait(0.5)
-                # Reset first check highlighting
-                reset_animations = []
-                for block in blue_in_anticone:
-                    reset_animations.append(
-                        block.visual_block.create_fade_animation()
-                    )
-                self.scene.play(*reset_animations)
-
-            # SECOND CHECK: For each blue block, check if candidate would exceed k in its anticone
-            second_check_failed = False
-            for blue_block in blue_blocks:
-                blue_anticone = context_block._get_anticone(blue_block, total_view)
-                if candidate in blue_anticone:
-                    # Highlight the blue block being checked
-                    self.scene.play(
-                        blue_block.visual_block.square.animate.set_style(
-                            stroke_color=YELLOW,
-                            stroke_width=10,
-                            stroke_opacity=1.0
-                        )
-                    )
-
-                    # Highlight blue blocks in this blue block's anticone
-                    affected_blue_in_anticone = blue_anticone & blue_blocks
-                    second_check_animations = []
-
-                    # Highlight existing blue blocks in anticone
-                    for block in affected_blue_in_anticone:
-                        if block != blue_block:  # Don't highlight the blue block itself
-                            second_check_animations.append(
-                                block.visual_block.square.animate.set_style(
-                                    fill_color=self.config.ghostdag_blue_color,
-                                    stroke_width=6,
-                                    stroke_opacity=0.8,
-                                    fill_opacity=0.8,
-                                )
-                            )
-
-                            # Highlight candidate as it would be added
-                    second_check_animations.append(
-                        candidate.visual_block.square.animate.set_style(
-                            stroke_color=ORANGE,
-                            stroke_width=8,
-                            stroke_opacity=1.0,
-                        )
-                    )
-
-                    if second_check_animations:
-                        self.scene.play(*second_check_animations)
-                        self.scene.wait(0.3)
-
-                        # Check if this would exceed k
-                        blue_count = len(affected_blue_in_anticone) + 1  # +1 for candidate
-                        if blue_count > context_block.kaspa_config.k:
-                            second_check_failed = True
-                            self.scene.caption(
-                                f"Second check FAILED: {blue_block.name} would have {blue_count} $>$ k blues in anticone")
-                            # Flash red to indicate failure
-                            self.scene.play(
-                                blue_block.visual_block.square.animate.set_fill(color=RED, opacity=0.5),
-                                candidate.visual_block.square.animate.set_fill(color=RED, opacity=0.5)
-                            )
-                        else:
-                            self.scene.caption(
-                                f"Second check PASSED: {blue_block.name} would have {blue_count} $<$= k blues in anticone")
-
-                        self.scene.wait(0.5)
-
-                        # Reset second check highlighting
-                        reset_animations = []
-                        for block in affected_blue_in_anticone:
-                            if block != blue_block:
-                                reset_animations.append(
-                                    block.visual_block.create_fade_animation()
-                                )
-                        reset_animations.append(
-                            blue_block.visual_block.square.animate.set_style(
-                                fill_color=self.config.ghostdag_blue_color,
-                                stroke_width=2,
-                                stroke_opacity=1.0,
-                                fill_opacity=self.config.ghostdag_blue_opacity
-                            )
-                        )
-                        reset_animations.append(
-                            candidate.visual_block.square.animate.set_style(
-                                stroke_width=2,
-                                stroke_opacity=1.0,
-                            )
-                        )
-                        self.scene.play(*reset_animations)
-
-                    if second_check_failed:
-                        break  # No need to check further blue blocks
-
-            # Final decision based on both checks
-            can_be_blue = context_block._can_be_blue_local(
-                candidate, local_blue_status, context_block.kaspa_config.k, total_view
-            )
-
-            if can_be_blue:
-                local_blue_status[candidate] = True
-                self.scene.caption(f"Block {candidate.name}: BLUE (accepted)")
-                self.scene.play(
-                    candidate.visual_block.square.animate.set_fill(
-                        color=self.config.ghostdag_blue_color,
-                        opacity=self.config.ghostdag_blue_opacity
-                    )
-                )
-            else:
-                local_blue_status[candidate] = False
-                self.scene.caption(f"Block {candidate.name}: RED (rejected)")
-                self.scene.play(
-                    candidate.visual_block.square.animate.set_fill(
-                        color=self.config.ghostdag_red_color,
-                        opacity=self.config.ghostdag_red_opacity
-                    )
-                )
-
-            self.scene.wait(0.3)
-
-#Complete
+    #Complete
 class BlockPlaceholder:
     """Placeholder for a block that will be created later."""
 
@@ -1096,7 +818,7 @@ class BlockManager:
                 name=block_name,
                 parents=resolved_parents if resolved_parents else [],
                 position=position,
-                kaspa_config=self.dag.config,
+                config=self.dag.config,
             )
 
             self.dag.blocks[block_name] = block
@@ -1807,7 +1529,7 @@ class RelationshipHighlighter:
                         # Create flash animation for this specific line
                         flash_copy = parent_line.copy()
                         flash_copy.set_stroke(
-                            color=self.dag.config.highlight_color,
+                            color=self.dag.config.highlight_line_color,
                             width=self.dag.config.line_stroke_width
                         )
                         from manim import ShowPassingFlash, cycle_animation
@@ -1840,7 +1562,7 @@ class RelationshipHighlighter:
                                 # Create flash animation
                                 flash_copy = parent_line.copy()
                                 flash_copy.set_stroke(
-                                    color=self.dag.config.highlight_color,
+                                    color=self.dag.config.highlight_line_color,
                                     width=self.dag.config.line_stroke_width
                                 )
                                 from manim import ShowPassingFlash, cycle_animation
@@ -1884,3 +1606,337 @@ class RelationshipHighlighter:
 class GhostDAGHighlighter:
     def __init__(self, dag):
         self.dag = dag
+
+    def animate_ghostdag_process(
+            self,
+            context_block: KaspaLogicalBlock | str,
+            narrate: bool = True,
+            step_delay: float = 1.0
+    ) -> None:
+        """Animate the complete GhostDAG process for a context block."""
+        if isinstance(context_block, str):
+            context_block = self.dag.get_block(context_block)
+            if context_block is None:
+                return
+
+        try:
+            # Step 1: Fade to context inclusive past cone
+            if narrate:
+                self.dag.scene.narrate("Fade all except past cone of context block(inclusive)")
+            self._ghostdag_fade_to_past(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 2: Show parents
+            if narrate:
+                self.dag.scene.narrate("Highlight all parent blocks")
+            self._ghostdag_highlight_parents(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 3: Show selected parent
+            if narrate:
+                self.dag.scene.narrate("Selected parent chosen with highest blue score(with uniform tiebreaking)")
+            self._ghostdag_show_selected_parent(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 4: Show mergeset
+            if narrate:
+                self.dag.scene.narrate("Creating mergeset from past cone differences")
+            self._ghostdag_show_mergeset(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 5: Show ordering
+            if narrate:
+                self.dag.scene.narrate("Ordering mergeset by blue score and hash")
+            self._ghostdag_show_ordering(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 6: Blue candidate process
+            if narrate:
+                self.dag.scene.narrate("Evaluating blue candidates (k-parameter constraint)") #TODO highlight(BLUE) blue blocks in anticone of blue candidate OR show candidate.SP k-cluster
+            self._ghostdag_show_blue_process(context_block)
+            self.dag.scene.wait(step_delay)
+
+        finally:
+            # Always cleanup
+            if narrate:
+                self.dag.scene.clear_narrate()
+                self.dag.scene.clear_caption()
+            self.dag.reset_highlighting()
+
+
+    def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
+        """Fade everything not in context block's past cone."""
+        context_inclusive_past_blocks = set(context_block.get_past_cone())
+        context_inclusive_past_blocks.add(context_block)
+
+        fade_animations = []
+        for block in self.dag.all_blocks:
+            if block not in context_inclusive_past_blocks:
+                fade_animations.extend(block.visual_block.create_fade_animation())
+                # Also fade lines from these blocks
+                for line in block.visual_block.parent_lines:
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+                    )
+
+        if fade_animations:
+            self.dag.scene.play(*fade_animations)
+
+    def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
+        """Highlight all parents of context block."""
+        if not context_block.parents:
+            return
+
+        parent_animations = []
+
+        # Highlight all parent blocks
+        for parent in context_block.parents:
+            parent_animations.append(
+                parent.visual_block.square.animate.set_style(
+                    stroke_color=self.dag.config.ghostdag_parent_stroke_highlight_color,
+                    stroke_width=self.dag.config.ghostdag_parent_stroke_highlight_width
+                )
+            )
+
+        # Highlight all parent lines (they always connect to parents)
+        for line in context_block.visual_block.parent_lines:
+            parent_animations.append(
+                line.animate.set_stroke(
+                    color=self.dag.config.ghostdag_parent_line_highlight_color
+                )
+            )
+
+        self.dag.scene.play(*parent_animations)
+
+        #Change lines back to normal
+        return_lines_animations = context_block.visual_block.create_line_reset_animations()
+        self.dag.scene.play(*return_lines_animations)
+
+    def _ghostdag_show_selected_parent(self, context_block: KaspaLogicalBlock):
+        """Highlight selected parent and fade its past cone."""
+        if not context_block.selected_parent:
+            return
+
+        selected = context_block.selected_parent
+
+        # Highlight selected parent with unique style
+        self.dag.scene.play(
+            selected.visual_block.square.animate.set_style(
+                fill_color=self.dag.config.ghostdag_selected_parent_fill_color,
+                fill_opacity=self.dag.config.ghostdag_selected_parent_opacity,
+                stroke_width=self.dag.config.ghostdag_selected_parent_stroke_width,
+                stroke_color=self.dag.config.ghostdag_selected_parent_stroke_color,
+            )
+        )
+
+        # Fade selected parent's past cone
+        selected_past = set(selected.get_past_cone())
+        fade_animations = []
+        for block in selected_past:
+            fade_animations.extend(block.visual_block.create_fade_animation())
+            for line in block.visual_block.parent_lines:
+                fade_animations.append(
+                    line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+                )
+        # Fade selected parents parent lines as well
+        for line in context_block.selected_parent.parent_lines:
+            fade_animations.append(
+                line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+            )
+        self.dag.scene.play(*fade_animations)
+
+    def _ghostdag_show_mergeset(self, context_block: KaspaLogicalBlock):
+        """Visualize mergeset creation."""
+        mergeset = context_block.get_sorted_mergeset_without_sp()
+
+        # Early return if no blocks to animate
+        if not mergeset:
+            return
+
+        # Highlight mergeset blocks
+        mergeset_animations = []
+        for block in mergeset:
+            mergeset_animations.append(
+                block.visual_block.square.animate.set_style(
+                    fill_color=self.dag.config.ghostdag_mergeset_color,
+                    stroke_width=self.dag.config.ghostdag_mergeset_stroke_width
+                )
+            )
+
+        self.dag.scene.play(*mergeset_animations)
+
+    def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
+        """Show sorted ordering without temporary text objects."""
+        sorted_mergeset = context_block.get_sorted_mergeset_without_sp()
+
+        # Just highlight in sequence, no text overlays
+        for i, block in enumerate(sorted_mergeset):
+            self.dag.scene.play(
+                Indicate(block.visual_block.square, scale=1.1),
+                run_time=1
+            )
+            self.dag.scene.wait(0.1)
+
+    #TODO clean this up AND check, it appears the first check misses sp as blue
+    def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
+        """Animate blue evaluation with blue anticone visualization."""
+        blue_candidates = context_block.get_sorted_mergeset_without_sp()
+        total_view = set(context_block.get_past_cone())
+        total_view.add(context_block)
+
+        # Start with selected parent's local POV as baseline
+        local_blue_status = context_block.selected_parent.ghostdag.local_blue_pov.copy()
+        local_blue_status[context_block.selected_parent] = True
+
+        # Initialize all candidates as not blue locally
+        for candidate in blue_candidates:
+            local_blue_status[candidate] = False
+
+        for candidate in blue_candidates:
+            # Show candidate being evaluated
+            self.dag.scene.play(
+                Indicate(candidate.visual_block.square, scale=1.2),
+                run_time=1.0
+            )
+
+            # Get blue blocks from CURRENT local perspective
+            blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
+
+            # FIRST CHECK: Highlight blue blocks in candidate's anticone
+            candidate_anticone = context_block._get_anticone(candidate, total_view)
+            blue_in_anticone = candidate_anticone & blue_blocks
+
+            # Highlight first check
+            anticone_animations = []
+            for block in blue_in_anticone:
+                anticone_animations.append(
+                    block.visual_block.square.animate.set_style(
+                        fill_color=self.dag.config.ghostdag_blue_color,
+                        stroke_width=8,
+                        stroke_opacity=0.9,
+                        fill_opacity=0.9,
+                    )
+                )
+
+            if anticone_animations:
+                self.dag.scene.play(*anticone_animations)
+                self.dag.scene.wait(0.5)
+                # Reset first check highlighting
+                reset_animations = []
+                for block in blue_in_anticone:
+                    reset_animations.append(
+                        block.visual_block.create_fade_animation()
+                    )
+                self.dag.scene.play(*reset_animations)
+
+            # SECOND CHECK: For each blue block, check if candidate would exceed k in its anticone
+            second_check_failed = False
+            for blue_block in blue_blocks:
+                blue_anticone = context_block._get_anticone(blue_block, total_view)
+                if candidate in blue_anticone:
+                    # Highlight the blue block being checked
+                    self.dag.scene.play(
+                        blue_block.visual_block.square.animate.set_style(
+                            stroke_color=YELLOW,
+                            stroke_width=10,
+                            stroke_opacity=1.0
+                        )
+                    )
+
+                    # Highlight blue blocks in this blue block's anticone
+                    affected_blue_in_anticone = blue_anticone & blue_blocks
+                    second_check_animations = []
+
+                    # Highlight existing blue blocks in anticone
+                    for block in affected_blue_in_anticone:
+                        if block != blue_block:  # Don't highlight the blue block itself
+                            second_check_animations.append(
+                                block.visual_block.square.animate.set_style(
+                                    fill_color=self.dag.config.ghostdag_blue_color,
+                                    stroke_width=6,
+                                    stroke_opacity=0.8,
+                                    fill_opacity=0.8,
+                                )
+                            )
+
+                    # Highlight candidate as it would be added
+                    second_check_animations.append(
+                        candidate.visual_block.square.animate.set_style(
+                            stroke_color=ORANGE,
+                            stroke_width=8,
+                            stroke_opacity=1.0,
+                        )
+                    )
+
+                    if second_check_animations:
+                        self.dag.scene.play(*second_check_animations)
+                        self.dag.scene.wait(0.3)
+
+                        # Check if this would exceed k
+                        blue_count = len(affected_blue_in_anticone) + 1  # +1 for candidate
+                        if blue_count > context_block.kaspa_config.k:
+                            second_check_failed = True
+                            self.dag.scene.caption(
+                                f"Second check FAILED: {blue_block.name} would have {blue_count} $>$ k blues in anticone")
+                            # Flash red to indicate failure
+                            self.dag.scene.play(
+                                blue_block.visual_block.square.animate.set_fill(color=RED, opacity=0.5),
+                                candidate.visual_block.square.animate.set_fill(color=RED, opacity=0.5)
+                            )
+                        else:
+                            self.dag.scene.caption(
+                                f"Second check PASSED: {blue_block.name} would have {blue_count} $<$= k blues in anticone")
+
+                        self.dag.scene.wait(0.5)
+
+                        # Reset second check highlighting
+                        reset_animations = []
+                        for block in affected_blue_in_anticone:
+                            if block != blue_block:
+                                reset_animations.append(
+                                    block.visual_block.create_fade_animation()
+                                )
+                        reset_animations.append(
+                            blue_block.visual_block.square.animate.set_style(
+                                fill_color=self.dag.config.ghostdag_blue_color,
+                                stroke_width=2,
+                                stroke_opacity=1.0,
+                                fill_opacity=self.dag.config.ghostdag_blue_opacity
+                            )
+                        )
+                        reset_animations.append(
+                            candidate.visual_block.square.animate.set_style(
+                                stroke_width=2,
+                                stroke_opacity=1.0,
+                            )
+                        )
+                        self.dag.scene.play(*reset_animations)
+
+                    if second_check_failed:
+                        break  # No need to check further blue blocks
+
+            # Final decision based on both checks
+            can_be_blue = context_block._can_be_blue_local(
+                candidate, local_blue_status, context_block.kaspa_config.k, total_view
+            )
+
+            if can_be_blue:
+                local_blue_status[candidate] = True
+                self.dag.scene.caption(f"Block {candidate.name}: BLUE (accepted)")
+                self.dag.scene.play(
+                    candidate.visual_block.square.animate.set_fill(
+                        color=self.dag.config.ghostdag_blue_color,
+                        opacity=self.dag.config.ghostdag_blue_opacity
+                    )
+                )
+            else:
+                local_blue_status[candidate] = False
+                self.dag.scene.caption(f"Block {candidate.name}: RED (rejected)")
+                self.dag.scene.play(
+                    candidate.visual_block.square.animate.set_fill(
+                        color=self.dag.config.ghostdag_red_color,
+                        opacity=self.dag.config.ghostdag_red_opacity
+                    )
+                )
+
+            self.dag.scene.wait(0.3)

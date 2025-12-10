@@ -5,16 +5,16 @@ from __future__ import annotations
 __all__ = ["KaspaVisualBlock"]
 
 import copy
-from typing import TYPE_CHECKING, Callable, Any
+from typing import TYPE_CHECKING, Callable, Any, Optional
 
 import numpy as np
 from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation, \
     UpdateFromAlphaFunc
 
-from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
 
 if TYPE_CHECKING:
+    from .config import _KaspaConfigInternal
     from .logical_block import KaspaLogicalBlock
 
 # noinspection PyProtectedMember
@@ -116,7 +116,7 @@ class KaspaVisualBlock(BaseVisualBlock):
     KaspaBlockConfig : Configuration object for Kaspa blocks
     """
 
-    kaspa_config: KaspaConfig
+    kaspa_config: _KaspaConfigInternal
     parent_lines: list[ParentLine]
     logical_block: KaspaLogicalBlock
     background_rect: BackgroundRectangle
@@ -126,12 +126,13 @@ class KaspaVisualBlock(BaseVisualBlock):
             label_text: str,
             position: tuple[float, float],
             parents: list[KaspaVisualBlock] | None = None,
-            kaspa_config: KaspaConfig = DEFAULT_KASPA_CONFIG
+            config: _KaspaConfigInternal = None
     ) -> None:
-        # Pass config directly to BaseVisualBlock
-        super().__init__(label_text, position, kaspa_config)
+        if config is None:
+            raise ValueError("config parameter is required")
+        super().__init__(label_text, position, config)
 
-        self.kaspa_config = kaspa_config
+        self.kaspa_config = config
         # Handle parent lines with config
         if parents:
             self.parent_lines = []
@@ -376,7 +377,7 @@ class KaspaVisualBlock(BaseVisualBlock):
     def create_highlight_animation(self, color=None, stroke_width=None) -> Any:
         """Create animation to highlight this block's stroke using config."""
         return self.square.animate.set_stroke(
-            self.kaspa_config.highlight_color,
+            self.kaspa_config.highlight_block_color,
             width=self.kaspa_config.highlight_stroke_width
         )
 
@@ -464,7 +465,7 @@ class KaspaVisualBlock(BaseVisualBlock):
             List of flash line copies that need to be added to scene
         """
         flash_lines = []
-        highlight_color = self.kaspa_config.highlight_color
+        highlight_color = self.kaspa_config.highlight_line_color
         cycle_time = self.kaspa_config.highlight_line_cycle_time
 
         for i, line in enumerate(self.parent_lines):

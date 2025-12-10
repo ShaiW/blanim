@@ -3,6 +3,134 @@
 from blanim import *
 from blanim.blockDAGs.kaspa.dag import KaspaDAG
 
+# user created theme to change parameters of the dag, visual appearance, ect with typehinting
+def test_theme() -> KaspaConfig:
+    """Test theme with various configuration parameters."""
+    return {
+        "block_color": RED,
+        "fill_opacity": 0.7,
+        "stroke_color": BLUE,
+        "stroke_width": 5,
+        "k": 25,
+        "label_font_size": 32,
+        "horizontal_spacing": 2.5,
+        "vertical_spacing": 1.5
+    }
+
+class TestConfigBasic(HUD2DScene):
+    """Test basic configuration application and chaining."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Test chaining and theme application
+        dag.apply_config(test_theme()).set_block_color(YELLOW).set_fill_opacity(0.5)
+
+        # Create blocks to verify config is applied
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+        b2 = dag.add_block(parents=[genesis])
+
+        self.wait(1)
+
+        # Verify config values
+        assert dag.config.block_color == YELLOW
+        assert dag.config.fill_opacity == 0.5
+        assert dag.config.k == 25
+
+        text = Text("Config Basic Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestConfigGenesisLock(HUD2DScene):
+    """Test that critical parameters are locked after genesis creation."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Set k before genesis (should work)
+        dag.set_k(20)
+        assert dag.config.k == 20
+
+        # Create genesis block
+        genesis = dag.add_block()
+
+        # Try to change k after genesis (should warn and not change)
+        dag.set_k(30)  # This will log a warning
+        assert dag.config.k == 20  # Should remain unchanged
+
+        # Visual parameters should still change
+        dag.set_block_color(PURPLE)
+        assert dag.config.block_color == PURPLE
+
+        self.wait(1)
+
+        text = Text("Genesis Lock Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestConfigValidation(HUD2DScene):
+    """Test configuration validation and auto-correction."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Test invalid opacity values (should auto-correct)
+        dag.apply_config({
+            "fill_opacity": -0.5,  # Should auto-correct to 0.01
+            "stroke_opacity": 1.5,  # Should auto-correct to 1.0
+            "fade_opacity": -0.1,  # Should auto-correct to 0
+            "k": -5,  # Should auto-correct to 0
+            "stroke_width": 0,  # Should auto-correct to 1
+        })
+
+        # Verify auto-correction
+        assert dag.config.fill_opacity == 0.01
+        assert dag.config.stroke_opacity == 1.0
+        assert dag.config.fade_opacity == 0
+        assert dag.config.k == 0
+        assert dag.config.stroke_width == 1
+
+        # Create blocks to ensure config works
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+
+        self.wait(1)
+
+        text = Text("Validation Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
+
+class TestConfigPartialUpdate(HUD2DScene):
+    """Test partial configuration updates with TypedDict."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+
+        # Apply partial config (only specified parameters change)
+        dag.apply_config({
+            "block_color": GREEN,
+            "k": 15,
+        })
+
+        # Verify only specified parameters changed
+        assert dag.config.block_color == GREEN
+        assert dag.config.k == 15
+        assert dag.config.fill_opacity == 0.3  # Should remain default
+
+        # Create blocks
+        genesis = dag.add_block()
+        b1 = dag.add_block(parents=[genesis])
+
+        self.wait(1)
+
+        text = Text("Partial Update Test Passed", color=GREEN).to_edge(UP)
+        self.play(Write(text))
+        self.wait(2)
+
 #TODO look at changing animation sequence from create(), move_camera(), vertical_shift()
 class TestAutomaticNaming(HUD2DScene):
     """Test automatic block naming with DAG structure."""
@@ -623,9 +751,12 @@ class TestNormalConditions(HUD2DScene):
 
 #        dag.test_block_generation()
         # Observed conditions
-        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 400))
-        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 5000))
-        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 400))
+#        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 400))
+        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 4500))
+#        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 400))
+        dag.add_block(dag.get_current_tips())
+        self.wait(3)
+#        dag.highlight_anticone(dag.get_block("b6b"))
 
         # Normal conditions (40% of max delay)
 #        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=0.4)
@@ -935,3 +1066,4 @@ class ComprehensiveHighlightingExample(HUD2DScene):
         self.wait(4)
         dag.reset_highlighting()
         self.wait(1)
+

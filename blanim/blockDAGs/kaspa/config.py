@@ -1,14 +1,82 @@
 # blanim\blanim\blockDAGs\kaspa\config.py
 
 from dataclasses import dataclass
-from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, PURPLE, RED
+from typing import TypedDict
+
+from manim import BLUE, WHITE, ParsableManimColor, YELLOW, GREEN, PURPLE, RED, logger
 from ...core.base_config import BaseBlockConfig
 
-__all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig"]
+__all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig", "_KaspaConfigInternal"]
 
+
+# Public TypedDict for user type hints
+class KaspaConfig(TypedDict, total=False):
+    """Typed configuration for Kaspa blockDAG visualization."""
+    # GHOSTDAG Parameters
+    k: int
+
+    # Visual Styling - Block Appearance
+    block_color: ParsableManimColor
+    fill_opacity: float
+    stroke_color: ParsableManimColor
+    stroke_width: float
+    stroke_opacity: float
+    side_length: float
+
+    # Visual Styling - Label Appearance
+    label_font_size: int
+    label_color: ParsableManimColor
+    label_opacity: float
+
+    # Visual Styling - Line Appearance
+    selected_parent_line_color: ParsableManimColor
+    other_parent_line_color: ParsableManimColor
+    line_stroke_width: float
+    line_stroke_opacity: float
+
+    # Animation Timing
+    create_run_time: float
+    label_change_run_time: float
+    movement_run_time: float
+    camera_follow_time: float
+
+    # Highlighting Behavior
+    context_block_color: ParsableManimColor
+    context_block_cycle_time: float
+    context_block_stroke_width: float
+    highlight_block_color: ParsableManimColor
+    highlight_line_color: ParsableManimColor
+    highlight_stroke_width: float
+    fade_opacity: float
+    flash_connections: bool
+    highlight_line_cycle_time: float
+
+    # Spatial Layout
+    genesis_x: float
+    genesis_y: float
+    horizontal_spacing: float
+    vertical_spacing: float
+
+    # GHOSTDAG-specific colors
+    ghostdag_parent_stroke_highlight_color: ParsableManimColor
+    ghostdag_parent_line_highlight_color: ParsableManimColor
+    ghostdag_selected_parent_stroke_color: ParsableManimColor
+    ghostdag_parent_stroke_highlight_width: int
+    ghostdag_selected_parent_fill_color: ParsableManimColor
+    ghostdag_mergeset_color: ParsableManimColor
+    ghostdag_order_color: ParsableManimColor
+    ghostdag_blue_color: ParsableManimColor
+    ghostdag_red_color: ParsableManimColor
+    ghostdag_highlight_width: int
+    ghostdag_selected_parent_stroke_width: int
+    ghostdag_mergeset_stroke_width: int
+    ghostdag_selected_parent_opacity: float
+    ghostdag_blue_opacity: float
+    ghostdag_red_opacity: float
+    ghostdag_selected_fill: ParsableManimColor
 
 @dataclass
-class KaspaConfig(BaseBlockConfig):
+class _KaspaConfigInternal(BaseBlockConfig):
     """Complete configuration for Kaspa blockDAG visualization.
 
     Combines visual styling and spatial layout into a single config.
@@ -16,7 +84,6 @@ class KaspaConfig(BaseBlockConfig):
 
     WARNING opacity must ALWAYS be > 0
     """
-    #TODO change to using setters instead of user defining config, user can overwrite partially without breaking blanim(blanim is a python package)
 
     # ========================================
     # GHOSTDAG - Parameter
@@ -27,7 +94,6 @@ class KaspaConfig(BaseBlockConfig):
     # GHOSTDAG - GhostDAG-specific colors and styling
     # ========================================
 
-    #TODO name and define these better
     ghostdag_parent_stroke_highlight_color = YELLOW
     ghostdag_parent_line_highlight_color = YELLOW
     ghostdag_selected_parent_stroke_color = GREEN
@@ -91,7 +157,8 @@ class KaspaConfig(BaseBlockConfig):
     context_block_stroke_width: float = 8
 
     # Highlight blocks with relationships to the Context Block
-    highlight_color: ParsableManimColor = "#70C7BA"
+    highlight_block_color: ParsableManimColor = "#70C7BA"
+    highlight_line_color = YELLOW
     highlight_stroke_width: float = 8
 
     fade_opacity: float = 0.1 # Opacity to fade unrelated blocks(and lines) to during a highlight animation
@@ -111,5 +178,38 @@ class KaspaConfig(BaseBlockConfig):
     horizontal_spacing: float = 2.0
     vertical_spacing: float = 1.0  # For parallel blocks during forks
 
-# Default configuration instance
-DEFAULT_KASPA_CONFIG = KaspaConfig()
+    def __post_init__(self):
+        """Validate and auto-correct values with warnings."""
+        # Auto-correct opacity values
+        if self.fill_opacity <= 0:
+            logger.warning("fill_opacity must be > 0, auto-correcting to 0.01")
+            self.fill_opacity = 0.01
+        elif self.fill_opacity > 1.0:
+            logger.warning("fill_opacity must be <= 1.0, auto-correcting to 1.0")
+            self.fill_opacity = 1.0
+
+        if self.stroke_opacity <= 0:
+            logger.warning("stroke_opacity must be > 0, auto-correcting to 0.01")
+            self.stroke_opacity = 0.01
+        elif self.stroke_opacity > 1.0:
+            logger.warning("stroke_opacity must be <= 1.0, auto-correcting to 1.0")
+            self.stroke_opacity = 1.0
+
+        if self.fade_opacity < 0:
+            logger.warning("fade_opacity must be >= 0, auto-correcting to 0")
+            self.fade_opacity = 0
+        elif self.fade_opacity > 1.0:
+            logger.warning("fade_opacity must be <= 1.0, auto-correcting to 1.0")
+            self.fade_opacity = 1.0
+
+            # Auto-correct other critical values
+        if self.stroke_width < 1:
+            logger.warning("stroke_width must be >= 1, auto-correcting to 0")
+            self.stroke_width = 1
+
+        if self.k < 0:
+            logger.warning("k must be >= 0, auto-correcting to 0")
+            self.k = 0
+
+        # Default configuration instance
+DEFAULT_KASPA_CONFIG = _KaspaConfigInternal()

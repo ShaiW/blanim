@@ -7,10 +7,13 @@ __all__ = ["KaspaLogicalBlock"]
 import secrets
 from dataclasses import dataclass, field
 
-from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from .visual_block import KaspaVisualBlock
 from typing import Optional, List, Set, Any, Dict
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ... import _KaspaConfigInternal
 
 @dataclass
 class GhostDAGData:
@@ -30,8 +33,12 @@ class KaspaLogicalBlock:
             name: str,
             parents: Optional[List[KaspaLogicalBlock]] = None,
             position: tuple[float, float] = (0, 0),
-            kaspa_config: KaspaConfig = DEFAULT_KASPA_CONFIG
+            config: _KaspaConfigInternal = None
     ):
+        if config is None:
+            raise ValueError("config parameter is required")
+        self.config = config
+
         # Identity
         self.name = name
         # Tie-breaker (instead of actually hashing, just use a random number like a cryptographic hash)
@@ -50,7 +57,7 @@ class KaspaLogicalBlock:
             self.selected_parent = self._select_parent()
             self.parents.sort(key=lambda p: p != self.selected_parent) #move SP to the index 0 before sending to visual
             self._create_unordered_mergeset()
-            self._compute_ghostdag(kaspa_config.k)
+            self._compute_ghostdag(self.config.k)
 
         # Create visual after GHOSTDAG computation
         parent_visuals = [p.visual_block for p in self.parents]
@@ -58,7 +65,7 @@ class KaspaLogicalBlock:
             label_text=str(self.ghostdag.blue_score),#TODO update this  NOTE: when passing an empty string, positioning breaks (fixed moving blocks by overriding move_to with only visual.square)
             position=position,
             parents=parent_visuals,
-            kaspa_config=kaspa_config
+            config=self.config
         )
         self._visual.logical_block = self  # Bidirectional link
 
