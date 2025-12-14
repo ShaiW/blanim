@@ -14,7 +14,7 @@ def test_theme() -> KaspaConfig:
         "k": 25,
         "label_font_size": 32,
         "horizontal_spacing": 2.5,
-        "vertical_spacing": 1.5
+        "vertical_spacing": 1.5,
     }
 
 class TestConfigBasic(HUD2DScene):

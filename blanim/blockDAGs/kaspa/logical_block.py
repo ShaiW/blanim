@@ -31,6 +31,7 @@ class KaspaLogicalBlock:
     def __init__(
             self,
             name: str,
+            timestamp: Optional[float] = None,
             parents: Optional[List[KaspaLogicalBlock]] = None,
             position: tuple[float, float] = (0, 0),
             config: _KaspaConfigInternal = None
@@ -41,6 +42,8 @@ class KaspaLogicalBlock:
 
         # Identity
         self.name = name
+        # Time Created
+        self.timestamp = timestamp
         # Tie-breaker (instead of actually hashing, just use a random number like a cryptographic hash)
         self.hash = secrets.randbits(32)  # 32-bit random integer to keep prob(collision) = low
 

@@ -95,8 +95,7 @@ State Tracking:
 TODO / Future Improvements:
 ---------------------------
 
-5. **Block naming convention**: Current naming (Gen, B1, B2, ...) is inherited from
-   blockchain implementation. May need updating for Kaspa-specific conventions.
+5. **Block naming convention**: Verify this is Kaspa-specific.
    See `_generate_block_name()` and `get_block()` docstrings for update locations.
 """
 
@@ -205,15 +204,15 @@ class KaspaDAG:
     # Block Handling #Complete
     ########################################
 
-    def queue_block(self, parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None, name: Optional[str] = None) -> BlockPlaceholder:
+    def queue_block(self, timestamp:float , parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None, name: Optional[str] = None) -> BlockPlaceholder:
         """Queue a block that will be created later."""
-        return self.block_manager.queue_block(parents, name)
+        return self.block_manager.queue_block(timestamp, parents, name)
 
     def next_step(self)-> None:
         """Play next pending block creation/shift animation"""
-        return self.block_manager.next_step()  #TODO can return be removed?
+        self.block_manager.next_step()
 
-    def catch_up(self):
+    def catch_up(self)-> None:
         """Play all pending block creation/shift animations"""
         self.block_manager.catch_up()
 
@@ -226,7 +225,7 @@ class KaspaDAG:
         return self.block_manager.add_blocks(blocks_data)
 
     ########################################
-    # Highlighting Relationships #TODO look at changing this to something more like GHOSTDAG highlighting (or the other way around)
+    # Highlighting Relationships
     ########################################
 
     def highlight_past(self, focused_block: KaspaLogicalBlock | str) -> None:
@@ -329,41 +328,43 @@ class KaspaDAG:
 
         return blocks
 
-    # Tested
+    @staticmethod
+    def get_tips_at_time(tip_history: List[tuple], target_time: float) -> set:
+        """Find tips at a specific time using binary search."""
+        import bisect
+        idx = bisect.bisect_right(tip_history, (target_time, set())) - 1
+        return tip_history[idx][1] if idx >= 0 else set()
+
     def create_blocks_from_timestamps(self, timestamps: List[float], actual_delay: float) -> List[dict]:
-        """
-        Convert timestamps to actual blocks with parent relationships.
-        A block references ALL tip blocks that are older than the network delay window.
-        """
         timestamps.sort()
         blocks = []
-        tips = set()  # Track current tips
-        all_blocks = []  # Track all blocks created so far
+        tips = set()
+        tip_history = []  # NEW: Track tip history
+        all_blocks = []
 
         for i, timestamp in enumerate(timestamps):
-            # Find all blocks that are old enough to have propagated
+            # Store current tips in history
+            tip_history.append((timestamp, tips.copy()))
+
+            # Find visible blocks (unchanged)
             visible_blocks = [
                 block for block in all_blocks
                 if block['timestamp'] <= timestamp - actual_delay
             ]
 
-            # From visible blocks, select only those that are still tips
+            # FIXED: Use historical tips instead of current tips
+            historical_tips = self.get_tips_at_time(tip_history, timestamp - actual_delay)
             visible_parents = [
                 block for block in visible_blocks
-                if block['hash'] in tips
+                if block['hash'] in historical_tips
             ]
 
-            # If no visible tips, select the most recent visible block
+            # Rest of function unchanged...
             if not visible_parents and visible_blocks:
                 visible_parents = [visible_blocks[-1]]
 
-                # Get parent hashes
-            if visible_parents:
-                parents = [p['hash'] for p in visible_parents]
-            else:
-                parents = []  # Genesis block
+            parents = [p['hash'] for p in visible_parents] if visible_parents else []
 
-            # Create new block
             new_block = {
                 'hash': f"block_{i}",
                 'timestamp': timestamp,
@@ -373,16 +374,14 @@ class KaspaDAG:
             blocks.append(new_block)
             all_blocks.append(new_block)
 
-            # Update tips - remove parents that are no longer tips
+            # Update tips (unchanged)
             for parent_hash in parents:
                 tips.discard(parent_hash)
-
-                # Add new block as a tip
             tips.add(new_block['hash'])
 
         return blocks
 
-    # Tested TODO create blocks from this return #TODO add timestamp to logical block (possible to display the progress of time)
+    # Tested
     def test_block_generation(self, duration_in_seconds: float, bps_float: float, actual_delay_in_ms: float):
         """Test function to visualize block generation and relationships."""
 
@@ -448,6 +447,7 @@ class KaspaDAG:
 
         for block_dict in simulator_blocks:
             block_hash = block_dict['hash']
+            block_timestamp = block_dict['timestamp']
             parent_hashes = block_dict.get('parents', [])
 
             # Resolve parent hashes to actual blocks
@@ -464,7 +464,7 @@ class KaspaDAG:
                 parents = initial_tips
 
                 # Create the block using existing infrastructure
-            placeholder = self.queue_block(parents=parents, name=block_hash)
+            placeholder = self.queue_block(parents=parents, name=block_hash, timestamp=block_timestamp)
             self.catch_up()  # Execute the creation
 
             actual_block = placeholder.actual_block
@@ -528,7 +528,7 @@ class KaspaDAG:
                 num_parents = min(len(current_tips), np.random.randint(1, 3))
                 parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
 
-                placeholder = self.queue_block(parents=parents)
+                placeholder = self.queue_block(parents=parents, timestamp=0)
                 new_placeholders.append(placeholder)
 
                 # Execute all queued steps for this round
@@ -615,7 +615,7 @@ class KaspaDAG:
             # Use current tips as parents
             parents = current_tips.copy()
 
-            placeholder = self.queue_block(parents=parents)
+            placeholder = self.queue_block(parents=parents, timestamp=0)
             self.catch_up()
 
             # Update tips
@@ -662,7 +662,7 @@ class KaspaDAG:
                 # EVERY new block references ALL blocks from previous round
                 parents = current_tips.copy()  # Use all current tips as parents
 
-                placeholder = self.queue_block(parents=parents)
+                placeholder = self.queue_block(parents=parents, timestamp=0)
                 new_placeholders.append(placeholder)
 
                 # Execute all queued steps for this round
@@ -715,7 +715,7 @@ class KaspaDAG:
                     parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
 
                     # Use queue_block instead of create_block
-                placeholder = self.queue_block(parents=parents)
+                placeholder = self.queue_block(parents=parents, timestamp=0)
                 new_placeholders.append(placeholder)
 
                 # Execute all queued steps for this round
@@ -774,8 +774,9 @@ class KaspaConfigManager:
 class BlockPlaceholder:
     """Placeholder for a block that will be created later."""
 
-    def __init__(self, dag, parents, name):
+    def __init__(self, dag, timestamp, parents, name):
         self.dag = dag
+        self.timestamp = timestamp
         self.parents = parents
         self.name = name
         self.actual_block = None  # Will be set automatically when created
@@ -793,10 +794,10 @@ class BlockManager:
     def __init__(self, dag):
         self.dag = dag
 
-    def queue_block(self, parents=None, name=None) -> BlockPlaceholder:
+    def queue_block(self, timestamp, parents=None, name=None) -> BlockPlaceholder:
         """Queue block creation, return placeholder that auto-resolves."""
 
-        placeholder = BlockPlaceholder(self, parents, name)
+        placeholder = BlockPlaceholder(self, timestamp, parents, name)
 
         def create_and_animate_block():
             # Resolve parent placeholders to actual blocks
@@ -816,6 +817,7 @@ class BlockManager:
 
             block = KaspaLogicalBlock(
                 name=block_name,
+                timestamp=timestamp,
                 parents=resolved_parents if resolved_parents else [],
                 position=position,
                 config=self.dag.config,
@@ -850,7 +852,7 @@ class BlockManager:
 
     def add_block(self, parents=None, name=None) -> KaspaLogicalBlock:
         """Create and animate a block immediately."""
-        placeholder = self.queue_block(parents=parents, name=name)
+        placeholder = self.queue_block(parents=parents, name=name, timestamp=0)
         self.next_step()  # Execute block creation TODO does this break IF there is a pending queue of blocks when this is called
         self.next_step()  # Execute repositioning
         return placeholder.actual_block  # Return actual block, not placeholder
@@ -880,14 +882,14 @@ class BlockManager:
         # Check if this is a marked repositioning function
         if getattr(func, 'is_repositioning', False):
             if self.dag.all_blocks:
-                x_pos = self.dag.all_blocks[-1].visual_block.square.get_center()[0] #TODO pretty sure get_center() on block is overridden to return squares center only
+                x_pos = self.dag.all_blocks[-1].visual_block.get_center()[0]
                 column_blocks = [
                     b for b in self.dag.all_blocks
-                    if abs(b.visual_block.square.get_center()[0] - x_pos) < 0.01
+                    if abs(b.visual_block.get_center()[0] - x_pos) < 0.01
                 ]
 
                 if column_blocks:
-                    current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
+                    current_ys = [b.visual_block.get_center()[1] for b in column_blocks]
                     current_center_y = (max(current_ys) + min(current_ys)) / 2
                     shift_y = self.dag.config.genesis_y - current_center_y
 
@@ -1384,7 +1386,7 @@ class BlockRetrieval:
             suffix = chr(ord('a') + len(blocks_at_round) - 1)
             return f"B{round_number}{suffix}"
 
-#TODO fully test this
+#Complete
 class RelationshipHighlighter:
     def __init__(self, dag):
         self.dag = dag
@@ -1644,7 +1646,7 @@ class GhostDAGHighlighter:
             self._ghostdag_show_mergeset(context_block)
             self.dag.scene.wait(step_delay)
 
-            # Step 5: Show ordering
+            # Step 5: Show ordering #TODO create copies of blocks as ordering them, and line them up in order
             if narrate:
                 self.dag.scene.narrate("Ordering mergeset by blue score and hash")
             self._ghostdag_show_ordering(context_block)
