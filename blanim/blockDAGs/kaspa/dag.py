@@ -328,6 +328,87 @@ class KaspaDAG:
 
         return blocks
 
+    #_________________________________________________
+    #TODO modify this to use current dag tips for each iteration instead of starting from scratch each time
+    def add_simulated_blocks(self, duration: float, bps: float, delay: float) -> List[dict]:
+        """
+        Simulate and return blocks continuing from current DAG tips.
+        Uses existing tips as starting state, not empty genesis.
+        """
+        # Get current tips from existing DAG
+        current_tips = {block.name for block in self.get_current_tips()}
+
+        # Generate timestamps
+        timestamps = self.generate_blocks_continuous(duration, bps)
+
+        # Use modified create_blocks_from_timestamps that starts with current tips
+        return self.create_blocks_from_timestamps_debug(
+            timestamps, delay
+        )
+
+    @staticmethod
+    def create_blocks_from_timestamps_debug(timestamps: List[float], actual_delay: float) -> List[dict]:
+        """
+        Debug version that prints detailed information about parent selection.
+        Selects ALL childless blocks as parents.
+        """
+        timestamps.sort()
+        blocks = []
+
+        print(f"\n=== DEBUG: Starting block generation ===")
+        print(f"Actual delay: {actual_delay}ms")
+        print(f"Number of timestamps: {len(timestamps)}")
+
+        for i, timestamp in enumerate(timestamps):
+            print(f"\n--- Block {i} at {timestamp:.0f}ms ---")
+
+            # Find blocks that are old enough (not parallel)
+            visible_blocks = [
+                block for block in blocks
+                if block['timestamp'] <= timestamp - actual_delay
+            ]
+            print(
+                f"Visible blocks (timestamp <= {timestamp - actual_delay:.0f}ms): {[b['hash'] for b in visible_blocks]}")
+
+            # Find tips among visible blocks (blocks with no children)
+            tips = set()
+            for candidate in visible_blocks:
+                # Check if any visible block has this candidate as parent
+                has_child = any(candidate['hash'] in other['parents'] for other in visible_blocks)
+                if not has_child:
+                    tips.add(candidate['hash'])
+
+            print(f"Tips among visible blocks (no children): {tips}")
+
+            # Select ALL tips as parents
+            if tips:
+                parents = list(tips)  # Select ALL childless blocks
+                print(f"Selected ALL tips as parents: {parents}")
+            elif visible_blocks:
+                # Fallback to most recent visible block
+                parents = [visible_blocks[-1]['hash']]
+                print(f"No tips found, using most recent visible: {parents}")
+            else:
+                parents = []
+                print("No visible blocks, creating genesis")
+
+                # Create new block
+            new_block = {
+                'hash': f"block_{i}",
+                'timestamp': timestamp,
+                'parents': parents
+            }
+            blocks.append(new_block)
+            print(f"Created {new_block['hash']} with parents {parents}")
+
+        print(f"\n=== SUMMARY ===")
+        avg_parents = sum(len(b['parents']) for b in blocks) / len(blocks) if blocks else 0
+        print(f"Total blocks: {len(blocks)}")
+        print(f"Average parents per block: {avg_parents:.2f}")
+
+        return blocks
+    #_________________________________________________
+
     @staticmethod
     def get_tips_at_time(tip_history: List[tuple], target_time: float) -> set:
         """Find tips at a specific time using binary search."""
@@ -339,27 +420,27 @@ class KaspaDAG:
         timestamps.sort()
         blocks = []
         tips = set()
-        tip_history = []  # NEW: Track tip history
+        tip_history = []  # Store (timestamp, tips) pairs
         all_blocks = []
 
-        for i, timestamp in enumerate(timestamps):
-            # Store current tips in history
-            tip_history.append((timestamp, tips.copy()))
+        # Initialize with empty tips at time 0
+        tip_history.append((0, set()))
 
-            # Find visible blocks (unchanged)
+        for i, timestamp in enumerate(timestamps):
+            # Find visible blocks
             visible_blocks = [
                 block for block in all_blocks
                 if block['timestamp'] <= timestamp - actual_delay
             ]
 
-            # FIXED: Use historical tips instead of current tips
+            # Get historical tips
             historical_tips = self.get_tips_at_time(tip_history, timestamp - actual_delay)
             visible_parents = [
                 block for block in visible_blocks
                 if block['hash'] in historical_tips
             ]
 
-            # Rest of function unchanged...
+            # Create block
             if not visible_parents and visible_blocks:
                 visible_parents = [visible_blocks[-1]]
 
@@ -374,10 +455,13 @@ class KaspaDAG:
             blocks.append(new_block)
             all_blocks.append(new_block)
 
-            # Update tips (unchanged)
+            # Update tips FIRST
             for parent_hash in parents:
                 tips.discard(parent_hash)
             tips.add(new_block['hash'])
+
+            # THEN store in history
+            tip_history.append((timestamp, tips.copy()))
 
         return blocks
 
@@ -1805,7 +1889,7 @@ class GhostDAGHighlighter:
             blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
 
             # FIRST CHECK: Highlight blue blocks in candidate's anticone
-            candidate_anticone = context_block._get_anticone(candidate, total_view)
+            candidate_anticone = context_block.get_anticone(candidate, total_view)
             blue_in_anticone = candidate_anticone & blue_blocks
 
             # Highlight first check
@@ -1834,7 +1918,7 @@ class GhostDAGHighlighter:
             # SECOND CHECK: For each blue block, check if candidate would exceed k in its anticone
             second_check_failed = False
             for blue_block in blue_blocks:
-                blue_anticone = context_block._get_anticone(blue_block, total_view)
+                blue_anticone = context_block.get_anticone(blue_block, total_view)
                 if candidate in blue_anticone:
                     # Highlight the blue block being checked
                     self.dag.scene.play(

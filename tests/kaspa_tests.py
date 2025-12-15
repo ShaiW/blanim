@@ -745,31 +745,31 @@ class TestHighlightingAnticone(HUD2DScene):
 
 class TestNormalConditions(HUD2DScene):
     """Test highlighting anticone in DAG structure."""
-
+#TODO change block creation animations to move paralell blocks at the same time a new block is drawn to speed up
     def construct(self):
         dag = KaspaDAG(scene=self)
+#        dag.set_k(18)
 
-#        dag.test_block_generation()
-        # Observed conditions
-#        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 400))
-        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 4500))
-#        dag.create_blocks_from_simulator_list(dag.test_block_generation(20, 1, 400))
+        # Add first set of blocks
+        self.wait(1)
+#        self.narrate("GHOSTDAG Under Changing Delay")
+#        self.caption("These first 20 seconds, network delay is normal.")
+        blocks1 = dag.add_simulated_blocks(100, 1, 400)
+#        dag.create_blocks_from_simulator_list(blocks1)
+
+        # Add second set continuing from first
+#        self.caption("These next 20 seconds, network has degraded to max delay.")
+#        blocks2 = dag.add_simulated_blocks(20, 1, 5000)
+#        dag.create_blocks_from_simulator_list(blocks2)
+
+        # Add third set continuing from second
+#        self.caption("These next 20 seconds, network delay is normal.")
+#        blocks3 = dag.add_simulated_blocks(20, 1, 250)
+#        dag.create_blocks_from_simulator_list(blocks3)
+
+        self.caption("No orphan(Red) blocks, even when latency degraded.")
         dag.add_block(dag.get_current_tips())
-        self.wait(3)
-#        dag.highlight_anticone(dag.get_block("b6b"))
-
-        # Normal conditions (40% of max delay)
-#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=0.4)
-
-        # At max delay
-#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=1.0)
-
-        # Beyond max delay (degraded)
-#        dag.generate_dag_from_k(10, 3, actual_delay_multiplier=1.5)
-
-        # Beyond max delay (severely degraded)
-#        dag.generate_dag_from_k_continuous(20, 3, actual_delay_multiplier=5)
-
+        self.wait(5)
 
 # TODO troubleshoot showing GHOSTDAG
 class TestGHOSTDAGProcess(HUD2DScene):
