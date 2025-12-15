@@ -752,20 +752,20 @@ class TestNormalConditions(HUD2DScene):
 
         # Add first set of blocks
         self.wait(1)
-#        self.narrate("GHOSTDAG Under Changing Delay")
-#        self.caption("These first 20 seconds, network delay is normal.")
-        blocks1 = dag.add_simulated_blocks(100, 1, 400)
-#        dag.create_blocks_from_simulator_list(blocks1)
+        self.narrate("GHOSTDAG Under Changing Delay")
+        self.caption("These first 20 seconds, network delay is normal.")
+        blocks1 = dag.add_simulated_blocks(20, 1, 400)
+        dag.create_blocks_from_simulator_list(blocks1)
 
         # Add second set continuing from first
-#        self.caption("These next 20 seconds, network has degraded to max delay.")
-#        blocks2 = dag.add_simulated_blocks(20, 1, 5000)
-#        dag.create_blocks_from_simulator_list(blocks2)
+        self.caption("These next 20 seconds, network has degraded to max delay.")
+        blocks2 = dag.add_simulated_blocks(20, 1, 5000)
+        dag.create_blocks_from_simulator_list(blocks2)
 
         # Add third set continuing from second
-#        self.caption("These next 20 seconds, network delay is normal.")
-#        blocks3 = dag.add_simulated_blocks(20, 1, 250)
-#        dag.create_blocks_from_simulator_list(blocks3)
+        self.caption("These next 20 seconds, network delay is normal.")
+        blocks3 = dag.add_simulated_blocks(20, 1, 400)
+        dag.create_blocks_from_simulator_list(blocks3)
 
         self.caption("No orphan(Red) blocks, even when latency degraded.")
         dag.add_block(dag.get_current_tips())

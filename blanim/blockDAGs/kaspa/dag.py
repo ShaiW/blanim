@@ -336,24 +336,43 @@ class KaspaDAG:
         Uses existing tips as starting state, not empty genesis.
         """
         # Get current tips from existing DAG
-        current_tips = {block.name for block in self.get_current_tips()}
+        current_tips = self.get_current_tips()
+
+        # Pre-format existing tips as simulator blocks
+        initial_blocks = self._format_existing_tips_as_simulator_blocks(current_tips)
 
         # Generate timestamps
         timestamps = self.generate_blocks_continuous(duration, bps)
 
         # Use modified create_blocks_from_timestamps that starts with current tips
         return self.create_blocks_from_timestamps_debug(
-            timestamps, delay
+            timestamps, delay, initial_blocks
         )
 
     @staticmethod
-    def create_blocks_from_timestamps_debug(timestamps: List[float], actual_delay: float) -> List[dict]:
+    def _format_existing_tips_as_simulator_blocks(tips: List[KaspaLogicalBlock]) -> List[dict]:
+        """
+        Transform existing DAG tips to simulator block format.
+        Existing blocks get timestamp=0 and use their name as hash.
+        """
+        formatted_blocks = []
+        for block in tips:
+            formatted_block = {
+                'hash': f"G{block.name}",  # Add "G" prefix to distinguish existing blocks
+                'timestamp': 0,  # Existing blocks are at time 0
+                'parents': []  # Empty - existing blocks are starting points
+            }
+            formatted_blocks.append(formatted_block)
+        return formatted_blocks
+
+    @staticmethod
+    def create_blocks_from_timestamps_debug(timestamps: List[float], actual_delay: float, initial_blocks: List[dict]) -> List[dict]:
         """
         Debug version that prints detailed information about parent selection.
         Selects ALL childless blocks as parents.
         """
         timestamps.sort()
-        blocks = []
+        blocks = initial_blocks.copy()
 
         print(f"\n=== DEBUG: Starting block generation ===")
         print(f"Actual delay: {actual_delay}ms")
@@ -365,7 +384,7 @@ class KaspaDAG:
             # Find blocks that are old enough (not parallel)
             visible_blocks = [
                 block for block in blocks
-                if block['timestamp'] <= timestamp - actual_delay
+                if block['timestamp'] <= timestamp - actual_delay or block['timestamp'] == 0
             ]
             print(
                 f"Visible blocks (timestamp <= {timestamp - actual_delay:.0f}ms): {[b['hash'] for b in visible_blocks]}")
@@ -380,19 +399,14 @@ class KaspaDAG:
 
             print(f"Tips among visible blocks (no children): {tips}")
 
-            # Select ALL tips as parents
+            # Parent Selection (ALL tips visible as of block.timestamp - delay)
             if tips:
-                parents = list(tips)  # Select ALL childless blocks
-                print(f"Selected ALL tips as parents: {parents}")
-            elif visible_blocks:
-                # Fallback to most recent visible block
-                parents = [visible_blocks[-1]['hash']]
-                print(f"No tips found, using most recent visible: {parents}")
+                parents = list(tips)
+                print(f"Selected tips as parents: {parents}")
             else:
-                parents = []
-                print("No visible blocks, creating genesis")
+                raise ValueError("No tips available - this should never happen with pre-formatted initial blocks")
 
-                # Create new block
+            # Create new block
             new_block = {
                 'hash': f"block_{i}",
                 'timestamp': timestamp,
