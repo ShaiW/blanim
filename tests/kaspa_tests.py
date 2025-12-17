@@ -1,7 +1,6 @@
 # blanim/tests/kaspa_tests.py
 
 from blanim import *
-from blanim.blockDAGs.kaspa.dag import KaspaDAG
 
 # user created theme to change parameters of the dag, visual appearance, ect with typehinting
 def test_theme() -> KaspaConfig:
@@ -745,29 +744,39 @@ class TestHighlightingAnticone(HUD2DScene):
 
 class TestNormalConditions(HUD2DScene):
     """Test highlighting anticone in DAG structure."""
-#TODO change block creation animations to move paralell blocks at the same time a new block is drawn to speed up
+#TODO change block creation animations to move camera at the same time to speed up animations
+#TODO refactor the functions in this test to clean them up in DAG
     def construct(self):
         dag = KaspaDAG(scene=self)
 #        dag.set_k(18)
 
         # Add first set of blocks
         self.wait(1)
-        self.narrate("GHOSTDAG Under Changing Delay")
-        self.caption("These first 20 seconds, network delay is normal.")
-        blocks1 = dag.add_simulated_blocks(20, 1, 400)
+        self.narrate("GHOSTDAG Under Changing Delay, 1 BPS, k=18")
+        self.caption("These first 20 seconds, network delay is normal, 350ms.")
+        blocks1 = dag.add_simulated_blocks(20, 1, 350)
         dag.create_blocks_from_simulator_list(blocks1)
 
         # Add second set continuing from first
-        self.caption("These next 20 seconds, network has degraded to max delay.")
-        blocks2 = dag.add_simulated_blocks(20, 1, 5000)
+        self.caption("These next 20 seconds, network has degraded to half of max delay, 2500ms.")
+        blocks2 = dag.add_simulated_blocks(20, 1, 2500)
         dag.create_blocks_from_simulator_list(blocks2)
 
         # Add third set continuing from second
-        self.caption("These next 20 seconds, network delay is normal.")
-        blocks3 = dag.add_simulated_blocks(20, 1, 400)
+        self.caption("These next 20 seconds, network has degraded to max delay, 5000ms.")
+        blocks3 = dag.add_simulated_blocks(20, 1, 5000)
         dag.create_blocks_from_simulator_list(blocks3)
 
-        self.caption("No orphan(Red) blocks, even when latency degraded.")
+        # Add second set continuing from first
+        self.caption("These next 20 seconds, network has improved to half of max delay, 2500ms.")
+        blocks4 = dag.add_simulated_blocks(20, 1, 2500)
+        dag.create_blocks_from_simulator_list(blocks4)
+
+        self.caption("These next 20 seconds, network delay has recovered to normal, 350ms.")
+        blocks5 = dag.add_simulated_blocks(20, 1, 300)
+        dag.create_blocks_from_simulator_list(blocks5)
+
+        self.caption("No orphan(Red) blocks, even under degraded conditions, Security Maintained.")
         dag.add_block(dag.get_current_tips())
         self.wait(5)
 

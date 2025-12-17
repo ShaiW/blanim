@@ -3,11 +3,12 @@
 from .logical_block import KaspaLogicalBlock
 from .visual_block import KaspaVisualBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
-
+from .dag import KaspaDAG
 __all__ = [
     "KaspaVisualBlock",
     "KaspaConfig",
     "_KaspaConfigInternal",
     "DEFAULT_KASPA_CONFIG",
     "KaspaLogicalBlock",
+    "KaspaDAG"
 ]

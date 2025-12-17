@@ -101,6 +101,8 @@ TODO / Future Improvements:
 
 from __future__ import annotations
 
+__all__ = ["KaspaDAG"]
+
 import math
 from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
@@ -329,50 +331,25 @@ class KaspaDAG:
         return blocks
 
     #_________________________________________________
-    #TODO modify this to use current dag tips for each iteration instead of starting from scratch each time
+
     def add_simulated_blocks(self, duration: float, bps: float, delay: float) -> List[dict]:
         """
         Simulate and return blocks continuing from current DAG tips.
-        Uses existing tips as starting state, not empty genesis.
         """
-        # Get current tips from existing DAG
-        current_tips = self.get_current_tips()
-
-        # Pre-format existing tips as simulator blocks
-        initial_blocks = self._format_existing_tips_as_simulator_blocks(current_tips)
-
         # Generate timestamps
         timestamps = self.generate_blocks_continuous(duration, bps)
 
-        # Use modified create_blocks_from_timestamps that starts with current tips
-        return self.create_blocks_from_timestamps_debug(
-            timestamps, delay, initial_blocks
-        )
+        # Use standard create_blocks_from_timestamps (no initial_blocks needed)
+        return self.create_blocks_from_timestamps_debug(timestamps, delay)
 
     @staticmethod
-    def _format_existing_tips_as_simulator_blocks(tips: List[KaspaLogicalBlock]) -> List[dict]:
-        """
-        Transform existing DAG tips to simulator block format.
-        Existing blocks get timestamp=0 and use their name as hash.
-        """
-        formatted_blocks = []
-        for block in tips:
-            formatted_block = {
-                'hash': f"G{block.name}",  # Add "G" prefix to distinguish existing blocks
-                'timestamp': 0,  # Existing blocks are at time 0
-                'parents': []  # Empty - existing blocks are starting points
-            }
-            formatted_blocks.append(formatted_block)
-        return formatted_blocks
-
-    @staticmethod
-    def create_blocks_from_timestamps_debug(timestamps: List[float], actual_delay: float, initial_blocks: List[dict]) -> List[dict]:
+    def create_blocks_from_timestamps_debug(timestamps: List[float], actual_delay: float) -> List[dict]:
         """
         Debug version that prints detailed information about parent selection.
         Selects ALL childless blocks as parents.
         """
         timestamps.sort()
-        blocks = initial_blocks.copy()
+        blocks = []
 
         print(f"\n=== DEBUG: Starting block generation ===")
         print(f"Actual delay: {actual_delay}ms")
@@ -404,9 +381,11 @@ class KaspaDAG:
                 parents = list(tips)
                 print(f"Selected tips as parents: {parents}")
             else:
-                raise ValueError("No tips available - this should never happen with pre-formatted initial blocks")
+                # No tips available - create block with empty parents
+                parents = []
+                print(f"No tips available - creating block with empty parents")
 
-            # Create new block
+                # Create new block
             new_block = {
                 'hash': f"block_{i}",
                 'timestamp': timestamp,
@@ -536,7 +515,7 @@ class KaspaDAG:
         Convert simulator block dictionaries to actual KaspaLogicalBlock objects.
         The simulator list is already ordered by creation time.
         """
-        # Get tips once at the start (ensures genesis exists)
+        # Get tips once at the start (before any blocks are created)
         initial_tips = self.get_current_tips()
 
         # Map to track hash -> actual block
@@ -558,11 +537,11 @@ class KaspaDAG:
                     else:
                         raise ValueError(f"Parent block {parent_hash} not found for block {block_hash}")
             else:
-                # Empty parents case: use initial tips
+                # Empty parents case: use initial tips (captured before any blocks created)
                 parents = initial_tips
 
                 # Create the block using existing infrastructure
-            placeholder = self.queue_block(parents=parents, name=block_hash, timestamp=block_timestamp)
+            placeholder = self.queue_block(parents=parents, name=None, timestamp=block_timestamp)
             self.catch_up()  # Execute the creation
 
             actual_block = placeholder.actual_block
@@ -885,7 +864,7 @@ class BlockPlaceholder:
             raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
         return getattr(self.actual_block, attr)
 
-#Complete
+# TODO modify block add to both create the block and move the rest of the statck at the same time
 class BlockManager:
     """Handles block creation, queuing, and workflow management."""
 
@@ -893,11 +872,11 @@ class BlockManager:
         self.dag = dag
 
     def queue_block(self, timestamp, parents=None, name=None) -> BlockPlaceholder:
-        """Queue block creation, return placeholder that auto-resolves."""
+        """Queue block creation with mirroring positioning animation."""
 
         placeholder = BlockPlaceholder(self, timestamp, parents, name)
 
-        def create_and_animate_block():
+        def create_and_reposition_together():
             # Resolve parent placeholders to actual blocks
             resolved_parents = []
             if parents:
@@ -909,15 +888,50 @@ class BlockManager:
                     else:
                         resolved_parents.append(p)
 
-            # Create the actual block
+                        # Calculate x-position based on parents
             block_name = name if name else self.dag.retrieval.generate_block_name(resolved_parents)
-            position = self._calculate_dag_position(resolved_parents)
 
+            # Initialize variables that will be used later
+            column_blocks = []
+            shift_y = 0
+
+            if not resolved_parents:
+                # Genesis block - use standard position
+                x_position = self.dag.config.genesis_x
+                y_position = self.dag.config.genesis_y
+            else:
+                # Use rightmost parent for x-position
+                rightmost_parent = max(resolved_parents, key=lambda p: p.visual_block.square.get_center()[0])
+                parent_pos = rightmost_parent.visual_block.square.get_center()
+                x_position = parent_pos[0] + self.dag.config.horizontal_spacing
+
+                # Find existing blocks at this x-position
+                column_blocks = [
+                    b for b in self.dag.all_blocks
+                    if abs(b.visual_block.square.get_center()[0] - x_position) < 0.01
+                ]
+
+                if not column_blocks:
+                    # First block at this x-position
+                    y_position = self.dag.config.genesis_y
+                    shift_y = 0
+                else:
+                    # Calculate shift and new position with mirroring logic
+                    shift_y = -self.dag.config.vertical_spacing / 2  # Always shift down by half spacing
+
+                    # Find the lowest block (minimum y)
+                    lowest_block = min(column_blocks, key=lambda b: b.visual_block.square.get_center()[1])
+                    lowest_y = lowest_block.visual_block.square.get_center()[1]
+
+                    # New block goes at mirror position of lowest block after shift
+                    y_position = -(lowest_y + shift_y)  # Mirror around genesis_y (0)
+
+            # Create the new block
             block = KaspaLogicalBlock(
                 name=block_name,
                 timestamp=timestamp,
                 parents=resolved_parents if resolved_parents else [],
-                position=position,
+                position=(x_position, y_position),
                 config=self.dag.config,
             )
 
@@ -927,24 +941,32 @@ class BlockManager:
             if not resolved_parents:
                 self.genesis = block
 
-            # AUTOMATICALLY link placeholder to actual block
             placeholder.actual_block = block
 
-            # Animate it
-            self._animate_block_creation(block)
+            # Create combined animations
+            animations = []
+
+            # Add block creation animation
+            self.dag.shift_camera_to_follow_blocks()
+            animations.append(block.visual_block.create_with_lines())
+
+            # Add shift animations for existing blocks if needed
+            if column_blocks and abs(shift_y) > 0.01:
+                for existing_block in column_blocks:
+                    animations.append(
+                        existing_block.visual_block.create_movement_animation(
+                            existing_block.visual_block.animate.shift(np.array([0, shift_y, 0]))
+                        )
+                    )
+
+                    # Play all animations together
+            self.dag.scene.play(*animations)
 
             return block
 
-        self.dag.workflow_steps.append(create_and_animate_block)
+            # Queue only the combined function
 
-        # Queue repositioning
-        def reposition_column():
-            if self.dag.all_blocks:
-                x_pos = self.dag.all_blocks[-1].visual_block.square.get_center()[0]
-                self._animate_dag_repositioning({x_pos})
-
-        reposition_column.is_repositioning = True
-        self.dag.workflow_steps.append(reposition_column)
+        self.dag.workflow_steps.append(create_and_reposition_together)
 
         return placeholder
 

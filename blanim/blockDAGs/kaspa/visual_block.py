@@ -5,7 +5,7 @@ from __future__ import annotations
 __all__ = ["KaspaVisualBlock"]
 
 import copy
-from typing import TYPE_CHECKING, Callable, Any, Optional
+from typing import TYPE_CHECKING, Callable, Any
 
 import numpy as np
 from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation, \
@@ -151,7 +151,7 @@ class KaspaVisualBlock(BaseVisualBlock):
 
     def __deepcopy__(self, memo):
         logical_block = self.logical_block
-        self.logical_block = None
+        self.logical_block = None  # type: ignore
 
         cls = self.__class__
         result = cls.__new__(cls)
@@ -343,7 +343,7 @@ class KaspaVisualBlock(BaseVisualBlock):
             self.scene.play(animation)
         """
         # Create base movement animation using VGroup's animate
-        base_animation = super().animate.move_to((x, y, 0))
+        base_animation:Animation = super().animate.move_to((x, y, 0))  # type: ignore
 
         # Wrap with line updates using existing method
         return self.create_movement_animation(base_animation)
@@ -371,7 +371,7 @@ class KaspaVisualBlock(BaseVisualBlock):
         return [
             self.square.animate.set_fill(opacity=self.kaspa_config.fade_opacity),
             self.square.animate.set_stroke(opacity=self.kaspa_config.fade_opacity),
-            UpdateFromAlphaFunc(self.label, fade_label)
+            UpdateFromAlphaFunc(self.label, fade_label) # type: ignore
         ]
 
     def create_highlight_animation(self, color=None, stroke_width=None) -> Any:
@@ -426,7 +426,7 @@ class KaspaVisualBlock(BaseVisualBlock):
                 stroke_width=self.kaspa_config.stroke_width,
                 stroke_opacity=self.kaspa_config.stroke_opacity
             ),
-            UpdateFromAlphaFunc(self.label, reset_label)
+            UpdateFromAlphaFunc(self.label, reset_label) # type: ignore
         ]
 
     def create_line_fade_animations(self) -> list[Any]:
