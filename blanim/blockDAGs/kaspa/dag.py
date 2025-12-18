@@ -118,7 +118,8 @@ import math
 from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
-from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger
+from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger, \
+    linear
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
@@ -331,9 +332,112 @@ class KaspaDAG:
 
         return created_blocks
 
+    ########################################
+    # Highlight Parent Chain
+    ########################################
+
+    def find_sink(self) -> Optional[KaspaLogicalBlock]:
+        """
+        Find the sink block - the block with highest blue score from virtual POV,
+        tie-broken by lowest hash (same tiebreaker as GD rules in logical block).
+
+        Returns:
+            The sink block, or None if no blocks exist
+        """
+        if not self.all_blocks:
+            return None
+
+        # Use the same sorting logic as _select_parent() in logical_block.py
+        # Sort by (blue_score, -hash) - highest first, so reverse=True
+        sorted_blocks = sorted(
+            self.all_blocks,
+            key=lambda block: (block.ghostdag.blue_score, -block.hash),
+            reverse=True
+        )
+
+        return sorted_blocks[0]
+
+    def highlight_and_scroll_parent_chain(self, start_block=None, scroll_speed_factor=0.5):
+        """
+        Highlight the selected parent chain from start block to genesis and scroll back.
+
+        Args:
+            start_block: Block to start from (defaults to sink block)
+            scroll_speed_factor: Multiplier for scroll speed based on horizontal spacing
+        """
+
+        # Get starting block (sink if not specified)
+        if start_block is None:
+            start_block = self.find_sink()
+            if start_block is None:
+                return
+
+        if isinstance(start_block, str):
+            start_block = self.get_block(start_block)
+            if start_block is None:
+                return
+
+                # Get the selected parent chain
+        parent_chain = []
+        current = start_block
+        while current is not None:
+            parent_chain.append(current)
+            current = current.selected_parent
+            if current and current.name == "Gen":
+                parent_chain.append(current)
+                break
+
+                # Fade all blocks except parent chain
+        parent_chain_set = set(parent_chain)
+        fade_animations = []
+
+        for block in self.all_blocks:
+            if block not in parent_chain_set:
+                fade_animations.extend(block.visual_block.create_fade_animation())
+                # Fade ALL lines from non-chain blocks
+                for line in block.visual_block.parent_lines:
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+
+                    # Handle lines for parent chain blocks - fade all except selected parent (index 0)
+        for block in parent_chain:
+            for i, line in enumerate(block.visual_block.parent_lines):
+                if i == 0:
+                    # Keep selected parent line at full opacity
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=1.0)
+                    )
+                else:
+                    # Fade all other parent lines from this block
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+
+        if fade_animations:
+            self.scene.play(*fade_animations)
+
+            # Calculate scroll to genesis position (x-axis only)
+        if parent_chain:
+            genesis_block = parent_chain[-1]  # Genesis is last in the chain
+            genesis_pos = genesis_block.get_center()
+            camera_target = [genesis_pos[0], 0, 0]  # X-axis movement only
+
+            # Calculate total distance for runtime - make it slower
+            sink_pos = parent_chain[0].get_center()
+            total_distance = abs(sink_pos[0] - genesis_pos[0])
+            total_time = total_distance * scroll_speed_factor / self.config.horizontal_spacing * 3.0  # Slower by factor of 3
+
+            # Single smooth horizontal camera movement to genesis
+            self.scene.play(
+                self.scene.camera.frame.animate.move_to(camera_target),
+                run_time=total_time,
+                rate_func=linear
+            )
     ####################
     # Helper functions for finding k thresholds
     ####################
+
     # Verified
     @staticmethod
     def k_from_x(x_val: float, delta: float = 0.01) -> int:

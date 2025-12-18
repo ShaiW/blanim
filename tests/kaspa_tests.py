@@ -750,35 +750,38 @@ class TestNormalConditions(HUD2DScene):
         dag = KaspaDAG(scene=self)
 #        dag.set_k(18)
 
-        # Add first set of blocks
         self.wait(1)
-        self.narrate("GHOSTDAG Under Changing Delay, 1 BPS, k=18")
-        self.caption("These first 20 seconds, network delay is normal, 350ms.")
-        blocks1 = dag.simulate_blocks(2, 1, 350)
+        self.narrate("GHOSTDAG Under Changing Delay, 1 BPS, k=18", run_time=1.0)
+        self.caption("These first 20 seconds, network delay is normal, 350ms.", run_time=1.0)
+        blocks1 = dag.simulate_blocks(20, 1, 350)
         dag.create_blocks_from_simulator_list(blocks1)
 
-        # Add second set continuing from first
-        self.caption("These next 20 seconds, network has degraded to half of max delay, 2500ms.")
-        blocks2 = dag.simulate_blocks(2, 1, 2500)
+        self.caption("These next 20 seconds, network has degraded to half of max delay, 2500ms.", run_time=1.0)
+        blocks2 = dag.simulate_blocks(20, 1, 2500)
         dag.create_blocks_from_simulator_list(blocks2)
 
-        # Add third set continuing from second
-        self.caption("These next 20 seconds, network has degraded to max delay, 5000ms.")
-        blocks3 = dag.simulate_blocks(2, 1, 5000)
+        self.caption("These next 20 seconds, network has degraded to max delay, 5000ms.", run_time=1.0)
+        blocks3 = dag.simulate_blocks(20, 1, 5000)
         dag.create_blocks_from_simulator_list(blocks3)
 
-        # Add second set continuing from first
-        self.caption("These next 20 seconds, network has improved to half of max delay, 2500ms.")
-        blocks4 = dag.simulate_blocks(2, 1, 2500)
+        self.caption("These next 20 seconds, network has improved to half of max delay, 2500ms.", run_time=1.0)
+        blocks4 = dag.simulate_blocks(20, 1, 2500)
         dag.create_blocks_from_simulator_list(blocks4)
 
-        self.caption("These next 20 seconds, network delay has recovered to normal, 350ms.")
-        blocks5 = dag.simulate_blocks(2, 1, 300)
+        self.caption("These next 20 seconds, network delay has recovered to normal, 350ms.", run_time=1.0)
+        blocks5 = dag.simulate_blocks(20, 1, 350)
         dag.create_blocks_from_simulator_list(blocks5)
 
-        self.caption("No orphan(Red) blocks, even under degraded conditions, Security Maintained.")
+        self.caption("No orphan(Red) blocks, even under degraded conditions, Security Maintained.", run_time=1.0)
         dag.add_block(dag.get_current_tips())
-        self.wait(5)
+        self.wait(3)
+
+        # Add the new parent chain highlighting at the end
+        self.wait(1)
+        self.caption("Highlighting Selected Parent Chain back to Genesis", run_time=1.0)
+        self.wait(1)
+        dag.highlight_and_scroll_parent_chain(scroll_speed_factor=0.6)
+        self.wait(1)
 
 # TODO troubleshoot showing GHOSTDAG
 class TestGHOSTDAGProcess(HUD2DScene):
