@@ -754,26 +754,26 @@ class TestNormalConditions(HUD2DScene):
         self.wait(1)
         self.narrate("GHOSTDAG Under Changing Delay, 1 BPS, k=18")
         self.caption("These first 20 seconds, network delay is normal, 350ms.")
-        blocks1 = dag.add_simulated_blocks(20, 1, 350)
+        blocks1 = dag.simulate_blocks(2, 1, 350)
         dag.create_blocks_from_simulator_list(blocks1)
 
         # Add second set continuing from first
         self.caption("These next 20 seconds, network has degraded to half of max delay, 2500ms.")
-        blocks2 = dag.add_simulated_blocks(20, 1, 2500)
+        blocks2 = dag.simulate_blocks(2, 1, 2500)
         dag.create_blocks_from_simulator_list(blocks2)
 
         # Add third set continuing from second
         self.caption("These next 20 seconds, network has degraded to max delay, 5000ms.")
-        blocks3 = dag.add_simulated_blocks(20, 1, 5000)
+        blocks3 = dag.simulate_blocks(2, 1, 5000)
         dag.create_blocks_from_simulator_list(blocks3)
 
         # Add second set continuing from first
         self.caption("These next 20 seconds, network has improved to half of max delay, 2500ms.")
-        blocks4 = dag.add_simulated_blocks(20, 1, 2500)
+        blocks4 = dag.simulate_blocks(2, 1, 2500)
         dag.create_blocks_from_simulator_list(blocks4)
 
         self.caption("These next 20 seconds, network delay has recovered to normal, 350ms.")
-        blocks5 = dag.add_simulated_blocks(20, 1, 300)
+        blocks5 = dag.simulate_blocks(2, 1, 300)
         dag.create_blocks_from_simulator_list(blocks5)
 
         self.caption("No orphan(Red) blocks, even under degraded conditions, Security Maintained.")

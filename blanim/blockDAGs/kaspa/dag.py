@@ -21,6 +21,10 @@ Key Design Principles:
   parameters (genesis position, spacing) are read from KaspaConfig
 - **Animation delegation**: DAG methods call visual block animation methods rather than
   directly manipulating Manim objects, ensuring consistent animation behavior
+- **Manager delegation pattern**: Specialized managers handle distinct concerns
+  (BlockManager, Movement, Retrieval, RelationshipHighlighter, BlockSimulator)
+- **Realistic simulation**: BlockSimulator models network delays and mining intervals
+  to create authentic Kaspa DAG structures
 
 Block Lifecycle & Workflow:
 ---------------------------
@@ -30,6 +34,7 @@ The system supports three workflow patterns:
    - `add_block(parents=[...])` creates and animates a block immediately
    - `add_blocks([(parents, name), ...])` batch-creates and animates multiple blocks
 
+#TODO get rid of this functionality, blocks should be creaded and drwan and others shift and camera shift all within the same animation
 2. **Step-by-step (fine-grained control)**:
    - `create_block(parents=[...])` creates logical block without animation
    - `next_step()` animates the next pending step (block creation or repositioning)
@@ -38,6 +43,11 @@ The system supports three workflow patterns:
 3. **Batch with catch-up**:
    - Create multiple blocks with `create_block()`
    - `catch_up()` completes all pending animations at once
+
+4. **Simulation-based generation**:
+   - `simulate_blocks(duration, bps, delay)` generates block structure
+   - `create_blocks_from_simulator_list()` converts to visual blocks
+   - Models realistic network conditions with propagation delays
 
 Block Positioning:
 -----------------
@@ -72,13 +82,14 @@ fuzzy name matching:
 - Use regex to extract block numbers and find closest match if exact match fails
 - Return empty list if no match found (never raise exceptions)
 
-DAG Generation:
---------------
-`generate_dag()` creates realistic DAG structures with:
-- Poisson-distributed parallel blocks (controlled by `lambda_parallel`)
-- Chain extension probability (controlled by `chain_prob`)
-- Occasional "delayed" blocks that reference old tips from previous round
-  (simulating network propagation delay, controlled by `old_tip_prob`)
+Block Simulation:
+----------------
+BlockSimulator handles realistic DAG generation using network parameters:
+
+- simulate_blocks(duration, bps, delay): Generate blocks with network delay simulation
+- Exponential mining intervals model real Kaspa block arrival times
+- Network delay determines parent visibility for realistic DAG structures
+- create_blocks_from_simulator_list(): Convert simulator output to actual blocks
 
 Movement:
 --------
@@ -94,9 +105,9 @@ State Tracking:
 
 TODO / Future Improvements:
 ---------------------------
-
-5. **Block naming convention**: Verify this is Kaspa-specific.
-   See `_generate_block_name()` and `get_block()` docstrings for update locations.
+- Add network parameter calculation methods to BlockSimulator
+- Implement conditional debug output for simulation
+- Add validation for simulation input parameters
 """
 
 from __future__ import annotations
@@ -127,6 +138,7 @@ class KaspaDAG:
         self.retrieval = BlockRetrieval(self)
         self.relationship_highlighter = RelationshipHighlighter(self)
         self.ghostdag_highlighter = GhostDAGHighlighter(self)
+        self.simulator = BlockSimulator(self)
 
 
         self.blocks: dict[str, KaspaLogicalBlock] = {}
@@ -254,11 +266,77 @@ class KaspaDAG:
         """Animate the complete GhostDAG process for a context block."""
         self.ghostdag_highlighter.animate_ghostdag_process(context_block, narrate=narrate, step_delay=step_delay)
 
+    ########################################
+    # Simulate Blocks
+    ########################################
+
+    def simulate_blocks(self, duration_seconds: float, blocks_per_second: float, network_delay_ms: float) -> List[dict]:
+        """
+        Simulate blocks continuing from current DAG tips.
+
+        Delegates to BlockSimulator while maintaining the DAG's public API.
+        This method follows the manager delegation pattern used throughout KaspaDAG.
+
+        Args:
+            duration_seconds: Simulation duration in seconds
+            blocks_per_second: Network block rate
+            network_delay_ms: Propagation delay in milliseconds
+
+        Returns:
+            List of simulated block dictionaries ready for DAG integration
+        """
+        return self.simulator.simulate_blocks(duration_seconds, blocks_per_second, network_delay_ms)
+
+    #TODO finish refactoring
+    def create_blocks_from_simulator_list(
+            self,
+            simulator_blocks: List[dict]
+    ) -> List[KaspaLogicalBlock]:
+        """
+        Convert simulator block dictionaries to actual KaspaLogicalBlock objects.
+        The simulator list is already ordered by creation time.
+        """
+        # Get tips once at the start (before any blocks are created)
+        initial_tips = self.get_current_tips()
+
+        # Map to track hash -> actual block
+        block_map = {}
+        created_blocks = []
+
+        for block_dict in simulator_blocks:
+            block_hash = block_dict['hash']
+            block_timestamp = block_dict['timestamp']
+            parent_hashes = block_dict.get('parents', [])
+
+            # Resolve parent hashes to actual blocks
+            parents = []
+            if parent_hashes:
+                # Normal case: has parents from simulator
+                for parent_hash in parent_hashes:
+                    if parent_hash in block_map:
+                        parents.append(block_map[parent_hash])
+                    else:
+                        raise ValueError(f"Parent block {parent_hash} not found for block {block_hash}")
+            else:
+                # Empty parents case: use initial tips (captured before any blocks created)
+                parents = initial_tips
+
+                # Create the block using existing infrastructure
+            placeholder = self.queue_block(parents=parents, name=None, timestamp=block_timestamp)
+            self.catch_up()  # Execute the creation
+
+            actual_block = placeholder.actual_block
+            block_map[block_hash] = actual_block
+            created_blocks.append(actual_block)
+
+        return created_blocks
+
     ####################
     # Helper functions for finding k thresholds
     ####################
     # Verified
-    def k_from_x(self, x_val: float, delta: float = 0.01) -> int:
+    @staticmethod
+    def k_from_x(x_val: float, delta: float = 0.01) -> int:
         """Calculate k from x using Kaspa's cumulative probability algorithm."""
         k_hat = 0
         sigma = 0.0
@@ -312,248 +390,8 @@ class KaspaDAG:
 
         return thresholds
 
-    # Tested
-    def sample_mining_interval(self, bps):
-        # Time between blocks follows Exp(bps) distribution
-        interval = np.random.exponential(1.0 / bps)
-        return max(interval * 1000, 1)  # Convert to milliseconds, minimum 1ms
-
-    def generate_blocks_continuous(self, duration_seconds, bps):
-        blocks = []
-        current_time = 0
-
-        while current_time < duration_seconds * 1000:
-            interval = self.sample_mining_interval(bps)
-            current_time += interval
-            if current_time < duration_seconds * 1000:
-                blocks.append(current_time)
-
-        return blocks
-
-    #_________________________________________________
-
-    def add_simulated_blocks(self, duration: float, bps: float, delay: float) -> List[dict]:
-        """
-        Simulate and return blocks continuing from current DAG tips.
-        """
-        # Generate timestamps
-        timestamps = self.generate_blocks_continuous(duration, bps)
-
-        # Use standard create_blocks_from_timestamps (no initial_blocks needed)
-        return self.create_blocks_from_timestamps_debug(timestamps, delay)
-
     @staticmethod
-    def create_blocks_from_timestamps_debug(timestamps: List[float], actual_delay: float) -> List[dict]:
-        """
-        Debug version that prints detailed information about parent selection.
-        Selects ALL childless blocks as parents.
-        """
-        timestamps.sort()
-        blocks = []
-
-        print(f"\n=== DEBUG: Starting block generation ===")
-        print(f"Actual delay: {actual_delay}ms")
-        print(f"Number of timestamps: {len(timestamps)}")
-
-        for i, timestamp in enumerate(timestamps):
-            print(f"\n--- Block {i} at {timestamp:.0f}ms ---")
-
-            # Find blocks that are old enough (not parallel)
-            visible_blocks = [
-                block for block in blocks
-                if block['timestamp'] <= timestamp - actual_delay or block['timestamp'] == 0
-            ]
-            print(
-                f"Visible blocks (timestamp <= {timestamp - actual_delay:.0f}ms): {[b['hash'] for b in visible_blocks]}")
-
-            # Find tips among visible blocks (blocks with no children)
-            tips = set()
-            for candidate in visible_blocks:
-                # Check if any visible block has this candidate as parent
-                has_child = any(candidate['hash'] in other['parents'] for other in visible_blocks)
-                if not has_child:
-                    tips.add(candidate['hash'])
-
-            print(f"Tips among visible blocks (no children): {tips}")
-
-            # Parent Selection (ALL tips visible as of block.timestamp - delay)
-            if tips:
-                parents = list(tips)
-                print(f"Selected tips as parents: {parents}")
-            else:
-                # No tips available - create block with empty parents
-                parents = []
-                print(f"No tips available - creating block with empty parents")
-
-                # Create new block
-            new_block = {
-                'hash': f"block_{i}",
-                'timestamp': timestamp,
-                'parents': parents
-            }
-            blocks.append(new_block)
-            print(f"Created {new_block['hash']} with parents {parents}")
-
-        print(f"\n=== SUMMARY ===")
-        avg_parents = sum(len(b['parents']) for b in blocks) / len(blocks) if blocks else 0
-        print(f"Total blocks: {len(blocks)}")
-        print(f"Average parents per block: {avg_parents:.2f}")
-
-        return blocks
-    #_________________________________________________
-
-    @staticmethod
-    def get_tips_at_time(tip_history: List[tuple], target_time: float) -> set:
-        """Find tips at a specific time using binary search."""
-        import bisect
-        idx = bisect.bisect_right(tip_history, (target_time, set())) - 1
-        return tip_history[idx][1] if idx >= 0 else set()
-
-    def create_blocks_from_timestamps(self, timestamps: List[float], actual_delay: float) -> List[dict]:
-        timestamps.sort()
-        blocks = []
-        tips = set()
-        tip_history = []  # Store (timestamp, tips) pairs
-        all_blocks = []
-
-        # Initialize with empty tips at time 0
-        tip_history.append((0, set()))
-
-        for i, timestamp in enumerate(timestamps):
-            # Find visible blocks
-            visible_blocks = [
-                block for block in all_blocks
-                if block['timestamp'] <= timestamp - actual_delay
-            ]
-
-            # Get historical tips
-            historical_tips = self.get_tips_at_time(tip_history, timestamp - actual_delay)
-            visible_parents = [
-                block for block in visible_blocks
-                if block['hash'] in historical_tips
-            ]
-
-            # Create block
-            if not visible_parents and visible_blocks:
-                visible_parents = [visible_blocks[-1]]
-
-            parents = [p['hash'] for p in visible_parents] if visible_parents else []
-
-            new_block = {
-                'hash': f"block_{i}",
-                'timestamp': timestamp,
-                'parents': parents
-            }
-
-            blocks.append(new_block)
-            all_blocks.append(new_block)
-
-            # Update tips FIRST
-            for parent_hash in parents:
-                tips.discard(parent_hash)
-            tips.add(new_block['hash'])
-
-            # THEN store in history
-            tip_history.append((timestamp, tips.copy()))
-
-        return blocks
-
-    # Tested
-    def test_block_generation(self, duration_in_seconds: float, bps_float: float, actual_delay_in_ms: float):
-        """Test function to visualize block generation and relationships."""
-
-        print("=" * 60)
-        print("Testing Block Generation with Network Delay Simulation")
-        print("=" * 60)
-
-        # Test parameters
-        duration_seconds = duration_in_seconds
-        bps = bps_float  # block per second
-        actual_delay = actual_delay_in_ms  # network delay in milliseconds
-
-        print(f"\nParameters:")
-        print(f"  Duration: {duration_seconds}s")
-        print(f"  Block rate: {bps} BPS (1 block per {1 / bps}s)")
-        print(f"  Network delay: {actual_delay}ms")
-        print()
-
-        # Generate timestamps
-        timestamps = self.generate_blocks_continuous(duration_seconds, bps)
-        print(f"Generated {len(timestamps)} block timestamps:")
-        for i, ts in enumerate(timestamps):
-            print(f"  Block {i}: {ts:.0f}ms")
-        print()
-
-        # Convert to blocks with relationships
-        blocks = self.create_blocks_from_timestamps(timestamps, actual_delay)
-
-        # Display block relationships
-        print("Block Relationships:")
-        print("-" * 40)
-        for block in blocks:
-            print(f"Block {block['hash']}:")
-            print(f"  Timestamp: {block['timestamp']:.0f}ms")
-            if block['parents']:
-                print(f"  Parents: {', '.join(block['parents'])}")
-            else:
-                print(f"  Parents: None (genesis)")
-            print()
-
-            # Summary statistics
-        print(f"Summary:")
-        print(f"  Total blocks: {len(blocks)}")
-        avg_parents = sum(len(b['parents']) for b in blocks) / len(blocks) if blocks else 0
-        print(f"  Average parents per block: {avg_parents:.2f}")
-
-        return blocks
-
-    def create_blocks_from_simulator_list(
-            self,
-            simulator_blocks: List[dict]
-    ) -> List[KaspaLogicalBlock]:
-        """
-        Convert simulator block dictionaries to actual KaspaLogicalBlock objects.
-        The simulator list is already ordered by creation time.
-        """
-        # Get tips once at the start (before any blocks are created)
-        initial_tips = self.get_current_tips()
-
-        # Map to track hash -> actual block
-        block_map = {}
-        created_blocks = []
-
-        for block_dict in simulator_blocks:
-            block_hash = block_dict['hash']
-            block_timestamp = block_dict['timestamp']
-            parent_hashes = block_dict.get('parents', [])
-
-            # Resolve parent hashes to actual blocks
-            parents = []
-            if parent_hashes:
-                # Normal case: has parents from simulator
-                for parent_hash in parent_hashes:
-                    if parent_hash in block_map:
-                        parents.append(block_map[parent_hash])
-                    else:
-                        raise ValueError(f"Parent block {parent_hash} not found for block {block_hash}")
-            else:
-                # Empty parents case: use initial tips (captured before any blocks created)
-                parents = initial_tips
-
-                # Create the block using existing infrastructure
-            placeholder = self.queue_block(parents=parents, name=None, timestamp=block_timestamp)
-            self.catch_up()  # Execute the creation
-
-            actual_block = placeholder.actual_block
-            block_map[block_hash] = actual_block
-            created_blocks.append(actual_block)
-
-        return created_blocks
-    ####################
-    # Generate DAG from parameters  #TODO this does not correctly color blocks when creating since DAG uses a predetermined k set in config #TODO replaced by sim?
-    ####################
-
-    def calculate_lambda_from_network(self, bps: float, delay: float) -> float:
+    def calculate_lambda_from_network(bps: float, delay: float) -> float:
         """Calculate λ from network conditions.
 
         Args:
@@ -571,62 +409,6 @@ class KaspaDAG:
         """Calculate k using Kaspa's formula."""
         x = 2 * max_delay * bps
         return self.k_from_x(x, delta)
-
-    def generate_kaspa_dag(
-            self,
-            num_rounds: int,
-            bps: float,
-            max_delay: float,
-            actual_delay: float,
-            delta: float = 0.01
-    ):
-        """Generate DAG using Kaspa's network-based approach."""
-        # Get current tips (auto-creates genesis if needed)
-        current_tips = self.get_current_tips()
-        previous_tips = []
-
-        # Calculate network parameters
-        k = self.calculate_k_from_network(bps, max_delay, delta)
-        lambda_blocks = self.calculate_lambda_from_network(bps, actual_delay)
-
-        print(f"Network: BPS={bps}, Max delay={max_delay}s, Actual delay={actual_delay}s")
-        print(f"Calculated: k={k}, λ={lambda_blocks:.2f}")
-
-        for round_num in range(num_rounds):
-            # Sample number of blocks for this round
-            num_blocks = np.random.poisson(lambda_blocks)
-            num_blocks = max(1, num_blocks)  # Ensure at least one block
-
-            # Create blocks for this round
-            new_placeholders = []
-
-            for _ in range(num_blocks):
-                # ALWAYS use current tips for parent selection
-                num_parents = min(len(current_tips), np.random.randint(1, 3))
-                parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
-
-                placeholder = self.queue_block(parents=parents, timestamp=0)
-                new_placeholders.append(placeholder)
-
-                # Execute all queued steps for this round
-            self.catch_up()
-
-            # Convert placeholders to actual blocks
-            new_blocks = [p.actual_block for p in new_placeholders]
-
-            # Update tip tracking
-            previous_tips = current_tips.copy()
-
-            for block in new_blocks:
-                for parent in block.parents:
-                    if parent in current_tips:
-                        current_tips.remove(parent)
-
-            current_tips.extend(new_blocks)
-
-    ####################
-    # Generate DAG from k #TODO replaced by sim?
-    ####################
 
     def calculate_params_from_k(self, target_k: int, fixed_delay: float = None,
                                 fixed_bps: float = None, max_delay: float = 5.0) -> dict:
@@ -668,149 +450,6 @@ class KaspaDAG:
                 'x': x
             }
 
-    def generate_dag_from_k_continuous(
-            self,
-            duration_seconds: int,
-            target_k: int,
-            actual_delay_multiplier: float = 1.0,
-    ):
-        """Generate DAG using continuous time simulation like Kaspa."""
-        # Get parameters
-        params = self.calculate_params_from_k(target_k)
-        bps = params['bps']
-
-        # Generate block timestamps
-        block_times = self.generate_blocks_continuous(duration_seconds, bps)
-
-        print(f"Generated {len(block_times)} blocks over {duration_seconds}s")
-        print(f"Expected blocks: {duration_seconds * bps:.1f}")
-
-        # Create blocks at each timestamp
-        current_tips = self.get_current_tips()
-
-        for block_time in block_times:
-            # Use current tips as parents
-            parents = current_tips.copy()
-
-            placeholder = self.queue_block(parents=parents, timestamp=0)
-            self.catch_up()
-
-            # Update tips
-            block = placeholder.actual_block
-            for parent in block.parents:
-                if parent in current_tips:
-                    current_tips.remove(parent)
-            current_tips.append(block)
-
-    def generate_dag_from_k(
-            self,
-            num_rounds: int,
-            target_k: int,
-            actual_delay_multiplier: float = 1.0,
-    ):
-        """Generate DAG using parameters derived from target k."""
-        # Get current tips (auto-creates genesis if needed)
-        current_tips = self.get_current_tips()
-        previous_tips = []
-
-        # Get base parameters for target k
-        params = self.calculate_params_from_k(target_k)
-        max_delay = params['delay']
-        bps = params['bps']
-
-        # Actual delay can be different from max delay
-        actual_delay = max_delay * actual_delay_multiplier
-
-        # Calculate λ for actual conditions
-        lambda_blocks = bps * actual_delay
-
-        print(f"Target k={target_k}: BPS={bps:.2f}, Max delay={max_delay}s, Actual delay={actual_delay}s")
-        print(f"λ={lambda_blocks:.2f}")
-
-        # Generate blocks with proper tip tracking
-        for round_num in range(num_rounds):
-            # Sample number of blocks for this round
-            num_blocks = max(1, np.random.poisson(lambda_blocks))
-
-            # Create blocks for this round
-            new_placeholders = []
-
-            for _ in range(num_blocks):
-                # EVERY new block references ALL blocks from previous round
-                parents = current_tips.copy()  # Use all current tips as parents
-
-                placeholder = self.queue_block(parents=parents, timestamp=0)
-                new_placeholders.append(placeholder)
-
-                # Execute all queued steps for this round
-            self.catch_up()
-
-            # Convert placeholders to actual blocks
-            new_blocks = [p.actual_block for p in new_placeholders]
-
-            # Update tip tracking
-            previous_tips = current_tips.copy()
-
-            for block in new_blocks:
-                for parent in block.parents:
-                    if parent in current_tips:
-                        current_tips.remove(parent)
-
-            current_tips.extend(new_blocks)
-
-    ####################
-    # Old Generate DAG #TODO this can be removed/replaced
-    ####################
-
-    def generate_dag(
-            self,
-            num_rounds: int,
-            lambda_parallel: float = 1.0,
-            chain_prob: float = 0.7,
-            old_tip_prob: float = 0.1,
-    ):
-        """Generate a DAG with Poisson-distributed parallel blocks."""
-
-        # Start from current tips (auto-creates genesis if needed)
-        current_tips = self.get_current_tips()
-        previous_tips = []
-
-        for round_num in range(num_rounds):
-            if np.random.random() < chain_prob:
-                num_blocks = 1
-            else:
-                num_blocks = max(1, np.random.poisson(lambda_parallel) + 1)
-
-            new_placeholders = []
-
-            for _ in range(num_blocks):
-                if previous_tips and np.random.random() < old_tip_prob:
-                    num_parents = min(len(previous_tips), np.random.randint(1, 3))
-                    parents = list(np.random.choice(previous_tips, size=num_parents, replace=False))
-                else:
-                    num_parents = min(len(current_tips), np.random.randint(1, 3))
-                    parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
-
-                    # Use queue_block instead of create_block
-                placeholder = self.queue_block(parents=parents, timestamp=0)
-                new_placeholders.append(placeholder)
-
-                # Execute all queued steps for this round
-            self.catch_up()
-
-            # Convert placeholders to actual blocks
-            new_blocks = [p.actual_block for p in new_placeholders]
-
-            # Update tip tracking
-            previous_tips = current_tips.copy()
-
-            for block in new_blocks:
-                for parent in block.parents:
-                    if parent in current_tips:
-                        current_tips.remove(parent)
-
-            current_tips.extend(new_blocks)
-
 
 class KaspaConfigManager:
     """Manages configuration for a KaspaDAG instance."""
@@ -848,6 +487,7 @@ class KaspaConfigManager:
             self.config.__post_init__()
 
     #Complete
+
 class BlockPlaceholder:
     """Placeholder for a block that will be created later."""
 
@@ -864,7 +504,7 @@ class BlockPlaceholder:
             raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
         return getattr(self.actual_block, attr)
 
-# TODO modify block add to both create the block and move the rest of the statck at the same time
+# TODO modify so camera movement is part of same animation as create and move
 class BlockManager:
     """Handles block creation, queuing, and workflow management."""
 
@@ -2062,3 +1702,155 @@ class GhostDAGHighlighter:
                 )
 
             self.dag.scene.wait(0.3)
+
+class BlockSimulator:
+    """
+    Generates realistic Kaspa DAG structures by simulating network conditions.
+
+    This simulator models block propagation delays and mining intervals to create
+    DAG structures that reflect real-world Kaspa network behavior. It implements
+    the core parent selection algorithm where blocks reference all visible tips
+    within the network delay window.
+
+    Key Concepts:
+    - Mining intervals follow exponential distribution based on network hashrate
+    - Network delay determines which blocks are visible for parent selection
+    - Parent selection uses "all visible tips" strategy for DAG connectivity
+
+    Attributes:
+        dag: The KaspaDAG instance this simulator is attached to
+    """
+
+    def __init__(self, dag:KaspaDAG):
+        """Initialize simulator with reference to parent DAG."""
+        self.dag = dag
+
+    # Tested
+    @staticmethod
+    def _sample_mining_interval(blocks_per_second: float) -> float:
+        """
+        Sample time between blocks using exponential distribution.
+
+        In Kaspa, block arrivals follow a Poisson process, so inter-arrival
+        times are exponentially distributed with rate parameter λ = blocks_per_second.
+
+        Args:
+            blocks_per_second: Network mining rate (λ parameter)
+
+        Returns:
+            Time interval in milliseconds (minimum 1ms to prevent zero intervals)
+        """
+        interval = np.random.exponential(1.0 / blocks_per_second)
+        return max(interval * 1000, 1)  # Convert to ms, enforce minimum
+
+    def _generate_timestamps(self, duration_seconds: float, blocks_per_second: float) -> List[float]:
+        """
+        Generate block timestamps over a specified duration.
+
+        Creates a sequence of timestamps following exponential inter-arrival
+        times, ensuring all timestamps fall within the duration window.
+
+        Args:
+            duration_seconds: Total simulation time in seconds
+            blocks_per_second: Expected block rate (λ parameter)
+
+        Returns:
+            List of timestamps in milliseconds from start time
+        """
+        block_timestamps = []
+        current_time = 0
+
+        while current_time < duration_seconds * 1000:
+            interval = self._sample_mining_interval(blocks_per_second)
+            current_time += interval
+            if current_time < duration_seconds * 1000:
+                block_timestamps.append(current_time)
+
+        return block_timestamps
+
+    def simulate_blocks(self, duration_seconds: float, blocks_per_second: float, network_delay_ms: float) -> List[dict]:
+        """
+        Simulate block creation under specified network conditions.
+
+        This is the main entry point for block simulation. It generates timestamps
+        and creates blocks with appropriate parent selections based on network delay.
+
+        Args:
+            duration_seconds: Simulation duration in seconds
+            blocks_per_second: Network block rate (hashrate indicator)
+            network_delay_ms: Propagation delay in milliseconds
+
+        Returns:
+            List of block dictionaries with hash, timestamp, and parents
+        """
+        timestamps = self._generate_timestamps(duration_seconds, blocks_per_second)
+        return self._create_blocks_from_timestamps(timestamps, network_delay_ms)
+
+    @staticmethod
+    def _create_blocks_from_timestamps(timestamps: List[float], network_delay_ms: float) -> List[dict]:
+        """
+        Create block structure from timestamps using Kaspa parent selection.
+
+        Implements the core DAG formation algorithm where each block selects
+        all visible tips as parents. A block is visible if it was created
+        at least 'network_delay_ms' before the current block's timestamp.
+
+        Args:
+            timestamps: Sorted list of block creation times in milliseconds
+            network_delay_ms: Network propagation delay in milliseconds
+
+        Returns:
+            List of block dictionaries forming a valid DAG structure
+        """
+        timestamps.sort()
+        blocks = []
+
+        print(f"\n=== DEBUG: Starting block generation ===")
+        print(f"Actual delay: {network_delay_ms}ms")
+        print(f"Number of timestamps: {len(timestamps)}")
+
+        for i, timestamp in enumerate(timestamps):
+            print(f"\n--- Block {i} at {timestamp:.0f}ms ---")
+
+            # Find blocks that are old enough (not parallel)
+            visible_blocks = [
+                block for block in blocks
+                if block['timestamp'] <= timestamp - network_delay_ms or block['timestamp'] == 0
+            ]
+            print(
+                f"Visible blocks (timestamp <= {timestamp - network_delay_ms:.0f}ms): {[b['hash'] for b in visible_blocks]}")
+
+            # Find tips among visible blocks (blocks with no children)
+            tips = set()
+            for candidate in visible_blocks:
+                # Check if any visible block has this candidate as parent
+                has_child = any(candidate['hash'] in other['parents'] for other in visible_blocks)
+                if not has_child:
+                    tips.add(candidate['hash'])
+
+            print(f"Tips among visible blocks (no children): {tips}")
+
+            # Parent Selection (ALL tips visible as of block.timestamp - delay)
+            if tips:
+                parents = list(tips)
+                print(f"Selected tips as parents: {parents}")
+            else:
+                # No tips available - create block with empty parents
+                parents = []
+                print(f"No tips available - creating block with empty parents")
+
+                # Create new block
+            new_block = {
+                'hash': f"block_{i}",
+                'timestamp': timestamp,
+                'parents': parents
+            }
+            blocks.append(new_block)
+            print(f"Created {new_block['hash']} with parents {parents}")
+
+        print(f"\n=== SUMMARY ===")
+        avg_parents = sum(len(b['parents']) for b in blocks) / len(blocks) if blocks else 0
+        print(f"Total blocks: {len(blocks)}")
+        print(f"Average parents per block: {avg_parents:.2f}")
+
+        return blocks
