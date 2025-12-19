@@ -21,6 +21,10 @@ Key Design Principles:
   parameters (genesis position, spacing) are read from KaspaConfig
 - **Animation delegation**: DAG methods call visual block animation methods rather than
   directly manipulating Manim objects, ensuring consistent animation behavior
+- **Manager delegation pattern**: Specialized managers handle distinct concerns
+  (BlockManager, Movement, Retrieval, RelationshipHighlighter, BlockSimulator)
+- **Realistic simulation**: BlockSimulator models network delays and mining intervals
+  to create authentic Kaspa DAG structures
 
 Block Lifecycle & Workflow:
 ---------------------------
@@ -30,6 +34,7 @@ The system supports three workflow patterns:
    - `add_block(parents=[...])` creates and animates a block immediately
    - `add_blocks([(parents, name), ...])` batch-creates and animates multiple blocks
 
+#TODO get rid of this functionality, blocks should be creaded and drwan and others shift and camera shift all within the same animation
 2. **Step-by-step (fine-grained control)**:
    - `create_block(parents=[...])` creates logical block without animation
    - `next_step()` animates the next pending step (block creation or repositioning)
@@ -38,6 +43,11 @@ The system supports three workflow patterns:
 3. **Batch with catch-up**:
    - Create multiple blocks with `create_block()`
    - `catch_up()` completes all pending animations at once
+
+4. **Simulation-based generation**:
+   - `simulate_blocks(duration, bps, delay)` generates block structure
+   - `create_blocks_from_simulator_list()` converts to visual blocks
+   - Models realistic network conditions with propagation delays
 
 Block Positioning:
 -----------------
@@ -72,13 +82,14 @@ fuzzy name matching:
 - Use regex to extract block numbers and find closest match if exact match fails
 - Return empty list if no match found (never raise exceptions)
 
-DAG Generation:
---------------
-`generate_dag()` creates realistic DAG structures with:
-- Poisson-distributed parallel blocks (controlled by `lambda_parallel`)
-- Chain extension probability (controlled by `chain_prob`)
-- Occasional "delayed" blocks that reference old tips from previous round
-  (simulating network propagation delay, controlled by `old_tip_prob`)
+Block Simulation:
+----------------
+BlockSimulator handles realistic DAG generation using network parameters:
+
+- simulate_blocks(duration, bps, delay): Generate blocks with network delay simulation
+- Exponential mining intervals model real Kaspa block arrival times
+- Network delay determines parent visibility for realistic DAG structures
+- create_blocks_from_simulator_list(): Convert simulator output to actual blocks
 
 Movement:
 --------
@@ -94,30 +105,32 @@ State Tracking:
 
 TODO / Future Improvements:
 ---------------------------
-
-5. **Block naming convention**: Current naming (Gen, B1, B2, ...) is inherited from
-   blockchain implementation. May need updating for Kaspa-specific conventions.
-   See `_generate_block_name()` and `get_block()` docstrings for update locations.
+- Add network parameter calculation methods to BlockSimulator
+- Implement conditional debug output for simulation
+- Add validation for simulation input parameters
 """
 
 from __future__ import annotations
+
+__all__ = ["KaspaDAG"]
 
 import math
 from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
-from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW
+from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger, \
+    linear
 
 from .logical_block import KaspaLogicalBlock
-from .config import KaspaConfig, DEFAULT_KASPA_CONFIG
+from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
 
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
 
 class KaspaDAG:
-    def __init__(self, scene: HUD2DScene, dag_config: KaspaConfig = DEFAULT_KASPA_CONFIG):
+    def __init__(self, scene: HUD2DScene):
         self.scene = scene
-        self.config = dag_config
+        self.config_manager = KaspaConfigManager(_KaspaConfigInternal(**DEFAULT_KASPA_CONFIG.__dict__))
 
         # Initialize components
         self.block_manager = BlockManager(self)
@@ -125,7 +138,9 @@ class KaspaDAG:
         self.movement = Movement(self)
         self.retrieval = BlockRetrieval(self)
         self.relationship_highlighter = RelationshipHighlighter(self)
-#        self.ghostdag_highlighter = GhostDAGHighlighter(self)
+        self.ghostdag_highlighter = GhostDAGHighlighter(self)
+        self.simulator = BlockSimulator(self)
+
 
         self.blocks: dict[str, KaspaLogicalBlock] = {}
         self.all_blocks: List[KaspaLogicalBlock] = []
@@ -136,6 +151,25 @@ class KaspaDAG:
 
         # CRITICAL: Enable z-index rendering
         self.scene.renderer.camera.use_z_index = True
+
+    ########################################
+    # Config
+    ########################################
+
+    @property
+    def config(self) -> _KaspaConfigInternal:
+        """Access config through manager."""
+        return self.config_manager.config
+
+    def set_k(self, k: int) -> 'KaspaDAG':
+        """Set k with genesis lock protection."""
+        self.config_manager.set_k(k, len(self.all_blocks) > 0)
+        return self
+
+    def apply_config(self, user_config: KaspaConfig) -> 'KaspaDAG':
+        """Apply typed configuration with chaining."""
+        self.config_manager.apply_config(user_config, len(self.all_blocks) > 0)
+        return self
 
     ########################################
     # Block Retrieval #Complete
@@ -185,15 +219,15 @@ class KaspaDAG:
     # Block Handling #Complete
     ########################################
 
-    def queue_block(self, parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None, name: Optional[str] = None) -> BlockPlaceholder:
+    def queue_block(self, timestamp:float , parents: Optional[List[BlockPlaceholder | KaspaLogicalBlock]] = None, name: Optional[str] = None) -> BlockPlaceholder:
         """Queue a block that will be created later."""
-        return self.block_manager.queue_block(parents, name)
+        return self.block_manager.queue_block(timestamp, parents, name)
 
     def next_step(self)-> None:
         """Play next pending block creation/shift animation"""
-        return self.block_manager.next_step()  #TODO can return be removed?
+        self.block_manager.next_step()
 
-    def catch_up(self):
+    def catch_up(self)-> None:
         """Play all pending block creation/shift animations"""
         self.block_manager.catch_up()
 
@@ -206,18 +240,18 @@ class KaspaDAG:
         return self.block_manager.add_blocks(blocks_data)
 
     ########################################
-    # Highlighting Relationships #TODO look at changing this to something more like GHOSTDAG highlighting (or the other way around)
+    # Highlighting Relationships
     ########################################
 
-    def highlight_past(self, focused_block: KaspaLogicalBlock) -> None:
+    def highlight_past(self, focused_block: KaspaLogicalBlock | str) -> None:
         """Highlight a block's past cone with child-to-parent line animations."""
         self.relationship_highlighter.highlight_past(focused_block)
 
-    def highlight_future(self, focused_block: KaspaLogicalBlock) -> None:
+    def highlight_future(self, focused_block: KaspaLogicalBlock | str) -> None:
         """Highlight a block's future cone with child-to-parent line animations."""
         self.relationship_highlighter.highlight_future(focused_block)
 
-    def highlight_anticone(self, focused_block: KaspaLogicalBlock) -> None:
+    def highlight_anticone(self, focused_block: KaspaLogicalBlock | str) -> None:
         """Highlight a block's anticone with child-to-parent line animations."""
         self.relationship_highlighter.highlight_anticone(focused_block)
 
@@ -226,14 +260,187 @@ class KaspaDAG:
         self.relationship_highlighter.reset_highlighting()
 
     ########################################
-    # Config Setters #TODO create setters instead of dag accepting a config since blanim is built as a package
+    # Highlighting GHOSTDAG
     ########################################
 
+    def animate_ghostdag_process(self, context_block: KaspaLogicalBlock | str, narrate: bool = True, step_delay: float = 1.0) -> None:
+        """Animate the complete GhostDAG process for a context block."""
+        self.ghostdag_highlighter.animate_ghostdag_process(context_block, narrate=narrate, step_delay=step_delay)
+
+    ########################################
+    # Simulate Blocks
+    ########################################
+
+    def simulate_blocks(self, duration_seconds: float, blocks_per_second: float, network_delay_ms: float) -> List[dict]:
+        """
+        Simulate blocks continuing from current DAG tips.
+
+        Delegates to BlockSimulator while maintaining the DAG's public API.
+        This method follows the manager delegation pattern used throughout KaspaDAG.
+
+        Args:
+            duration_seconds: Simulation duration in seconds
+            blocks_per_second: Network block rate
+            network_delay_ms: Propagation delay in milliseconds
+
+        Returns:
+            List of simulated block dictionaries ready for DAG integration
+        """
+        return self.simulator.simulate_blocks(duration_seconds, blocks_per_second, network_delay_ms)
+
+    #TODO finish refactoring
+    def create_blocks_from_simulator_list(
+            self,
+            simulator_blocks: List[dict]
+    ) -> List[KaspaLogicalBlock]:
+        """
+        Convert simulator block dictionaries to actual KaspaLogicalBlock objects.
+        The simulator list is already ordered by creation time.
+        """
+        # Get tips once at the start (before any blocks are created)
+        initial_tips = self.get_current_tips()
+
+        # Map to track hash -> actual block
+        block_map = {}
+        created_blocks = []
+
+        for block_dict in simulator_blocks:
+            block_hash = block_dict['hash']
+            block_timestamp = block_dict['timestamp']
+            parent_hashes = block_dict.get('parents', [])
+
+            # Resolve parent hashes to actual blocks
+            parents = []
+            if parent_hashes:
+                # Normal case: has parents from simulator
+                for parent_hash in parent_hashes:
+                    if parent_hash in block_map:
+                        parents.append(block_map[parent_hash])
+                    else:
+                        raise ValueError(f"Parent block {parent_hash} not found for block {block_hash}")
+            else:
+                # Empty parents case: use initial tips (captured before any blocks created)
+                parents = initial_tips
+
+                # Create the block using existing infrastructure
+            placeholder = self.queue_block(parents=parents, name=None, timestamp=block_timestamp)
+            self.catch_up()  # Execute the creation
+
+            actual_block = placeholder.actual_block
+            block_map[block_hash] = actual_block
+            created_blocks.append(actual_block)
+
+        return created_blocks
+
+    ########################################
+    # Highlight Parent Chain
+    ########################################
+
+    def find_sink(self) -> Optional[KaspaLogicalBlock]:
+        """
+        Find the sink block - the block with highest blue score from virtual POV,
+        tie-broken by lowest hash (same tiebreaker as GD rules in logical block).
+
+        Returns:
+            The sink block, or None if no blocks exist
+        """
+        if not self.all_blocks:
+            return None
+
+        # Use the same sorting logic as _select_parent() in logical_block.py
+        # Sort by (blue_score, -hash) - highest first, so reverse=True
+        sorted_blocks = sorted(
+            self.all_blocks,
+            key=lambda block: (block.ghostdag.blue_score, -block.hash),
+            reverse=True
+        )
+
+        return sorted_blocks[0]
+
+    def highlight_and_scroll_parent_chain(self, start_block=None, scroll_speed_factor=0.5):
+        """
+        Highlight the selected parent chain from start block to genesis and scroll back.
+
+        Args:
+            start_block: Block to start from (defaults to sink block)
+            scroll_speed_factor: Multiplier for scroll speed based on horizontal spacing
+        """
+
+        # Get starting block (sink if not specified)
+        if start_block is None:
+            start_block = self.find_sink()
+            if start_block is None:
+                return
+
+        if isinstance(start_block, str):
+            start_block = self.get_block(start_block)
+            if start_block is None:
+                return
+
+                # Get the selected parent chain
+        parent_chain = []
+        current = start_block
+        while current is not None:
+            parent_chain.append(current)
+            current = current.selected_parent
+            if current and current.name == "Gen":
+                parent_chain.append(current)
+                break
+
+                # Fade all blocks except parent chain
+        parent_chain_set = set(parent_chain)
+        fade_animations = []
+
+        for block in self.all_blocks:
+            if block not in parent_chain_set:
+                fade_animations.extend(block.visual_block.create_fade_animation())
+                # Fade ALL lines from non-chain blocks
+                for line in block.visual_block.parent_lines:
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+
+                    # Handle lines for parent chain blocks - fade all except selected parent (index 0)
+        for block in parent_chain:
+            for i, line in enumerate(block.visual_block.parent_lines):
+                if i == 0:
+                    # Keep selected parent line at full opacity
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=1.0)
+                    )
+                else:
+                    # Fade all other parent lines from this block
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+
+        if fade_animations:
+            self.scene.play(*fade_animations)
+
+            # Calculate scroll to genesis position (x-axis only)
+        if parent_chain:
+            genesis_block = parent_chain[-1]  # Genesis is last in the chain
+            genesis_pos = genesis_block.get_center()
+            camera_target = [genesis_pos[0], 0, 0]  # X-axis movement only
+
+            # Calculate total distance for runtime - make it slower
+            sink_pos = parent_chain[0].get_center()
+            total_distance = abs(sink_pos[0] - genesis_pos[0])
+            total_time = total_distance * scroll_speed_factor / self.config.horizontal_spacing * 3.0  # Slower by factor of 3
+
+            # Single smooth horizontal camera movement to genesis
+            self.scene.play(
+                self.scene.camera.frame.animate.move_to(camera_target),
+                run_time=total_time,
+                rate_func=linear
+            )
     ####################
     # Helper functions for finding k thresholds
     ####################
+
     # Verified
-    def k_from_x(self, x_val: float, delta: float = 0.01) -> int:
+    @staticmethod
+    def k_from_x(x_val: float, delta: float = 0.01) -> int:
         """Calculate k from x using Kaspa's cumulative probability algorithm."""
         k_hat = 0
         sigma = 0.0
@@ -287,172 +494,8 @@ class KaspaDAG:
 
         return thresholds
 
-    # Tested
-    def sample_mining_interval(self, bps):
-        # Time between blocks follows Exp(bps) distribution
-        interval = np.random.exponential(1.0 / bps)
-        return max(interval * 1000, 1)  # Convert to milliseconds, minimum 1ms
-
-    def generate_blocks_continuous(self, duration_seconds, bps):
-        blocks = []
-        current_time = 0
-
-        while current_time < duration_seconds * 1000:
-            interval = self.sample_mining_interval(bps)
-            current_time += interval
-            if current_time < duration_seconds * 1000:
-                blocks.append(current_time)
-
-        return blocks
-
-    # Tested
-    def create_blocks_from_timestamps(self, timestamps: List[float], actual_delay: float) -> List[dict]:
-        """
-        Convert timestamps to actual blocks with parent relationships.
-        A block references ALL tip blocks that are older than the network delay window.
-        """
-        timestamps.sort()
-        blocks = []
-        tips = set()  # Track current tips
-        all_blocks = []  # Track all blocks created so far
-
-        for i, timestamp in enumerate(timestamps):
-            # Find all blocks that are old enough to have propagated
-            visible_blocks = [
-                block for block in all_blocks
-                if block['timestamp'] <= timestamp - actual_delay
-            ]
-
-            # From visible blocks, select only those that are still tips
-            visible_parents = [
-                block for block in visible_blocks
-                if block['hash'] in tips
-            ]
-
-            # If no visible tips, select the most recent visible block
-            if not visible_parents and visible_blocks:
-                visible_parents = [visible_blocks[-1]]
-
-                # Get parent hashes
-            if visible_parents:
-                parents = [p['hash'] for p in visible_parents]
-            else:
-                parents = []  # Genesis block
-
-            # Create new block
-            new_block = {
-                'hash': f"block_{i}",
-                'timestamp': timestamp,
-                'parents': parents
-            }
-
-            blocks.append(new_block)
-            all_blocks.append(new_block)
-
-            # Update tips - remove parents that are no longer tips
-            for parent_hash in parents:
-                tips.discard(parent_hash)
-
-                # Add new block as a tip
-            tips.add(new_block['hash'])
-
-        return blocks
-
-    # Tested TODO create blocks from this return
-    def test_block_generation(self, duration_in_seconds: float, bps_float: float, actual_delay_in_ms: float):
-        """Test function to visualize block generation and relationships."""
-
-        print("=" * 60)
-        print("Testing Block Generation with Network Delay Simulation")
-        print("=" * 60)
-
-        # Test parameters
-        duration_seconds = duration_in_seconds
-        bps = bps_float  # block per second
-        actual_delay = actual_delay_in_ms  # network delay in milliseconds
-
-        print(f"\nParameters:")
-        print(f"  Duration: {duration_seconds}s")
-        print(f"  Block rate: {bps} BPS (1 block per {1 / bps}s)")
-        print(f"  Network delay: {actual_delay}ms")
-        print()
-
-        # Generate timestamps
-        timestamps = self.generate_blocks_continuous(duration_seconds, bps)
-        print(f"Generated {len(timestamps)} block timestamps:")
-        for i, ts in enumerate(timestamps):
-            print(f"  Block {i}: {ts:.0f}ms")
-        print()
-
-        # Convert to blocks with relationships
-        blocks = self.create_blocks_from_timestamps(timestamps, actual_delay)
-
-        # Display block relationships
-        print("Block Relationships:")
-        print("-" * 40)
-        for block in blocks:
-            print(f"Block {block['hash']}:")
-            print(f"  Timestamp: {block['timestamp']:.0f}ms")
-            if block['parents']:
-                print(f"  Parents: {', '.join(block['parents'])}")
-            else:
-                print(f"  Parents: None (genesis)")
-            print()
-
-            # Summary statistics
-        print(f"Summary:")
-        print(f"  Total blocks: {len(blocks)}")
-        avg_parents = sum(len(b['parents']) for b in blocks) / len(blocks) if blocks else 0
-        print(f"  Average parents per block: {avg_parents:.2f}")
-
-        return blocks
-
-    def create_blocks_from_simulator_list(
-            self,
-            simulator_blocks: List[dict]
-    ) -> List[KaspaLogicalBlock]:
-        """
-        Convert simulator block dictionaries to actual KaspaLogicalBlock objects.
-        The simulator list is already ordered by creation time.
-        """
-        # Get tips once at the start (ensures genesis exists)
-        initial_tips = self.get_current_tips()
-
-        # Map to track hash -> actual block
-        block_map = {}
-        created_blocks = []
-
-        for block_dict in simulator_blocks:
-            block_hash = block_dict['hash']
-            parent_hashes = block_dict.get('parents', [])
-
-            # Resolve parent hashes to actual blocks
-            parents = []
-            if parent_hashes:
-                # Normal case: has parents from simulator
-                for parent_hash in parent_hashes:
-                    if parent_hash in block_map:
-                        parents.append(block_map[parent_hash])
-                    else:
-                        raise ValueError(f"Parent block {parent_hash} not found for block {block_hash}")
-            else:
-                # Empty parents case: use initial tips
-                parents = initial_tips
-
-                # Create the block using existing infrastructure
-            placeholder = self.queue_block(parents=parents, name=block_hash)
-            self.catch_up()  # Execute the creation
-
-            actual_block = placeholder.actual_block
-            block_map[block_hash] = actual_block
-            created_blocks.append(actual_block)
-
-        return created_blocks
-    ####################
-    # Generate DAG from parameters  #TODO this does not correctly color blocks when creating since DAG uses a predetermined k set in config #TODO replaced by sim?
-    ####################
-
-    def calculate_lambda_from_network(self, bps: float, delay: float) -> float:
+    @staticmethod
+    def calculate_lambda_from_network(bps: float, delay: float) -> float:
         """Calculate λ from network conditions.
 
         Args:
@@ -470,62 +513,6 @@ class KaspaDAG:
         """Calculate k using Kaspa's formula."""
         x = 2 * max_delay * bps
         return self.k_from_x(x, delta)
-
-    def generate_kaspa_dag(
-            self,
-            num_rounds: int,
-            bps: float,
-            max_delay: float,
-            actual_delay: float,
-            delta: float = 0.01
-    ):
-        """Generate DAG using Kaspa's network-based approach."""
-        # Get current tips (auto-creates genesis if needed)
-        current_tips = self.get_current_tips()
-        previous_tips = []
-
-        # Calculate network parameters
-        k = self.calculate_k_from_network(bps, max_delay, delta)
-        lambda_blocks = self.calculate_lambda_from_network(bps, actual_delay)
-
-        print(f"Network: BPS={bps}, Max delay={max_delay}s, Actual delay={actual_delay}s")
-        print(f"Calculated: k={k}, λ={lambda_blocks:.2f}")
-
-        for round_num in range(num_rounds):
-            # Sample number of blocks for this round
-            num_blocks = np.random.poisson(lambda_blocks)
-            num_blocks = max(1, num_blocks)  # Ensure at least one block
-
-            # Create blocks for this round
-            new_placeholders = []
-
-            for _ in range(num_blocks):
-                # ALWAYS use current tips for parent selection
-                num_parents = min(len(current_tips), np.random.randint(1, 3))
-                parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
-
-                placeholder = self.queue_block(parents=parents)
-                new_placeholders.append(placeholder)
-
-                # Execute all queued steps for this round
-            self.catch_up()
-
-            # Convert placeholders to actual blocks
-            new_blocks = [p.actual_block for p in new_placeholders]
-
-            # Update tip tracking
-            previous_tips = current_tips.copy()
-
-            for block in new_blocks:
-                for parent in block.parents:
-                    if parent in current_tips:
-                        current_tips.remove(parent)
-
-            current_tips.extend(new_blocks)
-
-    ####################
-    # Generate DAG from k #TODO replaced by sim?
-    ####################
 
     def calculate_params_from_k(self, target_k: int, fixed_delay: float = None,
                                 fixed_bps: float = None, max_delay: float = 5.0) -> dict:
@@ -567,493 +554,50 @@ class KaspaDAG:
                 'x': x
             }
 
-    def generate_dag_from_k_continuous(
-            self,
-            duration_seconds: int,
-            target_k: int,
-            actual_delay_multiplier: float = 1.0,
-    ):
-        """Generate DAG using continuous time simulation like Kaspa."""
-        # Get parameters
-        params = self.calculate_params_from_k(target_k)
-        bps = params['bps']
 
-        # Generate block timestamps
-        block_times = self.generate_blocks_continuous(duration_seconds, bps)
+class KaspaConfigManager:
+    """Manages configuration for a KaspaDAG instance."""
 
-        print(f"Generated {len(block_times)} blocks over {duration_seconds}s")
-        print(f"Expected blocks: {duration_seconds * bps:.1f}")
+    def __init__(self, user_config: _KaspaConfigInternal):
+        self.config = user_config
 
-        # Create blocks at each timestamp
-        current_tips = self.get_current_tips()
+    def apply_config(self, user_config: KaspaConfig, is_locked: bool = False) -> None:
+        """Apply typed config with genesis lock protection."""
+        critical_params = {'k'}
 
-        for block_time in block_times:
-            # Use current tips as parents
-            parents = current_tips.copy()
+        for key, value in user_config.items():
+            if key in critical_params and is_locked:
+                logger.warning(
+                    f"Cannot change {key} after blocks have been added. "
+                    "DAG parameters must remain consistent throughout the DAG lifecycle."
+                )
+                continue
 
-            placeholder = self.queue_block(parents=parents)
-            self.catch_up()
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+                if hasattr(self.config, '__post_init__'):
+                    self.config.__post_init__()
 
-            # Update tips
-            block = placeholder.actual_block
-            for parent in block.parents:
-                if parent in current_tips:
-                    current_tips.remove(parent)
-            current_tips.append(block)
-
-    def generate_dag_from_k(
-            self,
-            num_rounds: int,
-            target_k: int,
-            actual_delay_multiplier: float = 1.0,
-    ):
-        """Generate DAG using parameters derived from target k."""
-        # Get current tips (auto-creates genesis if needed)
-        current_tips = self.get_current_tips()
-        previous_tips = []
-
-        # Get base parameters for target k
-        params = self.calculate_params_from_k(target_k)
-        max_delay = params['delay']
-        bps = params['bps']
-
-        # Actual delay can be different from max delay
-        actual_delay = max_delay * actual_delay_multiplier
-
-        # Calculate λ for actual conditions
-        lambda_blocks = bps * actual_delay
-
-        print(f"Target k={target_k}: BPS={bps:.2f}, Max delay={max_delay}s, Actual delay={actual_delay}s")
-        print(f"λ={lambda_blocks:.2f}")
-
-        # Generate blocks with proper tip tracking
-        for round_num in range(num_rounds):
-            # Sample number of blocks for this round
-            num_blocks = max(1, np.random.poisson(lambda_blocks))
-
-            # Create blocks for this round
-            new_placeholders = []
-
-            for _ in range(num_blocks):
-                # EVERY new block references ALL blocks from previous round
-                parents = current_tips.copy()  # Use all current tips as parents
-
-                placeholder = self.queue_block(parents=parents)
-                new_placeholders.append(placeholder)
-
-                # Execute all queued steps for this round
-            self.catch_up()
-
-            # Convert placeholders to actual blocks
-            new_blocks = [p.actual_block for p in new_placeholders]
-
-            # Update tip tracking
-            previous_tips = current_tips.copy()
-
-            for block in new_blocks:
-                for parent in block.parents:
-                    if parent in current_tips:
-                        current_tips.remove(parent)
-
-            current_tips.extend(new_blocks)
-
-    ####################
-    # Old Generate DAG #TODO this can be removed/replaced
-    ####################
-
-    def generate_dag(
-            self,
-            num_rounds: int,
-            lambda_parallel: float = 1.0,
-            chain_prob: float = 0.7,
-            old_tip_prob: float = 0.1,
-    ):
-        """Generate a DAG with Poisson-distributed parallel blocks."""
-
-        # Start from current tips (auto-creates genesis if needed)
-        current_tips = self.get_current_tips()
-        previous_tips = []
-
-        for round_num in range(num_rounds):
-            if np.random.random() < chain_prob:
-                num_blocks = 1
-            else:
-                num_blocks = max(1, np.random.poisson(lambda_parallel) + 1)
-
-            new_placeholders = []
-
-            for _ in range(num_blocks):
-                if previous_tips and np.random.random() < old_tip_prob:
-                    num_parents = min(len(previous_tips), np.random.randint(1, 3))
-                    parents = list(np.random.choice(previous_tips, size=num_parents, replace=False))
-                else:
-                    num_parents = min(len(current_tips), np.random.randint(1, 3))
-                    parents = list(np.random.choice(current_tips, size=num_parents, replace=False))
-
-                    # Use queue_block instead of create_block
-                placeholder = self.queue_block(parents=parents)
-                new_placeholders.append(placeholder)
-
-                # Execute all queued steps for this round
-            self.catch_up()
-
-            # Convert placeholders to actual blocks
-            new_blocks = [p.actual_block for p in new_placeholders]
-
-            # Update tip tracking
-            previous_tips = current_tips.copy()
-
-            for block in new_blocks:
-                for parent in block.parents:
-                    if parent in current_tips:
-                        current_tips.remove(parent)
-
-            current_tips.extend(new_blocks)
-
-    ########################################
-    # Highlighting GHOSTDAG #TODO test and refine this #TODO change this to play step by step(if desired) as with adding blocks anims
-    ########################################
-
-    def animate_ghostdag_process(
-            self,
-            context_block: KaspaLogicalBlock | str,
-            narrate: bool = True,
-            step_delay: float = 1.0
-    ) -> None:
-        """Animate the complete GhostDAG process for a context block."""
-        if isinstance(context_block, str):
-            context_block = self.get_block(context_block)
-            if context_block is None:
-                return
-
-        try:
-            # Step 1: Fade to context inclusive past cone
-            if narrate:
-                self.scene.narrate("Fade all except past cone of context block(inclusive)")
-            self._ghostdag_fade_to_past(context_block)
-            self.scene.wait(step_delay)
-
-            # Step 2: Show parents
-            if narrate:
-                self.scene.narrate("Highlight all parent blocks")
-            self._ghostdag_highlight_parents(context_block)
-            self.scene.wait(step_delay)
-
-            # Step 3: Show selected parent
-            if narrate:
-                self.scene.narrate("Selected parent chosen with highest blue score(with uniform tiebreaking)")
-            self._ghostdag_show_selected_parent(context_block)
-            self.scene.wait(step_delay)
-
-            # Step 4: Show mergeset
-            if narrate:
-                self.scene.narrate("Creating mergeset from past cone differences")
-            self._ghostdag_show_mergeset(context_block)
-            self.scene.wait(step_delay)
-
-            # Step 5: Show ordering
-            if narrate:
-                self.scene.narrate("Ordering mergeset by blue score and hash")
-            self._ghostdag_show_ordering(context_block)
-            self.scene.wait(step_delay)
-
-            # Step 6: Blue candidate process
-            if narrate:
-                self.scene.narrate("Evaluating blue candidates (k-parameter constraint)") #TODO highlight(BLUE) blue blocks in anticone of blue candidate OR show candidate.SP k-cluster
-            self._ghostdag_show_blue_process(context_block)
-            self.scene.wait(step_delay)
-
-        finally:
-            # Always cleanup
-            if narrate:
-                self.scene.clear_narrate()
-                self.scene.clear_caption()
-            self.reset_highlighting()
-
-
-    def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
-        """Fade everything not in context block's past cone."""
-        context_inclusive_past_blocks = set(context_block.get_past_cone())
-        context_inclusive_past_blocks.add(context_block)
-
-        fade_animations = []
-        for block in self.all_blocks:
-            if block not in context_inclusive_past_blocks:
-                fade_animations.extend(block.visual_block.create_fade_animation())
-                # Also fade lines from these blocks
-                for line in block.visual_block.parent_lines:
-                    fade_animations.append(
-                        line.animate.set_stroke(opacity=self.config.fade_opacity)
-                    )
-
-        if fade_animations:
-            self.scene.play(*fade_animations)
-
-    def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
-        """Highlight all parents of context block."""
-        if not context_block.parents:
+    def set_k(self, k: int, is_locked: bool = False) -> None:
+        """Set k with lock protection."""
+        if is_locked:
+            logger.warning(
+                "Cannot change k after blocks have been added. "
+                "DAG parameters must remain consistent throughout the DAG lifecycle."
+            )
             return
+        self.config.k = k
+        if hasattr(self.config, '__post_init__'):
+            self.config.__post_init__()
 
-        parent_animations = []
+    #Complete
 
-        # Highlight all parent blocks
-        for parent in context_block.parents:
-            parent_animations.append(
-                parent.visual_block.square.animate.set_style(
-                    stroke_color=self.config.ghostdag_parent_stroke_highlight_color,
-                    stroke_width=self.config.ghostdag_parent_stroke_highlight_width
-                )
-            )
-
-        # Highlight all parent lines (they always connect to parents)
-        for line in context_block.visual_block.parent_lines:
-            parent_animations.append(
-                line.animate.set_stroke(
-                    color=self.config.ghostdag_parent_line_highlight_color
-                )
-            )
-
-        self.scene.play(*parent_animations)
-
-        #Change lines back to normal
-        return_lines_animations = context_block.visual_block.create_line_reset_animations()
-        self.scene.play(*return_lines_animations)
-
-    def _ghostdag_show_selected_parent(self, context_block: KaspaLogicalBlock):
-        """Highlight selected parent and fade its past cone."""
-        if not context_block.selected_parent:
-            return
-
-        selected = context_block.selected_parent
-
-        # Highlight selected parent with unique style
-        self.scene.play(
-            selected.visual_block.square.animate.set_style(
-                fill_color=self.config.ghostdag_selected_parent_fill_color,
-                fill_opacity=self.config.ghostdag_selected_parent_opacity,
-                stroke_width=self.config.ghostdag_selected_parent_stroke_width,
-                stroke_color=self.config.ghostdag_selected_parent_stroke_color,
-            )
-        )
-
-        # Fade selected parent's past cone
-        selected_past = set(selected.get_past_cone())
-        fade_animations = []
-        for block in selected_past:
-            fade_animations.extend(block.visual_block.create_fade_animation())
-            for line in block.visual_block.parent_lines:
-                fade_animations.append(
-                    line.animate.set_stroke(opacity=self.config.fade_opacity)
-                )
-        # Fade selected parents parent lines as well
-        for line in context_block.selected_parent.parent_lines:
-            fade_animations.append(
-                line.animate.set_stroke(opacity=self.config.fade_opacity)
-            )
-        self.scene.play(*fade_animations)
-
-    def _ghostdag_show_mergeset(self, context_block: KaspaLogicalBlock):
-        """Visualize mergeset creation."""
-        mergeset = context_block.get_sorted_mergeset_without_sp()
-
-        # Early return if no blocks to animate
-        if not mergeset:
-            return
-
-        # Highlight mergeset blocks
-        mergeset_animations = []
-        for block in mergeset:
-            mergeset_animations.append(
-                block.visual_block.square.animate.set_style(
-                    fill_color=self.config.ghostdag_mergeset_color,
-                    stroke_width=self.config.ghostdag_mergeset_stroke_width
-                )
-            )
-
-        self.scene.play(*mergeset_animations)
-
-    def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
-        """Show sorted ordering without temporary text objects."""
-        sorted_mergeset = context_block.get_sorted_mergeset_without_sp()
-
-        # Just highlight in sequence, no text overlays
-        for i, block in enumerate(sorted_mergeset):
-            self.scene.play(
-                Indicate(block.visual_block.square, scale=1.1),
-                run_time=1
-            )
-            self.scene.wait(0.1)
-
-    #TODO clean this up AND check, it appears the first check misses sp as blue
-    def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
-        """Animate blue evaluation with blue anticone visualization."""
-        blue_candidates = context_block.get_sorted_mergeset_without_sp()
-        total_view = set(context_block.get_past_cone())
-        total_view.add(context_block)
-
-        # Start with selected parent's local POV as baseline
-        local_blue_status = context_block.selected_parent.ghostdag.local_blue_pov.copy()
-        local_blue_status[context_block.selected_parent] = True
-
-        # Initialize all candidates as not blue locally
-        for candidate in blue_candidates:
-            local_blue_status[candidate] = False
-
-        for candidate in blue_candidates:
-            # Show candidate being evaluated
-            self.scene.play(
-                Indicate(candidate.visual_block.square, scale=1.2),
-                run_time=1.0
-            )
-
-            # Get blue blocks from CURRENT local perspective
-            blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
-
-            # FIRST CHECK: Highlight blue blocks in candidate's anticone
-            candidate_anticone = context_block._get_anticone(candidate, total_view)
-            blue_in_anticone = candidate_anticone & blue_blocks
-
-            # Highlight first check
-            anticone_animations = []
-            for block in blue_in_anticone:
-                anticone_animations.append(
-                    block.visual_block.square.animate.set_style(
-                        fill_color=self.config.ghostdag_blue_color,
-                        stroke_width=8,
-                        stroke_opacity=0.9,
-                        fill_opacity=0.9,
-                    )
-                )
-
-            if anticone_animations:
-                self.scene.play(*anticone_animations)
-                self.scene.wait(0.5)
-                # Reset first check highlighting
-                reset_animations = []
-                for block in blue_in_anticone:
-                    reset_animations.append(
-                        block.visual_block.create_fade_animation()
-                    )
-                self.scene.play(*reset_animations)
-
-            # SECOND CHECK: For each blue block, check if candidate would exceed k in its anticone
-            second_check_failed = False
-            for blue_block in blue_blocks:
-                blue_anticone = context_block._get_anticone(blue_block, total_view)
-                if candidate in blue_anticone:
-                    # Highlight the blue block being checked
-                    self.scene.play(
-                        blue_block.visual_block.square.animate.set_style(
-                            stroke_color=YELLOW,
-                            stroke_width=10,
-                            stroke_opacity=1.0
-                        )
-                    )
-
-                    # Highlight blue blocks in this blue block's anticone
-                    affected_blue_in_anticone = blue_anticone & blue_blocks
-                    second_check_animations = []
-
-                    # Highlight existing blue blocks in anticone
-                    for block in affected_blue_in_anticone:
-                        if block != blue_block:  # Don't highlight the blue block itself
-                            second_check_animations.append(
-                                block.visual_block.square.animate.set_style(
-                                    fill_color=self.config.ghostdag_blue_color,
-                                    stroke_width=6,
-                                    stroke_opacity=0.8,
-                                    fill_opacity=0.8,
-                                )
-                            )
-
-                            # Highlight candidate as it would be added
-                    second_check_animations.append(
-                        candidate.visual_block.square.animate.set_style(
-                            stroke_color=ORANGE,
-                            stroke_width=8,
-                            stroke_opacity=1.0,
-                        )
-                    )
-
-                    if second_check_animations:
-                        self.scene.play(*second_check_animations)
-                        self.scene.wait(0.3)
-
-                        # Check if this would exceed k
-                        blue_count = len(affected_blue_in_anticone) + 1  # +1 for candidate
-                        if blue_count > context_block.kaspa_config.k:
-                            second_check_failed = True
-                            self.scene.caption(
-                                f"Second check FAILED: {blue_block.name} would have {blue_count} $>$ k blues in anticone")
-                            # Flash red to indicate failure
-                            self.scene.play(
-                                blue_block.visual_block.square.animate.set_fill(color=RED, opacity=0.5),
-                                candidate.visual_block.square.animate.set_fill(color=RED, opacity=0.5)
-                            )
-                        else:
-                            self.scene.caption(
-                                f"Second check PASSED: {blue_block.name} would have {blue_count} $<$= k blues in anticone")
-
-                        self.scene.wait(0.5)
-
-                        # Reset second check highlighting
-                        reset_animations = []
-                        for block in affected_blue_in_anticone:
-                            if block != blue_block:
-                                reset_animations.append(
-                                    block.visual_block.create_fade_animation()
-                                )
-                        reset_animations.append(
-                            blue_block.visual_block.square.animate.set_style(
-                                fill_color=self.config.ghostdag_blue_color,
-                                stroke_width=2,
-                                stroke_opacity=1.0,
-                                fill_opacity=self.config.ghostdag_blue_opacity
-                            )
-                        )
-                        reset_animations.append(
-                            candidate.visual_block.square.animate.set_style(
-                                stroke_width=2,
-                                stroke_opacity=1.0,
-                            )
-                        )
-                        self.scene.play(*reset_animations)
-
-                    if second_check_failed:
-                        break  # No need to check further blue blocks
-
-            # Final decision based on both checks
-            can_be_blue = context_block._can_be_blue_local(
-                candidate, local_blue_status, context_block.kaspa_config.k, total_view
-            )
-
-            if can_be_blue:
-                local_blue_status[candidate] = True
-                self.scene.caption(f"Block {candidate.name}: BLUE (accepted)")
-                self.scene.play(
-                    candidate.visual_block.square.animate.set_fill(
-                        color=self.config.ghostdag_blue_color,
-                        opacity=self.config.ghostdag_blue_opacity
-                    )
-                )
-            else:
-                local_blue_status[candidate] = False
-                self.scene.caption(f"Block {candidate.name}: RED (rejected)")
-                self.scene.play(
-                    candidate.visual_block.square.animate.set_fill(
-                        color=self.config.ghostdag_red_color,
-                        opacity=self.config.ghostdag_red_opacity
-                    )
-                )
-
-            self.scene.wait(0.3)
-
-#Complete
 class BlockPlaceholder:
     """Placeholder for a block that will be created later."""
 
-    def __init__(self, dag, parents, name):
+    def __init__(self, dag, timestamp, parents, name):
         self.dag = dag
+        self.timestamp = timestamp
         self.parents = parents
         self.name = name
         self.actual_block = None  # Will be set automatically when created
@@ -1064,19 +608,19 @@ class BlockPlaceholder:
             raise ValueError(f"Block {self.name} hasn't been created yet - call next_step() first")
         return getattr(self.actual_block, attr)
 
-#Complete
+# TODO modify so camera movement is part of same animation as create and move
 class BlockManager:
     """Handles block creation, queuing, and workflow management."""
 
     def __init__(self, dag):
         self.dag = dag
 
-    def queue_block(self, parents=None, name=None) -> BlockPlaceholder:
-        """Queue block creation, return placeholder that auto-resolves."""
+    def queue_block(self, timestamp, parents=None, name=None) -> BlockPlaceholder:
+        """Queue block creation with mirroring positioning animation."""
 
-        placeholder = BlockPlaceholder(self, parents, name)
+        placeholder = BlockPlaceholder(self, timestamp, parents, name)
 
-        def create_and_animate_block():
+        def create_and_reposition_together():
             # Resolve parent placeholders to actual blocks
             resolved_parents = []
             if parents:
@@ -1088,15 +632,51 @@ class BlockManager:
                     else:
                         resolved_parents.append(p)
 
-            # Create the actual block
+                        # Calculate x-position based on parents
             block_name = name if name else self.dag.retrieval.generate_block_name(resolved_parents)
-            position = self._calculate_dag_position(resolved_parents)
 
+            # Initialize variables that will be used later
+            column_blocks = []
+            shift_y = 0
+
+            if not resolved_parents:
+                # Genesis block - use standard position
+                x_position = self.dag.config.genesis_x
+                y_position = self.dag.config.genesis_y
+            else:
+                # Use rightmost parent for x-position
+                rightmost_parent = max(resolved_parents, key=lambda p: p.visual_block.square.get_center()[0])
+                parent_pos = rightmost_parent.visual_block.square.get_center()
+                x_position = parent_pos[0] + self.dag.config.horizontal_spacing
+
+                # Find existing blocks at this x-position
+                column_blocks = [
+                    b for b in self.dag.all_blocks
+                    if abs(b.visual_block.square.get_center()[0] - x_position) < 0.01
+                ]
+
+                if not column_blocks:
+                    # First block at this x-position
+                    y_position = self.dag.config.genesis_y
+                    shift_y = 0
+                else:
+                    # Calculate shift and new position with mirroring logic
+                    shift_y = -self.dag.config.vertical_spacing / 2  # Always shift down by half spacing
+
+                    # Find the lowest block (minimum y)
+                    lowest_block = min(column_blocks, key=lambda b: b.visual_block.square.get_center()[1])
+                    lowest_y = lowest_block.visual_block.square.get_center()[1]
+
+                    # New block goes at mirror position of lowest block after shift
+                    y_position = -(lowest_y + shift_y)  # Mirror around genesis_y (0)
+
+            # Create the new block
             block = KaspaLogicalBlock(
                 name=block_name,
+                timestamp=timestamp,
                 parents=resolved_parents if resolved_parents else [],
-                position=position,
-                kaspa_config=self.dag.config,
+                position=(x_position, y_position),
+                config=self.dag.config,
             )
 
             self.dag.blocks[block_name] = block
@@ -1105,30 +685,38 @@ class BlockManager:
             if not resolved_parents:
                 self.genesis = block
 
-            # AUTOMATICALLY link placeholder to actual block
             placeholder.actual_block = block
 
-            # Animate it
-            self._animate_block_creation(block)
+            # Create combined animations
+            animations = []
+
+            # Add block creation animation
+            self.dag.shift_camera_to_follow_blocks()
+            animations.append(block.visual_block.create_with_lines())
+
+            # Add shift animations for existing blocks if needed
+            if column_blocks and abs(shift_y) > 0.01:
+                for existing_block in column_blocks:
+                    animations.append(
+                        existing_block.visual_block.create_movement_animation(
+                            existing_block.visual_block.animate.shift(np.array([0, shift_y, 0]))
+                        )
+                    )
+
+                    # Play all animations together
+            self.dag.scene.play(*animations)
 
             return block
 
-        self.dag.workflow_steps.append(create_and_animate_block)
+            # Queue only the combined function
 
-        # Queue repositioning
-        def reposition_column():
-            if self.dag.all_blocks:
-                x_pos = self.dag.all_blocks[-1].visual_block.square.get_center()[0]
-                self._animate_dag_repositioning({x_pos})
-
-        reposition_column.is_repositioning = True
-        self.dag.workflow_steps.append(reposition_column)
+        self.dag.workflow_steps.append(create_and_reposition_together)
 
         return placeholder
 
     def add_block(self, parents=None, name=None) -> KaspaLogicalBlock:
         """Create and animate a block immediately."""
-        placeholder = self.queue_block(parents=parents, name=name)
+        placeholder = self.queue_block(parents=parents, name=name, timestamp=0)
         self.next_step()  # Execute block creation TODO does this break IF there is a pending queue of blocks when this is called
         self.next_step()  # Execute repositioning
         return placeholder.actual_block  # Return actual block, not placeholder
@@ -1158,14 +746,14 @@ class BlockManager:
         # Check if this is a marked repositioning function
         if getattr(func, 'is_repositioning', False):
             if self.dag.all_blocks:
-                x_pos = self.dag.all_blocks[-1].visual_block.square.get_center()[0] #TODO pretty sure get_center() on block is overridden to return squares center only
+                x_pos = self.dag.all_blocks[-1].visual_block.get_center()[0]
                 column_blocks = [
                     b for b in self.dag.all_blocks
-                    if abs(b.visual_block.square.get_center()[0] - x_pos) < 0.01
+                    if abs(b.visual_block.get_center()[0] - x_pos) < 0.01
                 ]
 
                 if column_blocks:
-                    current_ys = [b.visual_block.square.get_center()[1] for b in column_blocks]
+                    current_ys = [b.visual_block.get_center()[1] for b in column_blocks]
                     current_center_y = (max(current_ys) + min(current_ys)) / 2
                     shift_y = self.dag.config.genesis_y - current_center_y
 
@@ -1662,7 +1250,7 @@ class BlockRetrieval:
             suffix = chr(ord('a') + len(blocks_at_round) - 1)
             return f"B{round_number}{suffix}"
 
-#TODO fully test this
+#Complete
 class RelationshipHighlighter:
     def __init__(self, dag):
         self.dag = dag
@@ -1807,7 +1395,7 @@ class RelationshipHighlighter:
                         # Create flash animation for this specific line
                         flash_copy = parent_line.copy()
                         flash_copy.set_stroke(
-                            color=self.dag.config.highlight_color,
+                            color=self.dag.config.highlight_line_color,
                             width=self.dag.config.line_stroke_width
                         )
                         from manim import ShowPassingFlash, cycle_animation
@@ -1840,7 +1428,7 @@ class RelationshipHighlighter:
                                 # Create flash animation
                                 flash_copy = parent_line.copy()
                                 flash_copy.set_stroke(
-                                    color=self.dag.config.highlight_color,
+                                    color=self.dag.config.highlight_line_color,
                                     width=self.dag.config.line_stroke_width
                                 )
                                 from manim import ShowPassingFlash, cycle_animation
@@ -1884,3 +1472,489 @@ class RelationshipHighlighter:
 class GhostDAGHighlighter:
     def __init__(self, dag):
         self.dag = dag
+
+    def animate_ghostdag_process(
+            self,
+            context_block: KaspaLogicalBlock | str,
+            narrate: bool = True,
+            step_delay: float = 1.0
+    ) -> None:
+        """Animate the complete GhostDAG process for a context block."""
+        if isinstance(context_block, str):
+            context_block = self.dag.get_block(context_block)
+            if context_block is None:
+                return
+
+        try:
+            # Step 1: Fade to context inclusive past cone
+            if narrate:
+                self.dag.scene.narrate("Fade all except past cone of context block(inclusive)")
+            self._ghostdag_fade_to_past(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 2: Show parents
+            if narrate:
+                self.dag.scene.narrate("Highlight all parent blocks")
+            self._ghostdag_highlight_parents(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 3: Show selected parent
+            if narrate:
+                self.dag.scene.narrate("Selected parent chosen with highest blue score(with uniform tiebreaking)")
+            self._ghostdag_show_selected_parent(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 4: Show mergeset
+            if narrate:
+                self.dag.scene.narrate("Creating mergeset from past cone differences")
+            self._ghostdag_show_mergeset(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 5: Show ordering #TODO create copies of blocks as ordering them, and line them up in order
+            if narrate:
+                self.dag.scene.narrate("Ordering mergeset by blue score and hash")
+            self._ghostdag_show_ordering(context_block)
+            self.dag.scene.wait(step_delay)
+
+            # Step 6: Blue candidate process
+            if narrate:
+                self.dag.scene.narrate("Evaluating blue candidates (k-parameter constraint)") #TODO highlight(BLUE) blue blocks in anticone of blue candidate OR show candidate.SP k-cluster
+            self._ghostdag_show_blue_process(context_block)
+            self.dag.scene.wait(step_delay)
+
+        finally:
+            # Always cleanup
+            if narrate:
+                self.dag.scene.clear_narrate()
+                self.dag.scene.clear_caption()
+            self.dag.reset_highlighting()
+
+
+    def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
+        """Fade everything not in context block's past cone."""
+        context_inclusive_past_blocks = set(context_block.get_past_cone())
+        context_inclusive_past_blocks.add(context_block)
+
+        fade_animations = []
+        for block in self.dag.all_blocks:
+            if block not in context_inclusive_past_blocks:
+                fade_animations.extend(block.visual_block.create_fade_animation())
+                # Also fade lines from these blocks
+                for line in block.visual_block.parent_lines:
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+                    )
+
+        if fade_animations:
+            self.dag.scene.play(*fade_animations)
+
+    def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
+        """Highlight all parents of context block."""
+        if not context_block.parents:
+            return
+
+        parent_animations = []
+
+        # Highlight all parent blocks
+        for parent in context_block.parents:
+            parent_animations.append(
+                parent.visual_block.square.animate.set_style(
+                    stroke_color=self.dag.config.ghostdag_parent_stroke_highlight_color,
+                    stroke_width=self.dag.config.ghostdag_parent_stroke_highlight_width
+                )
+            )
+
+        # Highlight all parent lines (they always connect to parents)
+        for line in context_block.visual_block.parent_lines:
+            parent_animations.append(
+                line.animate.set_stroke(
+                    color=self.dag.config.ghostdag_parent_line_highlight_color
+                )
+            )
+
+        self.dag.scene.play(*parent_animations)
+
+        #Change lines back to normal
+        return_lines_animations = context_block.visual_block.create_line_reset_animations()
+        self.dag.scene.play(*return_lines_animations)
+
+    def _ghostdag_show_selected_parent(self, context_block: KaspaLogicalBlock):
+        """Highlight selected parent and fade its past cone."""
+        if not context_block.selected_parent:
+            return
+
+        selected = context_block.selected_parent
+
+        # Highlight selected parent with unique style
+        self.dag.scene.play(
+            selected.visual_block.square.animate.set_style(
+                fill_color=self.dag.config.ghostdag_selected_parent_fill_color,
+                fill_opacity=self.dag.config.ghostdag_selected_parent_opacity,
+                stroke_width=self.dag.config.ghostdag_selected_parent_stroke_width,
+                stroke_color=self.dag.config.ghostdag_selected_parent_stroke_color,
+            )
+        )
+
+        # Fade selected parent's past cone
+        selected_past = set(selected.get_past_cone())
+        fade_animations = []
+        for block in selected_past:
+            fade_animations.extend(block.visual_block.create_fade_animation())
+            for line in block.visual_block.parent_lines:
+                fade_animations.append(
+                    line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+                )
+        # Fade selected parents parent lines as well
+        for line in context_block.selected_parent.parent_lines:
+            fade_animations.append(
+                line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+            )
+        self.dag.scene.play(*fade_animations)
+
+    def _ghostdag_show_mergeset(self, context_block: KaspaLogicalBlock):
+        """Visualize mergeset creation."""
+        mergeset = context_block.get_sorted_mergeset_without_sp()
+
+        # Early return if no blocks to animate
+        if not mergeset:
+            return
+
+        # Highlight mergeset blocks
+        mergeset_animations = []
+        for block in mergeset:
+            mergeset_animations.append(
+                block.visual_block.square.animate.set_style(
+                    fill_color=self.dag.config.ghostdag_mergeset_color,
+                    stroke_width=self.dag.config.ghostdag_mergeset_stroke_width
+                )
+            )
+
+        self.dag.scene.play(*mergeset_animations)
+
+    def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
+        """Show sorted ordering without temporary text objects."""
+        sorted_mergeset = context_block.get_sorted_mergeset_without_sp()
+
+        # Just highlight in sequence, no text overlays
+        for i, block in enumerate(sorted_mergeset):
+            self.dag.scene.play(
+                Indicate(block.visual_block.square, scale=1.1),
+                run_time=1
+            )
+            self.dag.scene.wait(0.1)
+
+    #TODO clean this up AND check, it appears the first check misses sp as blue
+    def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
+        """Animate blue evaluation with blue anticone visualization."""
+        blue_candidates = context_block.get_sorted_mergeset_without_sp()
+        total_view = set(context_block.get_past_cone())
+        total_view.add(context_block)
+
+        # Start with selected parent's local POV as baseline
+        local_blue_status = context_block.selected_parent.ghostdag.local_blue_pov.copy()
+        local_blue_status[context_block.selected_parent] = True
+
+        # Initialize all candidates as not blue locally
+        for candidate in blue_candidates:
+            local_blue_status[candidate] = False
+
+        for candidate in blue_candidates:
+            # Show candidate being evaluated
+            self.dag.scene.play(
+                Indicate(candidate.visual_block.square, scale=1.2),
+                run_time=1.0
+            )
+
+            # Get blue blocks from CURRENT local perspective
+            blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
+
+            # FIRST CHECK: Highlight blue blocks in candidate's anticone
+            candidate_anticone = context_block.get_anticone(candidate, total_view)
+            blue_in_anticone = candidate_anticone & blue_blocks
+
+            # Highlight first check
+            anticone_animations = []
+            for block in blue_in_anticone:
+                anticone_animations.append(
+                    block.visual_block.square.animate.set_style(
+                        fill_color=self.dag.config.ghostdag_blue_color,
+                        stroke_width=8,
+                        stroke_opacity=0.9,
+                        fill_opacity=0.9,
+                    )
+                )
+
+            if anticone_animations:
+                self.dag.scene.play(*anticone_animations)
+                self.dag.scene.wait(0.5)
+                # Reset first check highlighting
+                reset_animations = []
+                for block in blue_in_anticone:
+                    reset_animations.append(
+                        block.visual_block.create_fade_animation()
+                    )
+                self.dag.scene.play(*reset_animations)
+
+            # SECOND CHECK: For each blue block, check if candidate would exceed k in its anticone
+            second_check_failed = False
+            for blue_block in blue_blocks:
+                blue_anticone = context_block.get_anticone(blue_block, total_view)
+                if candidate in blue_anticone:
+                    # Highlight the blue block being checked
+                    self.dag.scene.play(
+                        blue_block.visual_block.square.animate.set_style(
+                            stroke_color=YELLOW,
+                            stroke_width=10,
+                            stroke_opacity=1.0
+                        )
+                    )
+
+                    # Highlight blue blocks in this blue block's anticone
+                    affected_blue_in_anticone = blue_anticone & blue_blocks
+                    second_check_animations = []
+
+                    # Highlight existing blue blocks in anticone
+                    for block in affected_blue_in_anticone:
+                        if block != blue_block:  # Don't highlight the blue block itself
+                            second_check_animations.append(
+                                block.visual_block.square.animate.set_style(
+                                    fill_color=self.dag.config.ghostdag_blue_color,
+                                    stroke_width=6,
+                                    stroke_opacity=0.8,
+                                    fill_opacity=0.8,
+                                )
+                            )
+
+                    # Highlight candidate as it would be added
+                    second_check_animations.append(
+                        candidate.visual_block.square.animate.set_style(
+                            stroke_color=ORANGE,
+                            stroke_width=8,
+                            stroke_opacity=1.0,
+                        )
+                    )
+
+                    if second_check_animations:
+                        self.dag.scene.play(*second_check_animations)
+                        self.dag.scene.wait(0.3)
+
+                        # Check if this would exceed k
+                        blue_count = len(affected_blue_in_anticone) + 1  # +1 for candidate
+                        if blue_count > context_block.kaspa_config.k:
+                            second_check_failed = True
+                            self.dag.scene.caption(
+                                f"Second check FAILED: {blue_block.name} would have {blue_count} $>$ k blues in anticone")
+                            # Flash red to indicate failure
+                            self.dag.scene.play(
+                                blue_block.visual_block.square.animate.set_fill(color=RED, opacity=0.5),
+                                candidate.visual_block.square.animate.set_fill(color=RED, opacity=0.5)
+                            )
+                        else:
+                            self.dag.scene.caption(
+                                f"Second check PASSED: {blue_block.name} would have {blue_count} $<$= k blues in anticone")
+
+                        self.dag.scene.wait(0.5)
+
+                        # Reset second check highlighting
+                        reset_animations = []
+                        for block in affected_blue_in_anticone:
+                            if block != blue_block:
+                                reset_animations.append(
+                                    block.visual_block.create_fade_animation()
+                                )
+                        reset_animations.append(
+                            blue_block.visual_block.square.animate.set_style(
+                                fill_color=self.dag.config.ghostdag_blue_color,
+                                stroke_width=2,
+                                stroke_opacity=1.0,
+                                fill_opacity=self.dag.config.ghostdag_blue_opacity
+                            )
+                        )
+                        reset_animations.append(
+                            candidate.visual_block.square.animate.set_style(
+                                stroke_width=2,
+                                stroke_opacity=1.0,
+                            )
+                        )
+                        self.dag.scene.play(*reset_animations)
+
+                    if second_check_failed:
+                        break  # No need to check further blue blocks
+
+            # Final decision based on both checks
+            can_be_blue = context_block._can_be_blue_local(
+                candidate, local_blue_status, context_block.kaspa_config.k, total_view
+            )
+
+            if can_be_blue:
+                local_blue_status[candidate] = True
+                self.dag.scene.caption(f"Block {candidate.name}: BLUE (accepted)")
+                self.dag.scene.play(
+                    candidate.visual_block.square.animate.set_fill(
+                        color=self.dag.config.ghostdag_blue_color,
+                        opacity=self.dag.config.ghostdag_blue_opacity
+                    )
+                )
+            else:
+                local_blue_status[candidate] = False
+                self.dag.scene.caption(f"Block {candidate.name}: RED (rejected)")
+                self.dag.scene.play(
+                    candidate.visual_block.square.animate.set_fill(
+                        color=self.dag.config.ghostdag_red_color,
+                        opacity=self.dag.config.ghostdag_red_opacity
+                    )
+                )
+
+            self.dag.scene.wait(0.3)
+
+class BlockSimulator:
+    """
+    Generates realistic Kaspa DAG structures by simulating network conditions.
+
+    This simulator models block propagation delays and mining intervals to create
+    DAG structures that reflect real-world Kaspa network behavior. It implements
+    the core parent selection algorithm where blocks reference all visible tips
+    within the network delay window.
+
+    Key Concepts:
+    - Mining intervals follow exponential distribution based on network hashrate
+    - Network delay determines which blocks are visible for parent selection
+    - Parent selection uses "all visible tips" strategy for DAG connectivity
+
+    Attributes:
+        dag: The KaspaDAG instance this simulator is attached to
+    """
+
+    def __init__(self, dag:KaspaDAG):
+        """Initialize simulator with reference to parent DAG."""
+        self.dag = dag
+
+    # Tested
+    @staticmethod
+    def _sample_mining_interval(blocks_per_second: float) -> float:
+        """
+        Sample time between blocks using exponential distribution.
+
+        In Kaspa, block arrivals follow a Poisson process, so inter-arrival
+        times are exponentially distributed with rate parameter λ = blocks_per_second.
+
+        Args:
+            blocks_per_second: Network mining rate (λ parameter)
+
+        Returns:
+            Time interval in milliseconds (minimum 1ms to prevent zero intervals)
+        """
+        interval = np.random.exponential(1.0 / blocks_per_second)
+        return max(interval * 1000, 1)  # Convert to ms, enforce minimum
+
+    def _generate_timestamps(self, duration_seconds: float, blocks_per_second: float) -> List[float]:
+        """
+        Generate block timestamps over a specified duration.
+
+        Creates a sequence of timestamps following exponential inter-arrival
+        times, ensuring all timestamps fall within the duration window.
+
+        Args:
+            duration_seconds: Total simulation time in seconds
+            blocks_per_second: Expected block rate (λ parameter)
+
+        Returns:
+            List of timestamps in milliseconds from start time
+        """
+        block_timestamps = []
+        current_time = 0
+
+        while current_time < duration_seconds * 1000:
+            interval = self._sample_mining_interval(blocks_per_second)
+            current_time += interval
+            if current_time < duration_seconds * 1000:
+                block_timestamps.append(current_time)
+
+        return block_timestamps
+
+    def simulate_blocks(self, duration_seconds: float, blocks_per_second: float, network_delay_ms: float) -> List[dict]:
+        """
+        Simulate block creation under specified network conditions.
+
+        This is the main entry point for block simulation. It generates timestamps
+        and creates blocks with appropriate parent selections based on network delay.
+
+        Args:
+            duration_seconds: Simulation duration in seconds
+            blocks_per_second: Network block rate (hashrate indicator)
+            network_delay_ms: Propagation delay in milliseconds
+
+        Returns:
+            List of block dictionaries with hash, timestamp, and parents
+        """
+        timestamps = self._generate_timestamps(duration_seconds, blocks_per_second)
+        return self._create_blocks_from_timestamps(timestamps, network_delay_ms)
+
+    @staticmethod
+    def _create_blocks_from_timestamps(timestamps: List[float], network_delay_ms: float) -> List[dict]:
+        """
+        Create block structure from timestamps using Kaspa parent selection.
+
+        Implements the core DAG formation algorithm where each block selects
+        all visible tips as parents. A block is visible if it was created
+        at least 'network_delay_ms' before the current block's timestamp.
+
+        Args:
+            timestamps: Sorted list of block creation times in milliseconds
+            network_delay_ms: Network propagation delay in milliseconds
+
+        Returns:
+            List of block dictionaries forming a valid DAG structure
+        """
+        timestamps.sort()
+        blocks = []
+
+        print(f"\n=== DEBUG: Starting block generation ===")
+        print(f"Actual delay: {network_delay_ms}ms")
+        print(f"Number of timestamps: {len(timestamps)}")
+
+        for i, timestamp in enumerate(timestamps):
+            print(f"\n--- Block {i} at {timestamp:.0f}ms ---")
+
+            # Find blocks that are old enough (not parallel)
+            visible_blocks = [
+                block for block in blocks
+                if block['timestamp'] <= timestamp - network_delay_ms or block['timestamp'] == 0
+            ]
+            print(
+                f"Visible blocks (timestamp <= {timestamp - network_delay_ms:.0f}ms): {[b['hash'] for b in visible_blocks]}")
+
+            # Find tips among visible blocks (blocks with no children)
+            tips = set()
+            for candidate in visible_blocks:
+                # Check if any visible block has this candidate as parent
+                has_child = any(candidate['hash'] in other['parents'] for other in visible_blocks)
+                if not has_child:
+                    tips.add(candidate['hash'])
+
+            print(f"Tips among visible blocks (no children): {tips}")
+
+            # Parent Selection (ALL tips visible as of block.timestamp - delay)
+            if tips:
+                parents = list(tips)
+                print(f"Selected tips as parents: {parents}")
+            else:
+                # No tips available - create block with empty parents
+                parents = []
+                print(f"No tips available - creating block with empty parents")
+
+                # Create new block
+            new_block = {
+                'hash': f"block_{i}",
+                'timestamp': timestamp,
+                'parents': parents
+            }
+            blocks.append(new_block)
+            print(f"Created {new_block['hash']} with parents {parents}")
+
+        print(f"\n=== SUMMARY ===")
+        avg_parents = sum(len(b['parents']) for b in blocks) / len(blocks) if blocks else 0
+        print(f"Total blocks: {len(blocks)}")
+        print(f"Average parents per block: {avg_parents:.2f}")
+
+        return blocks

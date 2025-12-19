@@ -11,10 +11,10 @@ import numpy as np
 from manim import AnimationGroup, Create, BackgroundRectangle, ShowPassingFlash, cycle_animation, Animation, \
     UpdateFromAlphaFunc
 
-from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from ... import BaseVisualBlock, ParentLine
 
 if TYPE_CHECKING:
+    from .config import _KaspaConfigInternal
     from .logical_block import KaspaLogicalBlock
 
 # noinspection PyProtectedMember
@@ -116,7 +116,7 @@ class KaspaVisualBlock(BaseVisualBlock):
     KaspaBlockConfig : Configuration object for Kaspa blocks
     """
 
-    kaspa_config: KaspaConfig
+    kaspa_config: _KaspaConfigInternal
     parent_lines: list[ParentLine]
     logical_block: KaspaLogicalBlock
     background_rect: BackgroundRectangle
@@ -126,12 +126,13 @@ class KaspaVisualBlock(BaseVisualBlock):
             label_text: str,
             position: tuple[float, float],
             parents: list[KaspaVisualBlock] | None = None,
-            kaspa_config: KaspaConfig = DEFAULT_KASPA_CONFIG
+            config: _KaspaConfigInternal = None
     ) -> None:
-        # Pass config directly to BaseVisualBlock
-        super().__init__(label_text, position, kaspa_config)
+        if config is None:
+            raise ValueError("config parameter is required")
+        super().__init__(label_text, position, config)
 
-        self.kaspa_config = kaspa_config
+        self.kaspa_config = config
         # Handle parent lines with config
         if parents:
             self.parent_lines = []
@@ -150,7 +151,7 @@ class KaspaVisualBlock(BaseVisualBlock):
 
     def __deepcopy__(self, memo):
         logical_block = self.logical_block
-        self.logical_block = None
+        self.logical_block = None  # type: ignore
 
         cls = self.__class__
         result = cls.__new__(cls)
@@ -342,7 +343,7 @@ class KaspaVisualBlock(BaseVisualBlock):
             self.scene.play(animation)
         """
         # Create base movement animation using VGroup's animate
-        base_animation = super().animate.move_to((x, y, 0))
+        base_animation:Animation = super().animate.move_to((x, y, 0))  # type: ignore
 
         # Wrap with line updates using existing method
         return self.create_movement_animation(base_animation)
@@ -370,13 +371,13 @@ class KaspaVisualBlock(BaseVisualBlock):
         return [
             self.square.animate.set_fill(opacity=self.kaspa_config.fade_opacity),
             self.square.animate.set_stroke(opacity=self.kaspa_config.fade_opacity),
-            UpdateFromAlphaFunc(self.label, fade_label)
+            UpdateFromAlphaFunc(self.label, fade_label) # type: ignore
         ]
 
     def create_highlight_animation(self, color=None, stroke_width=None) -> Any:
         """Create animation to highlight this block's stroke using config."""
         return self.square.animate.set_stroke(
-            self.kaspa_config.highlight_color,
+            self.kaspa_config.highlight_block_color,
             width=self.kaspa_config.highlight_stroke_width
         )
 
@@ -425,7 +426,7 @@ class KaspaVisualBlock(BaseVisualBlock):
                 stroke_width=self.kaspa_config.stroke_width,
                 stroke_opacity=self.kaspa_config.stroke_opacity
             ),
-            UpdateFromAlphaFunc(self.label, reset_label)
+            UpdateFromAlphaFunc(self.label, reset_label) # type: ignore
         ]
 
     def create_line_fade_animations(self) -> list[Any]:
@@ -464,7 +465,7 @@ class KaspaVisualBlock(BaseVisualBlock):
             List of flash line copies that need to be added to scene
         """
         flash_lines = []
-        highlight_color = self.kaspa_config.highlight_color
+        highlight_color = self.kaspa_config.highlight_line_color
         cycle_time = self.kaspa_config.highlight_line_cycle_time
 
         for i, line in enumerate(self.parent_lines):

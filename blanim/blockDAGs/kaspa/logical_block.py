@@ -7,10 +7,13 @@ __all__ = ["KaspaLogicalBlock"]
 import secrets
 from dataclasses import dataclass, field
 
-from .config import DEFAULT_KASPA_CONFIG, KaspaConfig
 from .visual_block import KaspaVisualBlock
 from typing import Optional, List, Set, Any, Dict
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ... import _KaspaConfigInternal
 
 @dataclass
 class GhostDAGData:
@@ -28,12 +31,19 @@ class KaspaLogicalBlock:
     def __init__(
             self,
             name: str,
+            timestamp: Optional[float] = None,
             parents: Optional[List[KaspaLogicalBlock]] = None,
             position: tuple[float, float] = (0, 0),
-            kaspa_config: KaspaConfig = DEFAULT_KASPA_CONFIG
+            config: _KaspaConfigInternal = None
     ):
+        if config is None:
+            raise ValueError("config parameter is required")
+        self.config = config
+
         # Identity
         self.name = name
+        # Time Created
+        self.timestamp = timestamp
         # Tie-breaker (instead of actually hashing, just use a random number like a cryptographic hash)
         self.hash = secrets.randbits(32)  # 32-bit random integer to keep prob(collision) = low
 
@@ -50,7 +60,7 @@ class KaspaLogicalBlock:
             self.selected_parent = self._select_parent()
             self.parents.sort(key=lambda p: p != self.selected_parent) #move SP to the index 0 before sending to visual
             self._create_unordered_mergeset()
-            self._compute_ghostdag(kaspa_config.k)
+            self._compute_ghostdag(self.config.k)
 
         # Create visual after GHOSTDAG computation
         parent_visuals = [p.visual_block for p in self.parents]
@@ -58,7 +68,7 @@ class KaspaLogicalBlock:
             label_text=str(self.ghostdag.blue_score),#TODO update this  NOTE: when passing an empty string, positioning breaks (fixed moving blocks by overriding move_to with only visual.square)
             position=position,
             parents=parent_visuals,
-            kaspa_config=kaspa_config
+            config=self.config
         )
         self._visual.logical_block = self  # Bidirectional link
 
@@ -160,14 +170,14 @@ class KaspaLogicalBlock:
         blue_blocks = {block for block, is_blue in local_blue_status.items() if is_blue}
 
         # Check 1: <= k blue blocks in candidate's anticone
-        candidate_anticone = self._get_anticone(candidate, total_view)
+        candidate_anticone = self.get_anticone(candidate, total_view)
         blue_in_anticone = len(candidate_anticone & blue_blocks)
         if blue_in_anticone > k:
             return False
 
             # Check 2: Adding candidate doesn't cause existing blues to have > k blues in anticone
         for blue_block in blue_blocks:
-            blue_anticone = self._get_anticone(blue_block, total_view)
+            blue_anticone = self.get_anticone(blue_block, total_view)
             if candidate in blue_anticone:
                 blue_in_anticone = len(blue_anticone & blue_blocks) + 1
                 if blue_in_anticone > k:
@@ -177,7 +187,7 @@ class KaspaLogicalBlock:
 
     # TODO figure out if this can be replaced or if dag.get_anticone can be replaced
     @staticmethod
-    def _get_anticone(block: 'KaspaLogicalBlock',
+    def get_anticone(block: 'KaspaLogicalBlock',
                       total_view: Set['KaspaLogicalBlock']
                       ) -> Set['KaspaLogicalBlock']:
         """Get anticone of a block within the given total view."""
@@ -192,7 +202,7 @@ class KaspaLogicalBlock:
         if target_block == self:
             return self.ghostdag.local_blue_pov.copy()
 
-            # Recursively find the target block in the past cone
+        # Recursively find the target block in the past cone
         for parent in self.parents:
             pov = parent.get_dag_pov(target_block)
             if pov is not None:
