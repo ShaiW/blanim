@@ -8,6 +8,7 @@ from ...core.base_config import BaseBlockConfig
 
 __all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig", "_KaspaConfigInternal"]
 
+#TODO finish refactoring kaspa to use this consistently
 
 # Public TypedDict for user type hints
 class KaspaConfig(TypedDict, total=False):
@@ -137,7 +138,7 @@ class _KaspaConfigInternal(BaseBlockConfig):
     # ========================================
     selected_parent_line_color: ParsableManimColor = BLUE
     other_parent_line_color: ParsableManimColor = WHITE
-    line_stroke_width: float = 5
+    line_stroke_width: float = 4
     line_stroke_opacity: float = 1.0
 
     # ========================================

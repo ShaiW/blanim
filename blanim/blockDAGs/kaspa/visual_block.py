@@ -143,7 +143,8 @@ class KaspaVisualBlock(BaseVisualBlock):
                     self.square,
                     parent.square,
                     line_color=line_color,
-                    is_selected_parent_line=is_selected
+                    is_selected_parent_line=is_selected,
+                    stroke_width=config.line_stroke_width
                 )
                 self.parent_lines.append(parent_line)
         else:

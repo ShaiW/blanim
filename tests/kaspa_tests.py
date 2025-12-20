@@ -751,37 +751,41 @@ class TestNormalConditions(HUD2DScene):
 #        dag.set_k(18)
 
         self.wait(1)
-        self.narrate("GHOSTDAG Under Changing Delay, 1 BPS, k=18", run_time=1.0)
-        self.caption("These first 20 seconds, network delay is normal, 350ms.", run_time=1.0)
-        blocks1 = dag.simulate_blocks(20, 1, 350)
-        dag.create_blocks_from_simulator_list(blocks1)
+        self.narrate("GHOSTDAG, 1 BPS, k=18", run_time=1.0)
+        self.caption("Network Delay during this simulation is 2500ms.", run_time=1.0)
+        blocks1 = dag.simulate_blocks(20, 1, 2500)
+        dag.create_blocks_from_simulator_list_instant(blocks1)
 
-        self.caption("These next 20 seconds, network has degraded to half of max delay, 2500ms.", run_time=1.0)
-        blocks2 = dag.simulate_blocks(20, 1, 2500)
-        dag.create_blocks_from_simulator_list(blocks2)
+        dag.animate_ghostdag_process(context_block="3b", narrate=True)
 
-        self.caption("These next 20 seconds, network has degraded to max delay, 5000ms.", run_time=1.0)
-        blocks3 = dag.simulate_blocks(20, 1, 5000)
-        dag.create_blocks_from_simulator_list(blocks3)
-
-        self.caption("These next 20 seconds, network has improved to half of max delay, 2500ms.", run_time=1.0)
-        blocks4 = dag.simulate_blocks(20, 1, 2500)
-        dag.create_blocks_from_simulator_list(blocks4)
-
-        self.caption("These next 20 seconds, network delay has recovered to normal, 350ms.", run_time=1.0)
-        blocks5 = dag.simulate_blocks(20, 1, 350)
-        dag.create_blocks_from_simulator_list(blocks5)
-
-        self.caption("No orphan(Red) blocks, even under degraded conditions, Security Maintained.", run_time=1.0)
-        dag.add_block(dag.get_current_tips())
         self.wait(3)
 
-        # Add the new parent chain highlighting at the end
-        self.wait(1)
-        self.caption("Highlighting Selected Parent Chain back to Genesis", run_time=1.0)
-        self.wait(1)
-        dag.highlight_and_scroll_parent_chain(scroll_speed_factor=0.6)
-        self.wait(1)
+        # self.caption("These next 20 seconds, network has degraded to half of max delay, 2500ms.", run_time=1.0)
+        # blocks2 = dag.simulate_blocks(20, 1, 2500)
+        # dag.create_blocks_from_simulator_list(blocks2)
+        #
+        # self.caption("These next 20 seconds, network has degraded to max delay, 5000ms.", run_time=1.0)
+        # blocks3 = dag.simulate_blocks(20, 1, 5000)
+        # dag.create_blocks_from_simulator_list(blocks3)
+        #
+        # self.caption("These next 20 seconds, network has improved to half of max delay, 2500ms.", run_time=1.0)
+        # blocks4 = dag.simulate_blocks(20, 1, 2500)
+        # dag.create_blocks_from_simulator_list(blocks4)
+        #
+        # self.caption("These next 20 seconds, network delay has recovered to normal, 350ms.", run_time=1.0)
+        # blocks5 = dag.simulate_blocks(20, 1, 350)
+        # dag.create_blocks_from_simulator_list(blocks5)
+        #
+        # self.caption("No orphan(Red) blocks, even under degraded conditions, Security Maintained.", run_time=1.0)
+        # dag.add_block(dag.get_current_tips())
+        # self.wait(3)
+
+        # # Add the new parent chain highlighting at the end
+        # self.wait(1)
+        # self.caption("Highlighting Selected Parent Chain back to Genesis", run_time=1.0)
+        # self.wait(1)
+        # dag.traverse_parent_chain_with_right_fade(scroll_speed_factor=0.6)
+        # self.wait(2)
 
 # TODO troubleshoot showing GHOSTDAG
 class TestGHOSTDAGProcess(HUD2DScene):

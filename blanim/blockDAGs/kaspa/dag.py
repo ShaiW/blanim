@@ -34,7 +34,7 @@ The system supports three workflow patterns:
    - `add_block(parents=[...])` creates and animates a block immediately
    - `add_blocks([(parents, name), ...])` batch-creates and animates multiple blocks
 
-#TODO get rid of this functionality, blocks should be creaded and drwan and others shift and camera shift all within the same animation
+#TODO get rid of this functionality, blocks should be created and drawn and others shift and camera shift all within the same animation
 2. **Step-by-step (fine-grained control)**:
    - `create_block(parents=[...])` creates logical block without animation
    - `next_step()` animates the next pending step (block creation or repositioning)
@@ -123,6 +123,7 @@ from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
+from ... import BaseVisualBlock
 
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
@@ -332,6 +333,98 @@ class KaspaDAG:
 
         return created_blocks
 
+    def create_blocks_from_simulator_list_instant(
+            self,
+            simulator_blocks: List[dict]
+    ) -> List[KaspaLogicalBlock]:
+        """Create entire DAG instantly - all blocks appear in single frame."""
+        initial_tips = self.get_current_tips()
+        block_map = {}
+        created_blocks = []
+
+        # First pass: Create all logical blocks and visual components
+        for block_dict in simulator_blocks:
+            block_hash = block_dict['hash']
+            block_timestamp = block_dict['timestamp']
+            parent_hashes = block_dict.get('parents', [])
+
+            # Resolve parent hashes to actual blocks
+            parents = []
+            if parent_hashes:
+                for parent_hash in parent_hashes:
+                    if parent_hash in block_map:
+                        parents.append(block_map[parent_hash])
+            else:
+                parents = initial_tips
+
+                # Create block directly without workflow/animation
+            block_name = self._generate_block_name(parents)
+            position = self.block_manager._calculate_dag_position(parents)
+
+            block = KaspaLogicalBlock(
+                name=block_name,
+                timestamp=block_timestamp,
+                parents=parents,
+                position=position,
+                config=self.config
+            )
+
+            self.blocks[block_name] = block
+            self.all_blocks.append(block)
+            block_map[block_hash] = block
+            created_blocks.append(block)
+
+        # Second pass: Create all visual components at once using existing method
+        all_creations = []
+        for block in created_blocks:
+            # Use existing create_with_lines() method instead of manual Create/Write
+            all_creations.append(block.visual_block.create_with_lines())
+
+        # Single anim creation - everything appears at once
+        self.scene.play(*all_creations, run_time=1.0)
+
+        # NEW: Center all columns around y=0 (genesis_y)
+        self._animate_column_centering(created_blocks)
+
+        return created_blocks
+
+    def _animate_column_centering(self, created_blocks: List[KaspaLogicalBlock]):
+        """Animate all columns to center around y=0 using existing movement methods."""
+        if not created_blocks:
+            return
+
+            # Group blocks by x-position
+        x_positions = {}
+        for block in created_blocks:
+            x_pos = block.visual_block.square.get_center()[0]
+            if x_pos not in x_positions:
+                x_positions[x_pos] = []
+            x_positions[x_pos].append(block)
+
+            # Calculate target positions and create movement animations
+        blocks_to_move = []
+        target_positions = []
+
+        for x_pos, blocks in x_positions.items():
+            if len(blocks) <= 1:
+                continue
+
+                # Calculate current center and shift needed
+            current_ys = [b.visual_block.square.get_center()[1] for b in blocks]
+            current_center_y = (max(current_ys) + min(current_ys)) / 2
+            shift_y = 0 - current_center_y  # Center around y=0
+
+            # Add each block and its target position to the movement lists
+            for block in blocks:
+                current_pos = block.visual_block.square.get_center()
+                target_pos = (current_pos[0], current_pos[1] + shift_y)
+                blocks_to_move.append(block)
+                target_positions.append(target_pos)
+
+                # Use existing Movement.move() method for animated repositioning
+        if blocks_to_move:
+            self.move(blocks_to_move, target_positions)
+
     ########################################
     # Highlight Parent Chain
     ########################################
@@ -434,6 +527,96 @@ class KaspaDAG:
                 run_time=total_time,
                 rate_func=linear
             )
+
+    #TODO could clean this up a little bit before refactoring out
+    def traverse_parent_chain_with_right_fade(self, start_block=None, scroll_speed_factor=0.5):
+        """
+        Traverse parent chain from sink to genesis, fading blocks to the right of view.
+        Selected parent chain and its lines remain fully visible.
+
+        Args:
+            start_block: Block to start from (defaults to sink block)
+            scroll_speed_factor: Multiplier for scroll speed based on horizontal spacing
+        """
+        # Get starting block (sink if not specified)
+        if start_block is None:
+            start_block = self.find_sink()
+            if start_block is None:
+                return
+
+        if isinstance(start_block, str):
+            start_block = self.get_block(start_block)
+            if start_block is None:
+                return
+
+                # Get the selected parent chain
+        parent_chain = []
+        current = start_block
+        while current is not None:
+            parent_chain.append(current)
+            current = current.selected_parent
+            if current and current.name == "Gen":
+                parent_chain.append(current)
+                break
+
+        parent_chain_set = set(parent_chain)
+
+        # Step-by-step traversal backwards
+        for i in range(len(parent_chain) - 1):
+            current_block = parent_chain[i]
+            next_block = parent_chain[i + 1]
+
+            # Move camera to next block position
+            next_pos = next_block.get_center()
+            camera_target = [next_pos[0], 0, 0]  # X-axis movement only
+
+            # Calculate distance and time for this step
+            current_pos = current_block.get_center()
+            step_distance = abs(current_pos[0] - next_pos[0])
+            step_time = step_distance * scroll_speed_factor / self.config.horizontal_spacing * 3.0
+
+            self.scene.play(
+                self.scene.camera.frame.animate.move_to(camera_target),
+                run_time=step_time,
+                rate_func=linear
+            )
+
+            # Calculate fade threshold: camera_center - horizontal_spacing
+            fade_threshold_x = camera_target[0] - self.config.horizontal_spacing
+
+            # Fade blocks and lines to the right of threshold
+            fade_animations = []
+
+            for block in self.all_blocks:
+                block_pos = block.get_center()
+                # Fade if block is right of threshold AND not in parent chain
+                if block_pos[0] > fade_threshold_x and block not in parent_chain_set:
+                    fade_animations.extend(block.visual_block.create_fade_animation())
+                    # Fade ALL lines from this block
+                    for line in block.visual_block.parent_lines:
+                        fade_animations.append(
+                            line.animate.set_stroke(opacity=self.config.fade_opacity)
+                        )
+
+            # Handle lines from parent chain blocks
+            for block in parent_chain:
+                for j, line in enumerate(block.visual_block.parent_lines):
+                    parent = block.parents[j] if j < len(block.parents) else None
+                    if parent:
+                        # Keep line if both blocks are in parent chain
+                        if parent in parent_chain_set:
+                            fade_animations.append(
+                                line.animate.set_stroke(opacity=1.0)
+                            )
+                        else:
+                            # Fade line if parent is not in parent chain
+                            fade_animations.append(
+                                line.animate.set_stroke(opacity=self.config.fade_opacity)
+                            )
+
+            if fade_animations:
+                self.scene.play(*fade_animations)
+
     ####################
     # Helper functions for finding k thresholds
     ####################
@@ -1510,13 +1693,13 @@ class GhostDAGHighlighter:
             self._ghostdag_show_mergeset(context_block)
             self.dag.scene.wait(step_delay)
 
-            # Step 5: Show ordering #TODO create copies of blocks as ordering them, and line them up in order
+            # Step 5: Show ordering
             if narrate:
-                self.dag.scene.narrate("Ordering mergeset by blue score and hash")
+                self.dag.scene.narrate("Ordering mergeset by blue score and hash") # TODO instead of always lining copy blocks up evenly in bottom of camera, stack them with a max x spacing of 1 unit?
             self._ghostdag_show_ordering(context_block)
             self.dag.scene.wait(step_delay)
 
-            # Step 6: Blue candidate process
+            # Step 6: Blue candidate process #TODO clean this one up and break it down more
             if narrate:
                 self.dag.scene.narrate("Evaluating blue candidates (k-parameter constraint)") #TODO highlight(BLUE) blue blocks in anticone of blue candidate OR show candidate.SP k-cluster
             self._ghostdag_show_blue_process(context_block)
@@ -1527,7 +1710,7 @@ class GhostDAGHighlighter:
             if narrate:
                 self.dag.scene.clear_narrate()
                 self.dag.scene.clear_caption()
-            self.dag.reset_highlighting()
+            self.dag.reset_highlighting()  #TODO reset highlighting ends up changing the stroke width of lines
 
 
     def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
@@ -1546,7 +1729,7 @@ class GhostDAGHighlighter:
                     )
 
         if fade_animations:
-            self.dag.scene.play(*fade_animations)
+            self.dag.scene.play(*fade_animations, runtime = 1.0)
 
     def _ghostdag_highlight_parents(self, context_block: KaspaLogicalBlock):
         """Highlight all parents of context block."""
@@ -1604,6 +1787,14 @@ class GhostDAGHighlighter:
                 fade_animations.append(
                     line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
                 )
+            # Fade child lines pointing to these blocks
+            for child in block.children:
+                child_block = self.dag.blocks[child.name]  # FIXED: Use child.name
+                for line in child_block.visual_block.parent_lines:
+                    if line.parent_block == block.visual_block.square:
+                        fade_animations.append(
+                            line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
+                        )
         # Fade selected parents parent lines as well
         for line in context_block.selected_parent.parent_lines:
             fade_animations.append(
@@ -1632,16 +1823,78 @@ class GhostDAGHighlighter:
         self.dag.scene.play(*mergeset_animations)
 
     def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
-        """Show sorted ordering without temporary text objects."""
-        sorted_mergeset = context_block.get_sorted_mergeset_without_sp()
+        """Create BaseVisualBlock copies as they're indicated, arranging them at bottom."""
+        # Get the blocks in order: selected parent, mergeset, context block
+        ordered_blocks = []
 
-        # Just highlight in sequence, no text overlays
-        for i, block in enumerate(sorted_mergeset):
+        if context_block.selected_parent:
+            ordered_blocks.append(context_block.selected_parent)
+
+        sorted_mergeset = context_block.get_sorted_mergeset_without_sp()
+        ordered_blocks.extend(sorted_mergeset)
+        ordered_blocks.append(context_block)
+
+        # Store copies for later use
+        if not hasattr(self, '_ordering_copies'):
+            self._ordering_copies = []
+
+        # Calculate positioning for even spacing across frame
+        camera_frame = self.dag.scene.camera.frame
+        frame_center = camera_frame.get_center()
+        frame_width = config["frame_width"]
+        frame_height = config["frame_height"]
+
+        # Even spacing: leave padding on edges, distribute blocks evenly
+        left_padding = 1.0
+        right_padding = 1.0
+        available_width = frame_width - left_padding - right_padding
+
+        if len(ordered_blocks) > 1:
+            block_spacing = available_width / (len(ordered_blocks) - 1)
+        else:
+            block_spacing = 0
+
+        bottom_y = frame_center[1] - frame_height / 2 + 0.8
+
+        # Create BaseVisualBlock copies as we indicate each block
+        for i, block in enumerate(ordered_blocks):
+            # Indicate the original block
             self.dag.scene.play(
                 Indicate(block.visual_block.square, scale=1.1),
                 run_time=1
             )
+
+            # Create simple BaseVisualBlock copy with blue_score label
+            simple_copy = BaseVisualBlock(
+                label_text=str(block.ghostdag.blue_score),  # Use blue_score instead of primer
+                position=(frame_center[0] - frame_width / 2 + left_padding + i * block_spacing, bottom_y),
+                config=self.dag.config
+            )
+
+            # Copy visual styling from original
+            simple_copy.square.set_fill(
+                color=block.visual_block.square.fill_color,
+                opacity=block.visual_block.square.fill_opacity
+            )
+            simple_copy.square.set_stroke(
+                color=block.visual_block.square.stroke_color,
+                width=block.visual_block.square.stroke_width
+            )
+
+            # Store reference to original block
+            simple_copy.original_block = block
+
+            # Add to scene with creation animation
+            self.dag.scene.add(simple_copy)
+            self.dag.scene.play(simple_copy.create_with_label(), run_time=0.5)
+
+            self._ordering_copies.append(simple_copy)
             self.dag.scene.wait(0.1)
+
+            # Brief pause to show final arrangement
+        self.dag.scene.wait(2.0)
+
+        # COPIES PRESERVED - No cleanup, copies remain in self._ordering_copies
 
     #TODO clean this up AND check, it appears the first check misses sp as blue
     def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):

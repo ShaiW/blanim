@@ -8,7 +8,7 @@ from manim import Mobject
 
 class ParentLine(Line):
     """Uses no updater, update from func during movement anims on either parent or child block.square"""
-    def __init__(self, this_block:Mobject, parent_block:Mobject, line_color: ParsableManimColor = WHITE, is_selected_parent_line = False):
+    def __init__(self, this_block:Mobject, parent_block:Mobject, line_color: ParsableManimColor = WHITE, is_selected_parent_line = False, stroke_width: float = 4):
         """A line connecting parent and child blocks with automatic position updates.
 
         This line uses the UpdateFromFunc pattern to maintain its position during block
@@ -101,7 +101,7 @@ class ParentLine(Line):
             end=parent_block.get_right(),
             buff=0.1,
             color=line_color,
-            stroke_width=4,
+            stroke_width=stroke_width,
             cap_style = CapStyleType.ROUND,
         )
 
