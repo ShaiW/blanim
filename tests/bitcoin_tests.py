@@ -3,6 +3,23 @@
 from blanim import *
 from blanim.blockDAGs.bitcoin.chain import BitcoinDAG
 
+class TestChainFork(HUD2DScene):
+    """Test forking the chain."""
+
+    def construct(self):
+        dag = BitcoinDAG(scene=self)
+
+        # Create chain with automatic naming
+        gen = dag.add_block()
+        b1 = dag.add_block(parent=gen)
+        b2 = dag.add_block(parent=b1)
+        b3 = dag.add_block(parent=b2)
+        b4 = dag.add_block(parent=b3)
+        b1a = dag.add_block(parent=gen)
+        b2a = dag.add_block(parent=b1a)
+        b3a = dag.add_block(parent=b2a)
+        b4a = dag.add_block(parent=b3a)
+        self.wait(1)
 
 class TestAutomaticNaming(HUD2DScene):
     """Test automatic block naming with height-based convention."""

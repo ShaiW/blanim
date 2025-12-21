@@ -752,11 +752,11 @@ class TestNormalConditions(HUD2DScene):
 
         self.wait(1)
         self.narrate("GHOSTDAG, 1 BPS, k=18", run_time=1.0)
-        self.caption("Network Delay during this simulation is 2500ms.", run_time=1.0)
-        blocks1 = dag.simulate_blocks(20, 1, 2500)
+        self.caption("Network Delay during this simulation is 5000ms.", run_time=1.0)
+        blocks1 = dag.simulate_blocks(30, 1, 5000)
         dag.create_blocks_from_simulator_list_instant(blocks1)
 
-        dag.animate_ghostdag_process(context_block="3b", narrate=True)
+        dag.animate_ghostdag_process(context_block="4b", narrate=True)
 
         self.wait(3)
 

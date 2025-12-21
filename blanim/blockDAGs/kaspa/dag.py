@@ -123,7 +123,6 @@ from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
-from ... import BaseVisualBlock
 
 if TYPE_CHECKING:
     from ...core.hud_2d_scene import HUD2DScene
@@ -1652,6 +1651,7 @@ class RelationshipHighlighter:
         if reset_animations:
             self.dag.scene.play(*reset_animations)
 
+#TODO currently working on cleaning up the GD process.
 class GhostDAGHighlighter:
     def __init__(self, dag):
         self.dag = dag
@@ -1667,6 +1667,19 @@ class GhostDAGHighlighter:
             context_block = self.dag.get_block(context_block)
             if context_block is None:
                 return
+
+        # Center camera on context block x, selected parent y
+        context_pos = context_block.get_center()
+        if context_block.selected_parent:
+            sp_pos = context_block.selected_parent.get_center()
+            camera_target = (context_pos[0], sp_pos[1], 0)
+        else:
+            camera_target = context_pos
+
+        self.dag.scene.play(
+            self.dag.scene.camera.frame.animate.move_to(camera_target),
+            run_time=1.0
+        )
 
         try:
             # Step 1: Fade to context inclusive past cone
@@ -1710,7 +1723,8 @@ class GhostDAGHighlighter:
             if narrate:
                 self.dag.scene.clear_narrate()
                 self.dag.scene.clear_caption()
-            self.dag.reset_highlighting()  #TODO reset highlighting ends up changing the stroke width of lines
+            self._restore_original_positions()
+            self.dag.reset_highlighting()
 
 
     def _ghostdag_fade_to_past(self, context_block: KaspaLogicalBlock):
@@ -1787,15 +1801,14 @@ class GhostDAGHighlighter:
                 fade_animations.append(
                     line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
                 )
-            # Fade child lines pointing to these blocks
-            for child in block.children:
-                child_block = self.dag.blocks[child.name]  # FIXED: Use child.name
-                for line in child_block.visual_block.parent_lines:
+                # Fade child lines pointing to these blocks
+            for child in block.children:  # child is already a KaspaLogicalBlock object
+                for line in child.visual_block.parent_lines:
                     if line.parent_block == block.visual_block.square:
                         fade_animations.append(
                             line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
                         )
-        # Fade selected parents parent lines as well
+                        # Fade selected parents parent lines as well
         for line in context_block.selected_parent.parent_lines:
             fade_animations.append(
                 line.animate.set_stroke(opacity=self.dag.config.fade_opacity)
@@ -1822,8 +1835,9 @@ class GhostDAGHighlighter:
 
         self.dag.scene.play(*mergeset_animations)
 
+    #TODO this appears to handle the case where no sp exists, the ghostdag highlighter should never reach this code if sp does not exist(genesis case only)
     def _ghostdag_show_ordering(self, context_block: KaspaLogicalBlock):
-        """Create BaseVisualBlock copies as they're indicated, arranging them at bottom."""
+        """Move actual blocks to show ordering in horizontal row layout."""
         # Get the blocks in order: selected parent, mergeset, context block
         ordered_blocks = []
 
@@ -1834,67 +1848,46 @@ class GhostDAGHighlighter:
         ordered_blocks.extend(sorted_mergeset)
         ordered_blocks.append(context_block)
 
-        # Store copies for later use
-        if not hasattr(self, '_ordering_copies'):
-            self._ordering_copies = []
+        # Store original positions for restoration
+        if not hasattr(self, '_original_positions'):
+            self._original_positions = {}
 
-        # Calculate positioning for even spacing across frame
-        camera_frame = self.dag.scene.camera.frame
-        frame_center = camera_frame.get_center()
-        frame_width = config["frame_width"]
-        frame_height = config["frame_height"]
+        for block in ordered_blocks:
+            if block not in self._original_positions:
+                self._original_positions[block] = block.get_center()
 
-        # Even spacing: leave padding on edges, distribute blocks evenly
-        left_padding = 1.0
-        right_padding = 1.0
-        available_width = frame_width - left_padding - right_padding
+                # Calculate positions and move each block individually during indication
+        block_spacing = self.dag.config.horizontal_spacing * 0.4
+        current_x = context_block.selected_parent.get_center()[0] if context_block.selected_parent else 0
+        y_position = context_block.selected_parent.get_center()[1] if context_block.selected_parent else 0
 
-        if len(ordered_blocks) > 1:
-            block_spacing = available_width / (len(ordered_blocks) - 1)
-        else:
-            block_spacing = 0
-
-        bottom_y = frame_center[1] - frame_height / 2 + 0.8
-
-        # Create BaseVisualBlock copies as we indicate each block
         for i, block in enumerate(ordered_blocks):
-            # Indicate the original block
+            # Indicate the block first
             self.dag.scene.play(
                 Indicate(block.visual_block.square, scale=1.1),
-                run_time=1
+                run_time=0.5
             )
 
-            # Create simple BaseVisualBlock copy with blue_score label
-            simple_copy = BaseVisualBlock(
-                label_text=str(block.ghostdag.blue_score),  # Use blue_score instead of primer
-                position=(frame_center[0] - frame_width / 2 + left_padding + i * block_spacing, bottom_y),
-                config=self.dag.config
-            )
+            # Calculate target position for this block
+            if i == 0 and context_block.selected_parent and block == context_block.selected_parent:
+                # Selected parent stays in place
+                target_pos = block.get_center()
+            else:
+                # FIXED: Always increment x-position for blocks after selected parent
+                current_x += block_spacing
+                target_pos = (current_x, y_position)
 
-            # Copy visual styling from original
-            simple_copy.square.set_fill(
-                color=block.visual_block.square.fill_color,
-                opacity=block.visual_block.square.fill_opacity
-            )
-            simple_copy.square.set_stroke(
-                color=block.visual_block.square.stroke_color,
-                width=block.visual_block.square.stroke_width
-            )
+                # Move this individual block
+            self.dag.movement.move([block], [target_pos])
+            self.dag.scene.wait(0.2)
 
-            # Store reference to original block
-            simple_copy.original_block = block
-
-            # Add to scene with creation animation
-            self.dag.scene.add(simple_copy)
-            self.dag.scene.play(simple_copy.create_with_label(), run_time=0.5)
-
-            self._ordering_copies.append(simple_copy)
-            self.dag.scene.wait(0.1)
-
-            # Brief pause to show final arrangement
-        self.dag.scene.wait(2.0)
-
-        # COPIES PRESERVED - No cleanup, copies remain in self._ordering_copies
+    def _restore_original_positions(self):
+        """Restore blocks to their original positions."""
+        if hasattr(self, '_original_positions') and self._original_positions:
+            blocks = list(self._original_positions.keys())
+            positions = list(self._original_positions.values())
+            self.dag.movement.move(blocks, positions)
+            self._original_positions.clear()
 
     #TODO clean this up AND check, it appears the first check misses sp as blue
     def _ghostdag_show_blue_process(self, context_block: KaspaLogicalBlock):
