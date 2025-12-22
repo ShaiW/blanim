@@ -2,6 +2,7 @@
 
 from blanim import *
 
+
 # user created theme to change parameters of the dag, visual appearance, ect with typehinting
 def test_theme() -> KaspaConfig:
     """Test theme with various configuration parameters."""
@@ -793,37 +794,84 @@ class TestGHOSTDAGProcess(HUD2DScene):
 
     def construct(self):
         dag = KaspaDAG(scene=self)
+        self.narrate("Kaspa Finality Depth - Oversimplified", run_time=1.0)
+        # Create entire structure from scratch, including genesis
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None),  # Genesis block (no parents)
+            ("b1", ["Gen"]),  # Child of genesis
+            ("b2", ["b1"]),  # Child of b1
+            ("b3", ["b2"]),  # Child of b2
+            ("b4", ["b3"]),  # Child of b3
+            ("b5", ["b4"]),  # Child of b4
+        ])
+        self.caption("This is our current view of the DAG", run_time=1.0)
+        self.wait(3)
+        self.caption("Finality Depth in this example is $4$", run_time=1.0)
+        dag.highlight(all_blocks[1])
+        self.wait(3)
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b1a", ["Gen"]),  # Child of genesis
+            ("b2a", ["b1a"]),  # Child of b1
+            ("b3a", ["b2a"]),  # Child of b2
+            ("b4a", ["b3a"]),  # Child of b3
+            ("b5a", ["b4a"]),  # Child of b4
+        ])
 
-        # Create structure with clear anticone
-        genesis = dag.add_block()
-        b1 = dag.add_block(parents=[genesis])
-        b2 = dag.add_block(parents=[genesis])
-        b3 = dag.add_block(parents=[b1])
-        b4 = dag.add_block(parents=[b2])
-        b5 = dag.add_block(parents=[genesis])
-        b6 = dag.add_block(parents=[b5])
+        self.caption("This newly revealed fork does NOT have Finality Point in its past", run_time=1.0)
+        self.wait(3)
+        self.caption("This fork is rejected with a Finality Violation", run_time=1.0)
+        dag.fade_blocks(other_blocks)
+        self.wait(3)
+        self.clear_caption(run_time=1.0)
+        dag.clear_all_blocks()
 
-        # Add merge block connecting both branches
-        merge = dag.add_block(parents=[b3, b4, b6])
+        # Create entire structure from scratch, including genesis
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None),  # Genesis block (no parents)
+            ("b1", ["Gen"]),  # Child of genesis
+            ("b2", ["b1"]),  # Child of b1
+            ("b3", ["b2"]),  # Child of b2
+            ("b4", ["b3"]),  # Child of b3
+            ("b5", ["b4"]),  # Child of b4
+        ])
 
-        # Add one more block after merge
-        final = dag.add_block(parents=[merge])
+        self.caption("Back to our current view of the DAG", run_time=1.0)
+        self.wait(3)
+        self.caption("Finality Depth is still $4$", run_time=1.0)
+        dag.highlight(all_blocks[1])
 
-        self.wait(1)
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b2a", ["b1"]),  # Child of b1
+            ("b3a", ["b2a"]),  # Child of b2
+            ("b4a", ["b3a"]),  # Child of b3
+            ("b5a", ["b4a"]),  # Child of b4
+        ])
 
-        # Show GhostDAG process for b3 (demonstrates parent selection and blue candidate evaluation)
-        self.caption("Showing GhostDAG process for block b3")
-        dag.animate_ghostdag_process(b3, narrate=True, step_delay=1.0)
-        self.wait(2)
+        self.caption("This newly revealed fork does have Finality Point in its past", run_time=1.0)
+        self.wait(3)
+        self.caption("This fork does NOT violate Finality", run_time=1.0)
+        self.wait(3)
+        self.caption("Kaspa uses $432,000$ as its Finality Depth", run_time=1.0)
+        self.wait(3)
+        self.caption("The probability of a 49\% adversary successfully creating this fork...", run_time=1.0)
+        self.wait(3)
+        self.caption("...is $(49/51)^{432000}$ or $10^{-7522}$", run_time=1.0)
+        self.wait(3)
+        self.caption("Zero Probability is accepted as $10^{-100}$", run_time=1.0)
+        self.wait(5)
+#        self.caption("There are estimated $10^{80}$ atoms in the universe.", run_time=1.0)
+#        self.wait(3)
 
-        # Show GhostDAG process for merge (demonstrates mergeset with multiple parents)
-        self.caption("Showing GhostDAG process for merge block")
-        dag.animate_ghostdag_process(merge, narrate=True, step_delay=1.0)
-        self.wait(2)
+        # # Show GhostDAG process for b3 (demonstrates parent selection and blue candidate evaluation)
+        # self.caption("Showing GhostDAG process for block b3")
+        # dag.animate_ghostdag_process(b3, narrate=True, step_delay=1.0)
+        # self.wait(2)
+        #
+        # # Show GhostDAG process for merge (demonstrates mergeset with multiple parents)
+        # self.caption("Showing GhostDAG process for merge block")
+        # dag.animate_ghostdag_process(merge, narrate=True, step_delay=1.0)
+        # self.wait(2)
 
-        text = Text("GhostDAG Process Test Passed", color=GREEN).to_edge(UP)
-        self.play(Write(text))
-        self.wait(2)
 
 
 class TestHighlightingFutureWithAnticone(HUD2DScene):

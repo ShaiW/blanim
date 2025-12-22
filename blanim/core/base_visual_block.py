@@ -140,6 +140,7 @@ class BaseVisualBlock(VGroup):
 
         return AnimationGroup(*anims)
 
+#TODO finish refactoring to eliminate base_config
     def create_highlight_animation(self, color=None, stroke_width=None):
         """Returns animation for highlighting this block's stroke."""
         if color is None:
@@ -147,7 +148,7 @@ class BaseVisualBlock(VGroup):
         if stroke_width is None:
             stroke_width = self.config.highlight_stroke_width
 
-        return self.square.animate.set_stroke(color, width=stroke_width)
+        return self.square.animate.set_stroke(color=color, width=stroke_width)
 
     def create_unhighlight_animation(self):
         """Returns animation to reset stroke to original config."""

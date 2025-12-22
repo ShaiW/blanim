@@ -119,7 +119,7 @@ from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
 from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger, \
-    linear
+    linear, FadeOut
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
@@ -258,6 +258,24 @@ class KaspaDAG:
     def reset_highlighting(self) -> None:
         """Reset all blocks to neutral state using visual block methods."""
         self.relationship_highlighter.reset_highlighting()
+
+    def highlight(self, block: KaspaLogicalBlock | str) -> None:
+        """Highlight a single block using fuzzy retrieval and config highlighting color.
+
+        Args:
+            block: Block name (supports fuzzy matching) or KaspaLogicalBlock instance
+        """
+        # Handle both string names and block references
+        if isinstance(block, str):
+            target_block = self.get_block(block)
+            if target_block is None:
+                return
+        else:
+            target_block = block
+
+        # Highlight the target block with config highlighting color
+        highlight_animation = target_block.create_highlight_animation()
+        self.scene.play(highlight_animation)
 
     ########################################
     # Highlighting GHOSTDAG
@@ -736,6 +754,123 @@ class KaspaDAG:
                 'x': x
             }
 
+    def create_blocks_from_list_instant(
+            self,
+            blocks_data: List[tuple[str, Optional[List[str]]]]
+    ) -> List[KaspaLogicalBlock]:
+        """Create multiple blocks from names and parents instantly - all blocks appear in single frame.
+
+        Args:
+            blocks_data: List of tuples (block_name, parent_names) where parent_names is optional
+                        Example: [("Gen", None), ("b1", ["Gen"]), ("b2", ["Gen"]), ("b3", ["b1", "b2"])]
+
+        Returns:
+            List of created KaspaLogicalBlock objects
+        """
+        block_map = {}
+        created_blocks = []
+
+        # First pass: Create all logical blocks
+        for block_name, parent_names in blocks_data:
+            # Resolve parent names to actual blocks using fuzzy retrieval
+            parents = []
+            if parent_names:
+                for parent_name in parent_names:
+                    parent_block = self.get_block(parent_name)
+                    if parent_block:
+                        parents.append(parent_block)
+                    elif parent_name in block_map:
+                        parents.append(block_map[parent_name])
+                        # If no parents specified, create as genesis (empty parents list)
+
+            # Create block directly without workflow/animation
+            position = self.block_manager._calculate_dag_position(parents)
+
+            block = KaspaLogicalBlock(
+                name=block_name,
+                timestamp=0,
+                parents=parents,
+                position=position,
+                config=self.config
+            )
+
+            self.blocks[block_name] = block
+            self.all_blocks.append(block)
+            block_map[block_name] = block
+            created_blocks.append(block)
+
+            # Second pass: Create all visual components at once
+        all_creations = []
+        for block in created_blocks:
+            all_creations.append(block.visual_block.create_with_lines())
+
+            # Single animation creation - everything appears at once
+        self.scene.play(*all_creations, run_time=1.0)
+
+        # Center all columns around y=0 (genesis_y)
+        self._animate_column_centering(created_blocks)
+
+        return created_blocks
+
+    def fade_blocks(self, blocks: List[KaspaLogicalBlock | str]) -> None:
+        """Fade specified blocks to config.fade_opacity.
+
+        Args:
+            blocks: List of block names (supports fuzzy matching) or KaspaLogicalBlock instances
+        """
+        if not blocks:
+            return
+
+        fade_animations = []
+
+        for block in blocks:
+            # Handle both string names and block references
+            if isinstance(block, str):
+                target_block = self.get_block(block)
+                if target_block is None:
+                    continue
+            else:
+                target_block = block
+
+                # Add fade animations for this block
+            fade_animations.extend(target_block.visual_block.create_fade_animation())
+
+            # Also fade parent lines
+            for line in target_block.visual_block.parent_lines:
+                fade_animations.append(
+                    line.animate.set_stroke(opacity=self.config.fade_opacity)
+                )
+
+                # Play all fade animations simultaneously
+        if fade_animations:
+            self.scene.play(*fade_animations)
+
+    def clear_all_blocks(self) -> None:
+        """Remove all blocks from the scene and reset DAG state."""
+        if not self.all_blocks:
+            return
+
+            # Create FadeOut animations for all blocks and their lines
+        fade_animations = []
+        for block in self.all_blocks:
+            # FadeOut block visual components
+            fade_animations.append(FadeOut(block.visual_block))
+            fade_animations.append(FadeOut(block.visual_block.label))
+            # Also FadeOut parent lines
+            for line in block.visual_block.parent_lines:
+                fade_animations.append(FadeOut(line))
+
+                # Play fade animations
+        if fade_animations:
+            self.scene.play(*fade_animations)
+
+            # Clear all data structures
+        self.blocks.clear()
+        self.all_blocks.clear()
+        self.genesis = None
+
+        # Clear any workflow steps
+        self.workflow_steps.clear()
 
 class KaspaConfigManager:
     """Manages configuration for a KaspaDAG instance."""
@@ -814,7 +949,7 @@ class BlockManager:
                     else:
                         resolved_parents.append(p)
 
-                        # Calculate x-position based on parents
+            # Calculate x-position based on parents
             block_name = name if name else self.dag.retrieval.generate_block_name(resolved_parents)
 
             # Initialize variables that will be used later
@@ -900,7 +1035,7 @@ class BlockManager:
         """Create and animate a block immediately."""
         placeholder = self.queue_block(parents=parents, name=name, timestamp=0)
         self.next_step()  # Execute block creation TODO does this break IF there is a pending queue of blocks when this is called
-        self.next_step()  # Execute repositioning
+        self.next_step()  # Execute repositioning TODO replace the two step block creation process where a block is created, then the column is shifted, just use a single anim that shifts and creates
         return placeholder.actual_block  # Return actual block, not placeholder
 
     def add_blocks(self, blocks_data: List[tuple[Optional[List[BlockPlaceholder | KaspaLogicalBlock]], Optional[str]]]) -> List[KaspaLogicalBlock]:
@@ -912,7 +1047,7 @@ class BlockManager:
             placeholder = self.queue_block(parents, name)
             placeholders.append(placeholder)
 
-            # Execute all queued steps
+        # Execute all queued steps
         self.catch_up()
 
         # Return actual blocks

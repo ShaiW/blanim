@@ -158,7 +158,7 @@ class _KaspaConfigInternal(BaseBlockConfig):
     context_block_stroke_width: float = 8
 
     # Highlight blocks with relationships to the Context Block
-    highlight_block_color: ParsableManimColor = "#70C7BA"
+    highlight_block_color: ParsableManimColor = YELLOW
     highlight_line_color = YELLOW
     highlight_stroke_width: float = 8
 
