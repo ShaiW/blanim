@@ -808,7 +808,7 @@ class KaspaDAG:
         self.scene.play(*all_creations, run_time=1.0)
 
         # Center all columns around y=0 (genesis_y)
-        self._animate_column_centering(created_blocks)
+#        self._animate_column_centering(created_blocks)
 
         return created_blocks
 

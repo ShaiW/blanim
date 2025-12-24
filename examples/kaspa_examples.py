@@ -2,9 +2,9 @@
 
 from blanim import *
 
-##########
+####################
 #Some examples NOT using anything but hud_2d_scene
-##########
+####################
 
 """  
 ============================================================================  
@@ -259,7 +259,7 @@ class BlockComparisonScene(HUD2DScene):
 
         self.caption(r"Next we examine the headers.", run_time=1)
 
-        # Now zoom to headers  
+        # Now zoom to headers
         self.zoom_to_headers()
         self.wait(2)
         self.caption(r"The header contains the version...", run_time=1)
@@ -680,31 +680,31 @@ class BlockComparisonScene(HUD2DScene):
             self.kaspa_header_fields.add(kaspa_field)
 
         self.wait(2)
-    
-    
+
+
     def zoom_out_from_headers(self):
         """Zoom out from headers back to full block view"""
-    
+
         # Fade out header fields
         self.play(
             FadeOut(self.btc_header_fields),
             FadeOut(self.kaspa_header_fields),
             run_time=1
         )
-    
+
         # Get header rectangles
         btc_header = self.bitcoin_sections[0]
         kaspa_header = self.kaspa_sections[0]
         btc_header_rect = btc_header[0]
         kaspa_header_rect = kaspa_header[0]
-    
+
         # Transform headers back to original size and position
         self.play(
             Transform(btc_header_rect, self.btc_header_rect_original),
             Transform(kaspa_header_rect, self.kaspa_header_rect_original),
             run_time=2
         )
-    
+
         # Separate rectangles (stroke-only) from text labels (fill-based)
         rect_targets = [
             self.bitcoin_square[0],
@@ -714,7 +714,7 @@ class BlockComparisonScene(HUD2DScene):
             btc_header[0],  # Header rectangle
             kaspa_header[0],  # Header rectangle
         ]
-    
+
         text_targets = [
             self.bitcoin_square[1],
             self.kaspa_square[1],
@@ -723,12 +723,175 @@ class BlockComparisonScene(HUD2DScene):
             btc_header[1],  # Header label
             kaspa_header[1],  # Header label
         ]
-    
+
         # Restore stroke opacity for rectangles and fill opacity for text
         self.play(
             *[mob.animate.set_stroke(opacity=1.0) for mob in rect_targets],
             *[mob.animate.set_fill(opacity=1.0) for mob in text_targets],
             run_time=1
         )
-    
+
         self.wait(3)
+
+####################
+#Kaspa Specific Examples
+####################
+
+class FinalityDepth(HUD2DScene):
+    """Explainer animation for Finality Depth."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+        self.wait(1)
+        self.narrate("Kaspa Finality Depth - Oversimplified", run_time=1.0)
+        # Create entire structure from scratch, including genesis
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None),  # Genesis block (no parents)
+            ("b1", ["Gen"]),  # Child of genesis
+            ("b2", ["b1"]),  # Child of b1
+            ("b3", ["b2"]),  # Child of b2
+            ("b4", ["b3"]),  # Child of b3
+            ("b5", ["b4"]),  # Child of b4
+        ])
+        self.caption("This is our current view of the DAG", run_time=1.0)
+        self.wait(5)
+        self.caption("Finality Depth in this example is $4$", run_time=1.0)
+        dag.highlight(all_blocks[1])
+        self.wait(5)
+
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b1a", ["Gen"]),  # Child of genesis
+            ("b2a", ["b1a"]),  # Child of b1
+            ("b3a", ["b2a"]),  # Child of b2
+            ("b4a", ["b3a"]),  # Child of b3
+            ("b5a", ["b4a"]),  # Child of b4
+        ])
+
+        self.caption("This newly revealed fork is NOT in the future of Finality Point", run_time=1.0)
+        self.wait(5)
+        self.caption("This fork is rejected with a Finality Violation", run_time=1.0)
+        dag.fade_blocks(other_blocks)
+        self.wait(5)
+        self.clear_caption(run_time=1.0)
+        dag.clear_all_blocks()
+
+        # Create entire structure from scratch, including genesis
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None),  # Genesis block (no parents)
+            ("b1", ["Gen"]),  # Child of genesis
+            ("b2", ["b1"]),  # Child of b1
+            ("b3", ["b2"]),  # Child of b2
+            ("b4", ["b3"]),  # Child of b3
+            ("b5", ["b4"]),  # Child of b4
+        ])
+
+        self.caption("Back to our current view of the DAG", run_time=1.0)
+        self.wait(5)
+        self.caption("Finality Depth is still $4$", run_time=1.0)
+        dag.highlight(all_blocks[1])
+        self.wait(5)
+
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b2a", ["b1"]),  # Child of b1
+            ("b3a", ["b2a"]),  # Child of b2
+            ("b4a", ["b3a"]),  # Child of b3
+            ("b5a", ["b4a"]),  # Child of b4
+        ])
+
+        self.caption("This newly revealed fork is in the future of Finality Point", run_time=1.0)
+        self.wait(5)
+        self.caption("This fork does NOT violate Finality", run_time=1.0)
+        self.wait(5)
+        self.caption("Kaspa uses $432,000$ as its Finality Depth", run_time=1.0)
+        self.wait(5)
+        self.caption("The probability of a 49\% adversary successfully creating this fork...", run_time=1.0)
+        self.wait(5)
+        self.caption("...is $(49/51)^{432000}$ or $10^{-7522}$", run_time=1.0)
+        self.wait(5)
+        self.caption("In cryptography, $10^{-100}$ is already accepted as 'Effectively Zero'.", run_time=1.0)
+        self.wait(5)
+        self.caption("At $10^{-7522}$, this event is physically impossible in our universe.", run_time=1.0)
+        self.wait(8)
+
+class MergeDepthBound(HUD2DScene):
+    """Explainer for Merge Depth."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+        dag.set_k(2)
+
+        self.wait(1)
+        self.narrate("Kaspa Merge Depth Bound - Oversimplified", run_time=1.0)
+        # Create entire structure from scratch, including genesis
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None),
+            ("b1", ["Gen"]),
+            ("b2", ["b1"]),
+            ("b3", ["b2"]),
+            ("b4", ["b3"]),
+            ("b5", ["b4"]),
+        ])
+        self.caption("This demonstration uses k=2", run_time=1.0)
+        self.wait(5)
+        self.caption("Merge Depth Bound in this example is $4$", run_time=1.0)
+        dag.highlight(all_blocks[1])
+        self.wait(5)
+
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b1a", ["Gen"]),
+            ("b5a", ["b1a","b4"]),
+        ])
+
+        self.caption("This fork attempts to Merge a block NOT in the future of Merge Depth Root.", run_time=1.0)
+        self.wait(5)
+        self.caption("This block is rejected with a Bounded Merge Depth Violation.", run_time=1.0)
+        self.play(other_blocks[1].highlight_stroke_red())
+        self.wait(3)
+        dag.fade_blocks(other_blocks)
+        self.wait(3)
+        self.clear_caption(run_time=1.0)
+        dag.clear_all_blocks()
+
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None),
+            ("b1", ["Gen"]),
+            ("b2", ["b1"]),
+            ("b3", ["b2"]),
+            ("b4", ["b3"]),
+            ("b5", ["b4"]),
+        ])
+
+        self.caption("Back to our current view of the DAG", run_time=1.0)
+        self.wait(5)
+
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b1a", ["Gen"]),
+            ("b4a", ["b1a","b3"]),
+        ])
+
+        self.caption("This fork merges a block that does not violate Merge Depth Bound", run_time=1.0)
+        self.wait(5)
+        self.caption("The Merge Depth Bound is still 4", run_time=1.0)
+        self.wait(5)
+        self.caption("The Merge Depth Root from this tip, is here", run_time=1.0)
+        dag.highlight(all_blocks[0])
+        self.wait(5)
+        dag.reset_highlighting()
+
+        final_block = dag.create_blocks_from_list_instant([
+            ("b6", ["b4a","b5"]),
+        ])
+
+        self.caption("As a new block is added to merge these tips...", run_time=1.0)
+        self.wait(5)
+        self.caption("Merge Depth Root is here", run_time=1.0)
+        dag.highlight(all_blocks[2])
+        self.wait(5)
+        self.caption("Even though there is a red block that violates the Merge Depth Bound", run_time=1.0)
+        self.play(other_blocks[0].square.animate.set_fill(color=RED, opacity=0.7))
+        self.wait(5)
+        self.caption("This block is \"Kosherized\" by the Blue block in the Mergeset", run_time=1.0)
+        self.play(other_blocks[1].square.animate.set_fill(color=BLUE, opacity=0.7))
+        self.wait(5)
+        self.caption("This is the only exception to the Merge Depth Bound", run_time=1.0)
+        self.wait(8)

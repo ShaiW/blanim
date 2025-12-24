@@ -788,79 +788,88 @@ class TestNormalConditions(HUD2DScene):
         # dag.traverse_parent_chain_with_right_fade(scroll_speed_factor=0.6)
         # self.wait(2)
 
-# TODO troubleshoot showing GHOSTDAG
-class TestGHOSTDAGProcess(HUD2DScene):
-    """Test GhostDAG process visualization in DAG structure."""
+class MergeDepthBound(HUD2DScene):
+    """Explainer for Merge Depth."""
 
     def construct(self):
         dag = KaspaDAG(scene=self)
-        self.narrate("Kaspa Finality Depth - Oversimplified", run_time=1.0)
+        dag.set_k(2)
+
+        self.wait(1)
+        self.narrate("Kaspa Merge Depth Bound - Oversimplified", run_time=1.0)
         # Create entire structure from scratch, including genesis
         all_blocks = dag.create_blocks_from_list_instant([
-            ("Gen", None),  # Genesis block (no parents)
-            ("b1", ["Gen"]),  # Child of genesis
-            ("b2", ["b1"]),  # Child of b1
-            ("b3", ["b2"]),  # Child of b2
-            ("b4", ["b3"]),  # Child of b3
-            ("b5", ["b4"]),  # Child of b4
+            ("Gen", None),
+            ("b1", ["Gen"]),
+            ("b2", ["b1"]),
+            ("b3", ["b2"]),
+            ("b4", ["b3"]),
+            ("b5", ["b4"]),
         ])
-        self.caption("This is our current view of the DAG", run_time=1.0)
-        self.wait(3)
-        self.caption("Finality Depth in this example is $4$", run_time=1.0)
+        self.caption("This demonstration uses k=$2$", run_time=1.0)
+        self.wait(5)
+        self.caption("Merge Depth Bound in this example is $4$", run_time=1.0)
         dag.highlight(all_blocks[1])
-        self.wait(3)
+        self.wait(5)
+
         other_blocks = dag.create_blocks_from_list_instant([
-            ("b1a", ["Gen"]),  # Child of genesis
-            ("b2a", ["b1a"]),  # Child of b1
-            ("b3a", ["b2a"]),  # Child of b2
-            ("b4a", ["b3a"]),  # Child of b3
-            ("b5a", ["b4a"]),  # Child of b4
+            ("b1a", ["Gen"]),
+            ("b5a", ["b1a","b4"]),
         ])
 
-        self.caption("This newly revealed fork does NOT have Finality Point in its past", run_time=1.0)
-        self.wait(3)
-        self.caption("This fork is rejected with a Finality Violation", run_time=1.0)
+        self.caption("This fork attempts to Merge a block NOT in the future of Merge Depth Root.", run_time=1.0)
+        self.wait(5)
+        self.caption("This block is rejected with a Bounded Merge Depth Violation.", run_time=1.0)
+        self.play(other_blocks[1].highlight_stroke_red())
+        self.wait(5)
         dag.fade_blocks(other_blocks)
-        self.wait(3)
+        self.wait(5)
         self.clear_caption(run_time=1.0)
         dag.clear_all_blocks()
 
-        # Create entire structure from scratch, including genesis
         all_blocks = dag.create_blocks_from_list_instant([
-            ("Gen", None),  # Genesis block (no parents)
-            ("b1", ["Gen"]),  # Child of genesis
-            ("b2", ["b1"]),  # Child of b1
-            ("b3", ["b2"]),  # Child of b2
-            ("b4", ["b3"]),  # Child of b3
-            ("b5", ["b4"]),  # Child of b4
+            ("Gen", None),
+            ("b1", ["Gen"]),
+            ("b2", ["b1"]),
+            ("b3", ["b2"]),
+            ("b4", ["b3"]),
+            ("b5", ["b4"]),
         ])
 
         self.caption("Back to our current view of the DAG", run_time=1.0)
-        self.wait(3)
-        self.caption("Finality Depth is still $4$", run_time=1.0)
-        dag.highlight(all_blocks[1])
+        self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
-            ("b2a", ["b1"]),  # Child of b1
-            ("b3a", ["b2a"]),  # Child of b2
-            ("b4a", ["b3a"]),  # Child of b3
-            ("b5a", ["b4a"]),  # Child of b4
+            ("b1a", ["Gen"]),
+            ("b4a", ["b1a","b3"]),
         ])
 
-        self.caption("This newly revealed fork does have Finality Point in its past", run_time=1.0)
-        self.wait(3)
-        self.caption("This fork does NOT violate Finality", run_time=1.0)
-        self.wait(3)
-        self.caption("Kaspa uses $432,000$ as its Finality Depth", run_time=1.0)
-        self.wait(3)
-        self.caption("The probability of a 49\% adversary successfully creating this fork...", run_time=1.0)
-        self.wait(3)
-        self.caption("...is $(49/51)^{432000}$ or $10^{-7522}$", run_time=1.0)
-        self.wait(3)
-        self.caption("Zero Probability is accepted as $10^{-100}$", run_time=1.0)
+        self.caption("This fork merges a block that does not violate Merge Depth Bound", run_time=1.0)
         self.wait(5)
-#        self.caption("There are estimated $10^{80}$ atoms in the universe.", run_time=1.0)
-#        self.wait(3)
+        self.caption("The Merge Depth Bound is still 4", run_time=1.0)
+        self.wait(5)
+        self.caption("The Merge Depth Root from this tip, is here", run_time=1.0)
+        dag.highlight(all_blocks[0])
+        self.wait(5)
+        dag.reset_highlighting()
+
+        final_block = dag.create_blocks_from_list_instant([
+            ("b6", ["b4a","b5"]),
+        ])
+
+        self.caption("As a new block is added to merge these tips...", run_time=1.0)
+        self.wait(5)
+        self.caption("Merge Depth Root is here", run_time=1.0)
+        dag.highlight(all_blocks[2])
+        self.wait(5)
+        self.caption("Even though there is a red block that violates the Merge Depth Bound", run_time=1.0)
+        self.play(other_blocks[0].square.animate.set_fill(color=RED, opacity=0.7))
+        self.wait(5)
+        self.caption("This block is \"Kosherized\" by the Blue block in the Mergeset", run_time=1.0)
+        self.play(other_blocks[1].square.animate.set_fill(color=BLUE, opacity=0.7))
+        self.wait(5)
+        self.caption("This is the only exception to the Merge Depth Bound", run_time=1.0)
+        self.wait(8)
 
         # # Show GhostDAG process for b3 (demonstrates parent selection and blue candidate evaluation)
         # self.caption("Showing GhostDAG process for block b3")
