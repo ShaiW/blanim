@@ -119,7 +119,7 @@ from typing import Optional, List, TYPE_CHECKING, Set, Callable
 
 import numpy as np
 from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger, \
-    linear, FadeOut
+    linear, FadeOut, ORIGIN
 
 from .logical_block import KaspaLogicalBlock
 from .config import KaspaConfig, DEFAULT_KASPA_CONFIG, _KaspaConfigInternal
@@ -812,6 +812,62 @@ class KaspaDAG:
 
         return created_blocks
 
+    def create_blocks_from_list_with_camera_movement(
+            self,
+            blocks_data: List[tuple[str, Optional[List[str]]]]
+    ) -> List[KaspaLogicalBlock]:
+        """Create multiple blocks from names and parents instantly - all blocks appear in single frame.
+
+        Args:
+            blocks_data: List of tuples (block_name, parent_names) where parent_names is optional
+
+        Returns:
+            List of created KaspaLogicalBlock objects
+        """
+        block_map = {}
+        created_blocks = []
+
+        # First pass: Create all logical blocks
+        for block_name, parent_names in blocks_data:
+            # Resolve parent names to actual blocks using fuzzy retrieval
+            parents = []
+            if parent_names:
+                for parent_name in parent_names:
+                    parent_block = self.get_block(parent_name)
+                    if parent_block:
+                        parents.append(parent_block)
+                    elif parent_name in block_map:
+                        parents.append(block_map[parent_name])
+
+            # Create block directly without workflow/animation
+            position = self.block_manager._calculate_dag_position(parents)
+
+            block = KaspaLogicalBlock(
+                name=block_name,
+                timestamp=0,
+                parents=parents,
+                position=position,
+                config=self.config
+            )
+
+            self.blocks[block_name] = block
+            self.all_blocks.append(block)
+            block_map[block_name] = block
+            created_blocks.append(block)
+
+        # Add camera movement BEFORE creating animations if requested
+        self.shift_camera_to_follow_blocks()
+
+        # Second pass: Create all visual components at once
+        all_creations = []
+        for block in created_blocks:
+            all_creations.append(block.visual_block.create_with_lines())
+
+        # Single animation creation - everything appears at once
+        self.scene.play(*all_creations, run_time=1.0)
+
+        return created_blocks
+
     def fade_blocks(self, blocks: List[KaspaLogicalBlock | str]) -> None:
         """Fade specified blocks to config.fade_opacity.
 
@@ -871,6 +927,48 @@ class KaspaDAG:
 
         # Clear any workflow steps
         self.workflow_steps.clear()
+
+    def highlight_lines(self, blocks: List[KaspaLogicalBlock]) -> List:
+        """Highlight parent lines for specified blocks and return flash lines for cleanup.
+
+        Args:
+            blocks: List of blocks whose parent lines should be highlighted
+
+        Returns:
+            List of flash line copies that can be passed to unhighlight_lines()
+        """
+        all_flash_lines = []
+
+        for block in blocks:
+            # No need to check for genesis - create_directional_line_flash handles it
+            flash_lines = block.visual_block.create_directional_line_flash()
+            for flash_line in flash_lines:
+                self.scene.add(flash_line)
+                all_flash_lines.append(flash_line)
+
+        return all_flash_lines
+
+    def unhighlight_lines(self, *flash_lines_lists) -> None:
+        """Remove highlighted flash lines from multiple lists in a single call.
+
+        Args:
+            *flash_lines_lists: Variable number of flash line lists returned from highlight_lines()
+        """
+        # Flatten all flash line lists into one
+        all_flash_lines = []
+        for flash_lines in flash_lines_lists:
+            all_flash_lines.extend(flash_lines)
+
+            # Remove all flash lines at once
+        for flash_line in all_flash_lines:
+            self.scene.remove(flash_line)
+
+    def reset_camera(self):
+        """Reset camera to origin position."""
+        self.scene.play(
+            self.scene.camera.frame.animate.move_to(ORIGIN),
+            run_time=self.config.camera_follow_time
+        )
 
 class KaspaConfigManager:
     """Manages configuration for a KaspaDAG instance."""
@@ -1397,7 +1495,7 @@ class Movement:
         if not self.dag.all_blocks:
             return
 
-            # Use visual_block property instead of _visual
+            # Use visual_block property instead of _visual #TODO confirm visual_block can be removed with delegation and override pattern used
         rightmost_x = max(block.visual_block.get_center()[0] for block in self.dag.all_blocks)
 
         margin = self.dag.config.horizontal_spacing * 2

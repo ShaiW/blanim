@@ -788,15 +788,15 @@ class TestNormalConditions(HUD2DScene):
         # dag.traverse_parent_chain_with_right_fade(scroll_speed_factor=0.6)
         # self.wait(2)
 
-class MergeDepthBound(HUD2DScene):
-    """Explainer for Merge Depth."""
+class DAGvsCHAIN(HUD2DScene):
+    """Explainer for DAG vs CHAIN."""
 
     def construct(self):
         dag = KaspaDAG(scene=self)
-        dag.set_k(2)
+        dag.set_k(0)
 
         self.wait(1)
-        self.narrate("Kaspa Merge Depth Bound - Oversimplified", run_time=1.0)
+        self.narrate("Kaspa BlockDAG vs BlockChain", run_time=1.0)
         # Create entire structure from scratch, including genesis
         all_blocks = dag.create_blocks_from_list_instant([
             ("Gen", None),
@@ -806,26 +806,40 @@ class MergeDepthBound(HUD2DScene):
             ("b4", ["b3"]),
             ("b5", ["b4"]),
         ])
-        self.caption("This demonstration uses k=$2$", run_time=1.0)
+        self.caption("This is a BlockDAG", run_time=1.0)
         self.wait(5)
-        self.caption("Merge Depth Bound in this example is $4$", run_time=1.0)
-        dag.highlight(all_blocks[1])
+        self.caption("A Directed Acyclic Graph of Blocks", run_time=1.0)
+        self.wait(5)
+        self.caption("Edges(Connections) are Directional, only pointing one way.", run_time=1.0)
+        chain_lines = dag.highlight_lines(all_blocks)
+        self.wait(5)
+        self.caption("Follow Edges from any Node(Block), there are No Cycles(Acyclic).", run_time=1.0)
+        self.wait(5)
+        self.caption("This appears as a BlockChain, but it's really a constrained BlockDAG", run_time=1.0)
+        self.wait(5)
+        self.caption("BlockChain = BlockDAG with artificial Single Parent Rule", run_time=1.0)
         self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
-            ("b1a", ["Gen"]),
-            ("b5a", ["b1a","b4"]),
+            ("b5a", ["b4"]),
         ])
-
-        self.caption("This fork attempts to Merge a block NOT in the future of Merge Depth Root.", run_time=1.0)
+        other_chain_lines = dag.highlight_lines(other_blocks)
+        self.caption("Occasionally a Parallel Block is created", run_time=1.0)
         self.wait(5)
-        self.caption("This block is rejected with a Bounded Merge Depth Violation.", run_time=1.0)
-        self.play(other_blocks[1].highlight_stroke_red())
+        self.caption("The blocks in this BlockDAG can only link a Single Parent.", run_time=1.0)
         self.wait(5)
-        dag.fade_blocks(other_blocks)
+        final_block = dag.create_blocks_from_list_with_camera_movement([
+            ("b6", ["b5"]),
+        ])
+        final_chain_line = dag.highlight_lines(final_block)
+        self.caption("Leaving all but one block, Orphaned.", run_time=1.0)
+        self.wait(5)
+        self.caption("The Single Parent Restriction on a BlockDAG, results in a BlockChain", run_time=1.0)
         self.wait(5)
         self.clear_caption(run_time=1.0)
+        dag.unhighlight_lines(chain_lines, other_chain_lines, final_chain_line)
         dag.clear_all_blocks()
+        dag.reset_camera()
 
         all_blocks = dag.create_blocks_from_list_instant([
             ("Gen", None),
@@ -835,52 +849,32 @@ class MergeDepthBound(HUD2DScene):
             ("b4", ["b3"]),
             ("b5", ["b4"]),
         ])
+        dag.highlight_lines(all_blocks)
 
-        self.caption("Back to our current view of the DAG", run_time=1.0)
+        self.caption("Back to our original BlockDAG", run_time=1.0)
         self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
-            ("b1a", ["Gen"]),
-            ("b4a", ["b1a","b3"]),
+            ("b5a", ["b4"]),
         ])
+        dag.highlight_lines(other_blocks)
 
-        self.caption("This fork merges a block that does not violate Merge Depth Bound", run_time=1.0)
+        self.caption("When a Parallel Block is created without the Single Parent Limit", run_time=1.0)
         self.wait(5)
-        self.caption("The Merge Depth Bound is still 4", run_time=1.0)
+        self.caption("Removing the artificial constraint unlocks the full BlockDAG", run_time=1.0)
         self.wait(5)
-        self.caption("The Merge Depth Root from this tip, is here", run_time=1.0)
-        dag.highlight(all_blocks[0])
-        self.wait(5)
-        dag.reset_highlighting()
 
-        final_block = dag.create_blocks_from_list_instant([
-            ("b6", ["b4a","b5"]),
+        final_block = dag.create_blocks_from_list_with_camera_movement([
+            ("b6", ["b5a", "b5"]),
         ])
+        dag.highlight_lines(final_block)
 
-        self.caption("As a new block is added to merge these tips...", run_time=1.0)
+        self.caption("A new block can reference Multiple Parents", run_time=1.0)
         self.wait(5)
-        self.caption("Merge Depth Root is here", run_time=1.0)
-        dag.highlight(all_blocks[2])
+        self.caption("A BlockChain is a BlockDAG restricted to a Single Parent", run_time=1.0)
         self.wait(5)
-        self.caption("Even though there is a red block that violates the Merge Depth Bound", run_time=1.0)
-        self.play(other_blocks[0].square.animate.set_fill(color=RED, opacity=0.7))
-        self.wait(5)
-        self.caption("This block is \"Kosherized\" by the Blue block in the Mergeset", run_time=1.0)
-        self.play(other_blocks[1].square.animate.set_fill(color=BLUE, opacity=0.7))
-        self.wait(5)
-        self.caption("This is the only exception to the Merge Depth Bound", run_time=1.0)
+        self.caption("A BlockDAG is a BlockChain without artificial constraints", run_time=1.0)
         self.wait(8)
-
-        # # Show GhostDAG process for b3 (demonstrates parent selection and blue candidate evaluation)
-        # self.caption("Showing GhostDAG process for block b3")
-        # dag.animate_ghostdag_process(b3, narrate=True, step_delay=1.0)
-        # self.wait(2)
-        #
-        # # Show GhostDAG process for merge (demonstrates mergeset with multiple parents)
-        # self.caption("Showing GhostDAG process for merge block")
-        # dag.animate_ghostdag_process(merge, narrate=True, step_delay=1.0)
-        # self.wait(2)
-
 
 
 class TestHighlightingFutureWithAnticone(HUD2DScene):

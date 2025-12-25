@@ -9,6 +9,7 @@ from ...core.base_config import BaseBlockConfig
 __all__ = ["DEFAULT_KASPA_CONFIG", "KaspaConfig", "_KaspaConfigInternal"]
 
 #TODO finish refactoring kaspa to use this consistently
+#TODO ensure parameters are identical in both
 
 # Public TypedDict for user type hints
 class KaspaConfig(TypedDict, total=False):
@@ -28,6 +29,7 @@ class KaspaConfig(TypedDict, total=False):
     label_font_size: int
     label_color: ParsableManimColor
     label_opacity: float
+    label_type: str #TODO figure out how to typehint this
 
     # Visual Styling - Line Appearance
     selected_parent_line_color: ParsableManimColor
@@ -132,6 +134,7 @@ class _KaspaConfigInternal(BaseBlockConfig):
     label_font_size: int = 24
     label_color: ParsableManimColor = WHITE
     label_opacity: float = 1.0
+    label_type: str = 'bluescore'
 
     # ========================================
     # VISUAL STYLING - Line Appearance
