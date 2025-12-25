@@ -115,7 +115,7 @@ from __future__ import annotations
 __all__ = ["KaspaDAG"]
 
 import math
-from typing import Optional, List, TYPE_CHECKING, Set, Callable
+from typing import Optional, List, TYPE_CHECKING, Set, Callable, Union
 
 import numpy as np
 from manim import Wait, RIGHT, config, AnimationGroup, Animation, UpdateFromFunc, Indicate, RED, ORANGE, YELLOW, logger, \
@@ -756,23 +756,31 @@ class KaspaDAG:
 
     def create_blocks_from_list_instant(
             self,
-            blocks_data: List[tuple[str, Optional[List[str]]]]
+            blocks_data: List[Union[tuple[str, Optional[List[str]]],
+                                    tuple[str, Optional[List[str]], Optional[str]]]]
     ) -> List[KaspaLogicalBlock]:
-        """Create multiple blocks from names and parents instantly - all blocks appear in single frame.
+        """Create multiple blocks from names, parents, and optional labels instantly.
 
         Args:
-            blocks_data: List of tuples (block_name, parent_names) where parent_names is optional
-                        Example: [("Gen", None), ("b1", ["Gen"]), ("b2", ["Gen"]), ("b3", ["b1", "b2"])]
-
-        Returns:
-            List of created KaspaLogicalBlock objects
+            blocks_data: List of tuples (block_name, parent_names) or
+                        (block_name, parent_names, label) where label is optional
+                        Example: [("Gen", None), ("b1", ["Gen"], "label1"), ("b2", ["Gen"])]
         """
         block_map = {}
         created_blocks = []
 
         # First pass: Create all logical blocks
-        for block_name, parent_names in blocks_data:
-            # Resolve parent names to actual blocks using fuzzy retrieval
+        for block_data in blocks_data:
+            # Handle both 2-element and 3-element tuples
+            if len(block_data) == 2:
+                block_name, parent_names = block_data
+                custom_label = None
+            elif len(block_data) == 3:
+                block_name, parent_names, custom_label = block_data
+            else:
+                raise ValueError(f"Expected 2 or 3 elements, got {len(block_data)}")
+
+                # Resolve parent names to actual blocks using fuzzy retrieval
             parents = []
             if parent_names:
                 for parent_name in parent_names:
@@ -781,9 +789,8 @@ class KaspaDAG:
                         parents.append(parent_block)
                     elif parent_name in block_map:
                         parents.append(block_map[parent_name])
-                        # If no parents specified, create as genesis (empty parents list)
 
-            # Create block directly without workflow/animation
+                        # Create block directly without workflow/animation
             position = self.block_manager._calculate_dag_position(parents)
 
             block = KaspaLogicalBlock(
@@ -791,7 +798,8 @@ class KaspaDAG:
                 timestamp=0,
                 parents=parents,
                 position=position,
-                config=self.config
+                config=self.config,
+                custom_label=custom_label  # Pass custom label
             )
 
             self.blocks[block_name] = block
@@ -807,28 +815,34 @@ class KaspaDAG:
             # Single animation creation - everything appears at once
         self.scene.play(*all_creations, run_time=1.0)
 
-        # Center all columns around y=0 (genesis_y)
-#        self._animate_column_centering(created_blocks)
-
         return created_blocks
 
     def create_blocks_from_list_with_camera_movement(
             self,
-            blocks_data: List[tuple[str, Optional[List[str]]]]
+            blocks_data: List[Union[tuple[str, Optional[List[str]]],
+                                    tuple[str, Optional[List[str]], Optional[str]]]]
     ) -> List[KaspaLogicalBlock]:
-        """Create multiple blocks from names and parents instantly - all blocks appear in single frame.
+        """Create multiple blocks from names, parents, and optional labels with camera movement.
 
         Args:
-            blocks_data: List of tuples (block_name, parent_names) where parent_names is optional
-
-        Returns:
-            List of created KaspaLogicalBlock objects
+            blocks_data: List of tuples (block_name, parent_names) or
+                        (block_name, parent_names, label) where label is optional
+                        Example: [("Gen", None), ("b1", ["Gen"], "label1"), ("b2", ["Gen"])]
         """
         block_map = {}
         created_blocks = []
 
         # First pass: Create all logical blocks
-        for block_name, parent_names in blocks_data:
+        for block_data in blocks_data:
+            # Handle both 2-element and 3-element tuples
+            if len(block_data) == 2:
+                block_name, parent_names = block_data
+                custom_label = None
+            elif len(block_data) == 3:
+                block_name, parent_names, custom_label = block_data
+            else:
+                raise ValueError(f"Expected 2 or 3 elements, got {len(block_data)}")
+
             # Resolve parent names to actual blocks using fuzzy retrieval
             parents = []
             if parent_names:
@@ -847,7 +861,8 @@ class KaspaDAG:
                 timestamp=0,
                 parents=parents,
                 position=position,
-                config=self.config
+                config=self.config,
+                custom_label=custom_label  # Pass custom label
             )
 
             self.blocks[block_name] = block
@@ -855,7 +870,7 @@ class KaspaDAG:
             block_map[block_name] = block
             created_blocks.append(block)
 
-        # Add camera movement BEFORE creating animations if requested
+        # Add camera movement BEFORE creating animations
         self.shift_camera_to_follow_blocks()
 
         # Second pass: Create all visual components at once

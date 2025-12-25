@@ -34,7 +34,8 @@ class KaspaLogicalBlock:
             timestamp: Optional[float] = None,
             parents: Optional[List[KaspaLogicalBlock]] = None,
             position: tuple[float, float] = (0, 0),
-            config: _KaspaConfigInternal = None
+            config: _KaspaConfigInternal = None,
+            custom_label: Optional[str] = None
     ):
         if config is None:
             raise ValueError("config parameter is required")
@@ -64,8 +65,12 @@ class KaspaLogicalBlock:
 
         # Create visual after GHOSTDAG computation
         parent_visuals = [p.visual_block for p in self.parents]
+
+        # Custom Label if passed
+        label_text = custom_label if custom_label is not None else str(self.ghostdag.blue_score)
+
         self._visual = KaspaVisualBlock(
-            label_text=str(self.ghostdag.blue_score),#TODO update this  NOTE: when passing an empty string, positioning breaks (fixed moving blocks by overriding move_to with only visual.square)
+            label_text=label_text,#TODO update this  NOTE: when passing an empty string, positioning breaks (fixed moving blocks by overriding move_to with only visual.square)
             position=position,
             parents=parent_visuals,
             config=self.config

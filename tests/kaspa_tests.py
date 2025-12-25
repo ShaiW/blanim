@@ -788,91 +788,111 @@ class TestNormalConditions(HUD2DScene):
         # dag.traverse_parent_chain_with_right_fade(scroll_speed_factor=0.6)
         # self.wait(2)
 
-class DAGvsCHAIN(HUD2DScene):
-    """Explainer for DAG vs CHAIN."""
+class LongestvsHeaviest(HUD2DScene):
+    """Explainer for Longest vs Heaviest."""
 
     def construct(self):
         dag = KaspaDAG(scene=self)
-        dag.set_k(0)
+        dag.set_k(1)
 
         self.wait(1)
-        self.narrate("Kaspa BlockDAG vs BlockChain", run_time=1.0)
+        self.narrate("Kaspa - Longest Chain vs Heaviest DAG", run_time=1.0)
         # Create entire structure from scratch, including genesis
         all_blocks = dag.create_blocks_from_list_instant([
-            ("Gen", None),
-            ("b1", ["Gen"]),
-            ("b2", ["b1"]),
-            ("b3", ["b2"]),
-            ("b4", ["b3"]),
-            ("b5", ["b4"]),
+            ("Gen", None, "1"),
+            ("b1", ["Gen"], "2"),
+            ("b2", ["b1"], "3"),
+            ("b3", ["b2"], "4"),
+            ("b4", ["b3"], "5"),
         ])
-        self.caption("This is a BlockDAG", run_time=1.0)
+        self.caption("We start with the Longest Chain Rule", run_time=1.0)
         self.wait(5)
-        self.caption("A Directed Acyclic Graph of Blocks", run_time=1.0)
-        self.wait(5)
-        self.caption("Edges(Connections) are Directional, only pointing one way.", run_time=1.0)
-        chain_lines = dag.highlight_lines(all_blocks)
-        self.wait(5)
-        self.caption("Follow Edges from any Node(Block), there are No Cycles(Acyclic).", run_time=1.0)
-        self.wait(5)
-        self.caption("This appears as a BlockChain, but it's really a constrained BlockDAG", run_time=1.0)
-        self.wait(5)
-        self.caption("BlockChain = BlockDAG with artificial Single Parent Rule", run_time=1.0)
+        self.caption("We have 5 blocks, this chain is 5 blocks long.", run_time=1.0)
         self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
-            ("b5a", ["b4"]),
+            ("b1a", ["Gen"], "2"),
+            ("b2a", ["b1a"], "3"),
+            ("b3a", ["b2a"], "4"),
+            ("b4a", ["b3a"], "5"),
+            ("b5a", ["b4a"], "6"),
         ])
-        other_chain_lines = dag.highlight_lines(other_blocks)
-        self.caption("Occasionally a Parallel Block is created", run_time=1.0)
+
+        self.caption("If we have a competing fork, this fork is 6 blocks long.", run_time=1.0)
         self.wait(5)
-        self.caption("The blocks in this BlockDAG can only link a Single Parent.", run_time=1.0)
+        self.caption("But there is a problem with this measurement.", run_time=1.0)
         self.wait(5)
-        final_block = dag.create_blocks_from_list_with_camera_movement([
-            ("b6", ["b5"]),
-        ])
-        final_chain_line = dag.highlight_lines(final_block)
-        self.caption("Leaving all but one block, Orphaned.", run_time=1.0)
+        self.caption("\"Longest Chain\" does not account for the Work to create a block.", run_time=1.0)
         self.wait(5)
-        self.caption("The Single Parent Restriction on a BlockDAG, results in a BlockChain", run_time=1.0)
+
+        self.play(
+            other_blocks[0].change_label("1.5"),
+            other_blocks[1].change_label("2.0"),
+            other_blocks[2].change_label("2.5"),
+            other_blocks[3].change_label("3.0"),
+            other_blocks[4].change_label("3.5"),
+        )
+
+        self.caption("If we have a competing chain that required less Work...", run_time=1.0)
+        self.wait(5)
+        self.caption("\"Longest Chain\" would value more blocks over more Work.", run_time=1.0)
+        self.wait(5)
+        self.caption("In a Proof of Work system, you need to measure Work.", run_time=1.0)
+        self.wait(5)
+        self.caption("\"Longest Chain\" was changed very early to \"Heaviest Chain\"", run_time=1.0)
+        self.wait(5)
+        self.caption("To avoid the network accepting the \"Longest Chain\" with less work.", run_time=1.0)
+        self.wait(5)
+        self.caption("Measuring Work ensures the Chain with the most Work is Selected", run_time=1.0)
+        dag.highlight(all_blocks[4])
+        self.wait(5)
+        self.caption("Preserving Security of the Bitcoin Network.", run_time=1.0)
         self.wait(5)
         self.clear_caption(run_time=1.0)
-        dag.unhighlight_lines(chain_lines, other_chain_lines, final_chain_line)
         dag.clear_all_blocks()
         dag.reset_camera()
 
         all_blocks = dag.create_blocks_from_list_instant([
-            ("Gen", None),
-            ("b1", ["Gen"]),
-            ("b2", ["b1"]),
-            ("b3", ["b2"]),
-            ("b4", ["b3"]),
-            ("b5", ["b4"]),
+            ("Gen", None, "1"),
+            ("b1", ["Gen"], "2"),
+            ("b2", ["b1"], "3"),
+            ("b3", ["b2"], "4"),
+            ("b4", ["b3"], "5"),
+            ("b5", ["b4"], "6"),
         ])
-        dag.highlight_lines(all_blocks)
 
         self.caption("Back to our original BlockDAG", run_time=1.0)
         self.wait(5)
+        self.caption("Kaspa uses the same \"Heaviest Chain\" Rule", run_time=1.0)
+        self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
-            ("b5a", ["b4"]),
+            ("b1a", ["Gen"], "2"),
+            ("b2a", ["b1a"], "3"),
+            ("b3a", ["b2a"], "4"),
+            ("b4a", ["b3a"], "5"),
+            ("b5a", ["b4a"], "6"),
         ])
-        dag.highlight_lines(other_blocks)
 
-        self.caption("When a Parallel Block is created without the Single Parent Limit", run_time=1.0)
+        self.caption("We inspect the Work of these competing Chains, just like Bitcoin.", run_time=1.0)
         self.wait(5)
-        self.caption("Removing the artificial constraint unlocks the full BlockDAG", run_time=1.0)
+
+        self.play(
+            other_blocks[0].change_label("1.5"),
+            other_blocks[1].change_label("2.0"),
+            other_blocks[2].change_label("2.5"),
+            other_blocks[3].change_label("3.0"),
+            other_blocks[4].change_label("3.5"),
+        )
+
+        self.wait(5)
+        self.caption("By inspecting the Work, Kaspa also preserves Security.", run_time=1.0)
         self.wait(5)
 
         final_block = dag.create_blocks_from_list_with_camera_movement([
-            ("b6", ["b5a", "b5"]),
+            ("b6", ["b5a", "b5"], "10.5"),
         ])
-        dag.highlight_lines(final_block)
 
-        self.caption("A new block can reference Multiple Parents", run_time=1.0)
-        self.wait(5)
-        self.caption("A BlockChain is a BlockDAG restricted to a Single Parent", run_time=1.0)
-        self.wait(5)
         self.caption("A BlockDAG is a BlockChain without artificial constraints", run_time=1.0)
         self.wait(8)
 
