@@ -788,12 +788,14 @@ class TestNormalConditions(HUD2DScene):
         # dag.traverse_parent_chain_with_right_fade(scroll_speed_factor=0.6)
         # self.wait(2)
 
+#TODO proofread and improve wording before release
 class LongestvsHeaviest(HUD2DScene):
     """Explainer for Longest vs Heaviest."""
 
     def construct(self):
         dag = KaspaDAG(scene=self)
         dag.set_k(1)
+        dag.config.other_parent_line_color = BLUE # Override other lines to be blue too, DAG behavior deviates from logical block
 
         self.wait(1)
         self.narrate("Kaspa - Longest Chain vs Heaviest DAG", run_time=1.0)
@@ -804,10 +806,11 @@ class LongestvsHeaviest(HUD2DScene):
             ("b2", ["b1"], "3"),
             ("b3", ["b2"], "4"),
             ("b4", ["b3"], "5"),
+            ("b5", ["b4"], "6"),
         ])
         self.caption("We start with the Longest Chain Rule", run_time=1.0)
         self.wait(5)
-        self.caption("We have 5 blocks, this chain is 5 blocks long.", run_time=1.0)
+        self.caption("We have 6 blocks, this Chain is 6 blocks long.", run_time=1.0)
         self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
@@ -815,38 +818,39 @@ class LongestvsHeaviest(HUD2DScene):
             ("b2a", ["b1a"], "3"),
             ("b3a", ["b2a"], "4"),
             ("b4a", ["b3a"], "5"),
-            ("b5a", ["b4a"], "6"),
         ])
 
-        self.caption("If we have a competing fork, this fork is 6 blocks long.", run_time=1.0)
+        self.caption("We have a competing fork, this fork is 5 blocks long.", run_time=1.0)
         self.wait(5)
         self.caption("But there is a problem with this measurement.", run_time=1.0)
         self.wait(5)
-        self.caption("\"Longest Chain\" does not account for the Work to create a block.", run_time=1.0)
+        self.caption("``Longest Chain'' does not account for the Work to create a block.", run_time=1.0)
         self.wait(5)
 
         self.play(
-            other_blocks[0].change_label("1.5"),
-            other_blocks[1].change_label("2.0"),
-            other_blocks[2].change_label("2.5"),
-            other_blocks[3].change_label("3.0"),
-            other_blocks[4].change_label("3.5"),
+            all_blocks[1].change_label("1.5"),
+            all_blocks[2].change_label("2"),
+            all_blocks[3].change_label("2.5"),
+            all_blocks[4].change_label("3"),
+            all_blocks[5].change_label("3.5"),
         )
 
-        self.caption("If we have a competing chain that required less Work...", run_time=1.0)
+        self.caption("Inspecting the Work required to create these Chains...", run_time=1.0)
         self.wait(5)
-        self.caption("\"Longest Chain\" would value more blocks over more Work.", run_time=1.0)
+        self.caption("``Longest Chain'' would value more blocks over more Work.", run_time=1.0)
+        dag.highlight(all_blocks[5])
         self.wait(5)
         self.caption("In a Proof of Work system, you need to measure Work.", run_time=1.0)
         self.wait(5)
-        self.caption("\"Longest Chain\" was changed very early to \"Heaviest Chain\"", run_time=1.0)
+        self.caption("``Longest Chain'' was changed very early to ``Heaviest Chain''", run_time=1.0)
         self.wait(5)
-        self.caption("To avoid the network accepting the \"Longest Chain\" with less work.", run_time=1.0)
+        self.caption("To avoid the network accepting the ``Longest Chain'' with less Work.", run_time=1.0)
         self.wait(5)
+        dag.reset_highlighting()
         self.caption("Measuring Work ensures the Chain with the most Work is Selected", run_time=1.0)
-        dag.highlight(all_blocks[4])
+        dag.highlight(other_blocks[3])
         self.wait(5)
-        self.caption("Preserving Security of the Bitcoin Network.", run_time=1.0)
+        self.caption("Preserving the Security of Bitcoin.", run_time=1.0)
         self.wait(5)
         self.clear_caption(run_time=1.0)
         dag.clear_all_blocks()
@@ -863,7 +867,7 @@ class LongestvsHeaviest(HUD2DScene):
 
         self.caption("Back to our original BlockDAG", run_time=1.0)
         self.wait(5)
-        self.caption("Kaspa uses the same \"Heaviest Chain\" Rule", run_time=1.0)
+        self.caption("Kaspa uses the same ``Heaviest Chain'' Rule", run_time=1.0)
         self.wait(5)
 
         other_blocks = dag.create_blocks_from_list_instant([
@@ -871,29 +875,40 @@ class LongestvsHeaviest(HUD2DScene):
             ("b2a", ["b1a"], "3"),
             ("b3a", ["b2a"], "4"),
             ("b4a", ["b3a"], "5"),
-            ("b5a", ["b4a"], "6"),
         ])
 
-        self.caption("We inspect the Work of these competing Chains, just like Bitcoin.", run_time=1.0)
+        self.caption("Inspect the Work of these competing Chains, just like Bitcoin.", run_time=1.0)
         self.wait(5)
 
         self.play(
-            other_blocks[0].change_label("1.5"),
-            other_blocks[1].change_label("2.0"),
-            other_blocks[2].change_label("2.5"),
-            other_blocks[3].change_label("3.0"),
-            other_blocks[4].change_label("3.5"),
+            all_blocks[1].change_label("1.5"),
+            all_blocks[2].change_label("2"),
+            all_blocks[3].change_label("2.5"),
+            all_blocks[4].change_label("3"),
+            all_blocks[5].change_label("3.5"),
         )
 
         self.wait(5)
         self.caption("By inspecting the Work, Kaspa also preserves Security.", run_time=1.0)
         self.wait(5)
 
-        final_block = dag.create_blocks_from_list_with_camera_movement([
-            ("b6", ["b5a", "b5"], "10.5"),
+        final_block = dag.create_blocks_from_list_with_camera_movement_override_sp([
+            ("b6", ["b4a", "b5"], "9.5"),
         ])
 
-        self.caption("A BlockDAG is a BlockChain without artificial constraints", run_time=1.0)
+        self.caption("Kaspa also uses weight for identifying the Parent Chain within the DAG", run_time=1.0)
+        dag.highlight(final_block[0])
+        self.wait(5)
+        self.caption("A critical component for Linear Ordering", run_time=1.0)
+        self.wait(3)
+        dag.highlight(other_blocks[3])
+        dag.highlight(other_blocks[2])
+        self.play(self.camera.frame.animate.move_to(other_blocks[3].get_center()), run_time=1.0)
+        dag.highlight(other_blocks[1])
+        self.play(self.camera.frame.animate.move_to(other_blocks[2].get_center()), run_time=1.0)
+        dag.highlight(other_blocks[0])
+        dag.highlight(all_blocks[0])
+
         self.wait(8)
 
 

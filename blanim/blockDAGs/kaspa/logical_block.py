@@ -35,7 +35,7 @@ class KaspaLogicalBlock:
             parents: Optional[List[KaspaLogicalBlock]] = None,
             position: tuple[float, float] = (0, 0),
             config: _KaspaConfigInternal = None,
-            custom_label: Optional[str] = None
+            custom_label: Optional[str] = None,
     ):
         if config is None:
             raise ValueError("config parameter is required")
