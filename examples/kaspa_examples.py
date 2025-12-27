@@ -983,3 +983,125 @@ class DAGvsCHAIN(HUD2DScene):
         self.wait(5)
         self.caption("A BlockDAG is a BlockChain without artificial constraints", run_time=1.0)
         self.wait(8)
+
+class LongestvsHeaviest(HUD2DScene):
+    """Explainer for Longest vs Heaviest."""
+
+    def construct(self):
+        dag = KaspaDAG(scene=self)
+        dag.set_k(1)
+        dag.config.other_parent_line_color = BLUE # Override other lines to be blue too, DAG behavior deviates from logical block
+
+        self.wait(1)
+        self.narrate("Kaspa - Longest Chain vs Heaviest DAG", run_time=1.0)
+        # Create entire structure from scratch, including genesis
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None, "1"),
+            ("b1", ["Gen"], "2"),
+            ("b2", ["b1"], "3"),
+            ("b3", ["b2"], "4"),
+            ("b4", ["b3"], "5"),
+            ("b5", ["b4"], "6"),
+        ])
+        self.caption("Starting with the Longest Chain Rule", run_time=1.0)
+        self.wait(5)
+        self.caption("This Chain is 6 blocks long.", run_time=1.0)
+        self.wait(5)
+
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b1a", ["Gen"], "2"),
+            ("b2a", ["b1a"], "3"),
+            ("b3a", ["b2a"], "4"),
+            ("b4a", ["b3a"], "5"),
+        ])
+
+        self.caption("A competing Chain is 5 blocks long.", run_time=1.0)
+        self.wait(5)
+        self.caption("There is a problem with this measurement.", run_time=1.0)
+        self.wait(5)
+        self.caption("``Longest Chain'' ignores the Work required to create a block.", run_time=1.0)
+        self.wait(5)
+
+        self.play(
+            all_blocks[1].change_label("1.5"),
+            all_blocks[2].change_label("2"),
+            all_blocks[3].change_label("2.5"),
+            all_blocks[4].change_label("3"),
+            all_blocks[5].change_label("3.5"),
+        )
+
+        self.caption("Inspecting the Work required to create these Chains...", run_time=1.0)
+        self.wait(5)
+        self.caption("...we see ``Longest Chain'' favors blocks over Work.", run_time=1.0)
+        dag.highlight(all_blocks[5])
+        self.wait(5)
+        self.caption("In a Proof of Work system, you need to measure Work.", run_time=1.0)
+        self.wait(5)
+        self.caption("``Longest Chain'' was changed very early to ``Heaviest Chain''", run_time=1.0)
+        self.wait(5)
+        self.caption("To avoid the ``Longest Chain'' with less Work being accepted.", run_time=1.0)
+        self.wait(5)
+        dag.reset_highlighting()
+        self.caption("Measuring Work ensures the Chain with the most Work is Selected", run_time=1.0)
+        dag.highlight(other_blocks[3])
+        self.wait(5)
+        self.caption("Preserving the Security of Bitcoin.", run_time=1.0)
+        self.wait(5)
+        self.clear_caption(run_time=1.0)
+        dag.clear_all_blocks()
+        dag.reset_camera()
+
+        all_blocks = dag.create_blocks_from_list_instant([
+            ("Gen", None, "1"),
+            ("b1", ["Gen"], "2"),
+            ("b2", ["b1"], "3"),
+            ("b3", ["b2"], "4"),
+            ("b4", ["b3"], "5"),
+            ("b5", ["b4"], "6"),
+        ])
+
+        self.caption("Back to our original BlockDAG", run_time=1.0)
+        self.wait(5)
+
+        other_blocks = dag.create_blocks_from_list_instant([
+            ("b1a", ["Gen"], "2"),
+            ("b2a", ["b1a"], "3"),
+            ("b3a", ["b2a"], "4"),
+            ("b4a", ["b3a"], "5"),
+        ])
+
+        self.caption("Kaspa uses the same ``Heaviest Chain'' Idea", run_time=1.0)
+        self.wait(5)
+
+        self.play(
+            all_blocks[1].change_label("1.5"),
+            all_blocks[2].change_label("2"),
+            all_blocks[3].change_label("2.5"),
+            all_blocks[4].change_label("3"),
+            all_blocks[5].change_label("3.5"),
+        )
+
+        self.caption("Inspect the Work of these competing Chains, just like Bitcoin.", run_time=1.0)
+        self.wait(5)
+        self.caption("By inspecting the Work, Kaspa also preserves Security.", run_time=1.0)
+        self.wait(5)
+
+        final_block = dag.create_blocks_from_list_with_camera_movement_override_sp([
+            ("b6", ["b4a", "b5"], "8.5"),
+        ])
+
+        self.caption("Kaspa uses Work to identify the Parent Chain within the DAG", run_time=1.0)
+        dag.highlight(final_block[0])
+        self.wait(5)
+        self.caption("Critical for Linear Block Ordering", run_time=1.0)
+        self.wait(3)
+        dag.highlight(other_blocks[3])
+        dag.highlight(other_blocks[2])
+        self.play(self.camera.frame.animate.move_to(all_blocks[4].get_center()), run_time=1.0)
+        dag.highlight(other_blocks[1])
+        self.play(self.camera.frame.animate.move_to(all_blocks[3].get_center()), run_time=1.0)
+        dag.highlight(other_blocks[0])
+        dag.highlight(all_blocks[0])
+        self.wait(3)
+        self.clear_caption(run_time=1.0)
+        self.wait(5)

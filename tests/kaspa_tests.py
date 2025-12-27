@@ -788,128 +788,87 @@ class TestNormalConditions(HUD2DScene):
         # dag.traverse_parent_chain_with_right_fade(scroll_speed_factor=0.6)
         # self.wait(2)
 
-#TODO proofread and improve wording before release
-class LongestvsHeaviest(HUD2DScene):
-    """Explainer for Longest vs Heaviest."""
+
+class GHOSTDAGExample(HUD2DScene):
+    """GHOSTDAG Example from the 'PHANTOM GHOSTDAG A Scalable Generalization of Nakamoto Consensus, 11/10/21'."""
 
     def construct(self):
         dag = KaspaDAG(scene=self)
-        dag.set_k(1)
-        dag.config.other_parent_line_color = BLUE # Override other lines to be blue too, DAG behavior deviates from logical block
+        dag.set_k(3)
+        animation_wait_time = 0.5
 
         self.wait(1)
-        self.narrate("Kaspa - Longest Chain vs Heaviest DAG", run_time=1.0)
-        # Create entire structure from scratch, including genesis
-        all_blocks = dag.create_blocks_from_list_instant([
-            ("Gen", None, "1"),
-            ("b1", ["Gen"], "2"),
-            ("b2", ["b1"], "3"),
-            ("b3", ["b2"], "4"),
-            ("b4", ["b3"], "5"),
-            ("b5", ["b4"], "6"),
+        self.narrate("Kaspa - GHOSTDAG", run_time=1.0)
+
+        genesis_block = dag.add_block(name = "Gen")
+
+        self.caption("Figure 3 from PHANTOM GHOSTDAG, animated", run_time=1.0)
+        self.wait(animation_wait_time)
+
+        all_blocks = dag.create_blocks_from_list_instant_with_vertical_centering([
+            ("E", ["Gen"]),
+            ("D", ["Gen"]),
+            ("C", ["Gen"]),
+            ("B", ["Gen"]),
         ])
-        self.caption("We start with the Longest Chain Rule", run_time=1.0)
-        self.wait(5)
-        self.caption("We have 6 blocks, this Chain is 6 blocks long.", run_time=1.0)
-        self.wait(5)
+        all_blocks[1].hash = 0 # Force block D as SP when tiebreaking
 
-        other_blocks = dag.create_blocks_from_list_instant([
-            ("b1a", ["Gen"], "2"),
-            ("b2a", ["b1a"], "3"),
-            ("b3a", ["b2a"], "4"),
-            ("b4a", ["b3a"], "5"),
-        ])
-
-        self.caption("We have a competing fork, this fork is 5 blocks long.", run_time=1.0)
-        self.wait(5)
-        self.caption("But there is a problem with this measurement.", run_time=1.0)
-        self.wait(5)
-        self.caption("``Longest Chain'' does not account for the Work to create a block.", run_time=1.0)
-        self.wait(5)
-
-        self.play(
-            all_blocks[1].change_label("1.5"),
-            all_blocks[2].change_label("2"),
-            all_blocks[3].change_label("2.5"),
-            all_blocks[4].change_label("3"),
-            all_blocks[5].change_label("3.5"),
-        )
-
-        self.caption("Inspecting the Work required to create these Chains...", run_time=1.0)
-        self.wait(5)
-        self.caption("``Longest Chain'' would value more blocks over more Work.", run_time=1.0)
-        dag.highlight(all_blocks[5])
-        self.wait(5)
-        self.caption("In a Proof of Work system, you need to measure Work.", run_time=1.0)
-        self.wait(5)
-        self.caption("``Longest Chain'' was changed very early to ``Heaviest Chain''", run_time=1.0)
-        self.wait(5)
-        self.caption("To avoid the network accepting the ``Longest Chain'' with less Work.", run_time=1.0)
-        self.wait(5)
+        self.caption("All blocks created in this round, have the same parent...", run_time=1.0)
+        self.wait(animation_wait_time)
+        self.caption("...and the same Selected Parent.", run_time=1.0)
+        self.wait(animation_wait_time)
+        dag.fade(all_blocks[0], ["C", "B"])  # Fade and Highlight allow any combination of block instance, block name, or lists of either
+        dag.highlight("D")
+        dag.highlight("Gen")
+        self.wait(animation_wait_time)
         dag.reset_highlighting()
-        self.caption("Measuring Work ensures the Chain with the most Work is Selected", run_time=1.0)
-        dag.highlight(other_blocks[3])
-        self.wait(5)
-        self.caption("Preserving the Security of Bitcoin.", run_time=1.0)
-        self.wait(5)
-        self.clear_caption(run_time=1.0)
-        dag.clear_all_blocks()
-        dag.reset_camera()
 
-        all_blocks = dag.create_blocks_from_list_instant([
-            ("Gen", None, "1"),
-            ("b1", ["Gen"], "2"),
-            ("b2", ["b1"], "3"),
-            ("b3", ["b2"], "4"),
-            ("b4", ["b3"], "5"),
-            ("b5", ["b4"], "6"),
+        other_blocks = dag.create_blocks_from_list_instant_with_vertical_centering([
+            ("I", ["E"]),
+            ("H", ["C", "D", "E"]),
+            ("F", ["B", "C"]),
         ])
 
-        self.caption("Back to our original BlockDAG", run_time=1.0)
-        self.wait(5)
-        self.caption("Kaspa uses the same ``Heaviest Chain'' Rule", run_time=1.0)
-        self.wait(5)
+        self.caption("Caption ", run_time=1.0)
+        self.wait(animation_wait_time)
+        dag.fade_except_past("H")
+        dag.highlight(["H"])
+        dag.highlight(["D"])
+        dag.highlight(["Gen"])
+        self.wait(animation_wait_time)
+        dag.reset_highlighting()
 
-        other_blocks = dag.create_blocks_from_list_instant([
-            ("b1a", ["Gen"], "2"),
-            ("b2a", ["b1a"], "3"),
-            ("b3a", ["b2a"], "4"),
-            ("b4a", ["b3a"], "5"),
+        other_other_blocks = dag.create_blocks_from_list_instant_with_vertical_centering([
+            ("L", ["I", "D"]),
+            ("K", ["B", "H", "I"]),
+            ("J", ["F", "H"]),
         ])
 
-        self.caption("Inspect the Work of these competing Chains, just like Bitcoin.", run_time=1.0)
-        self.wait(5)
+        self.caption("Caption ", run_time=1.0)
+        self.wait(animation_wait_time)
+        dag.fade_except_past("K")
+        dag.highlight(["K"])
+        dag.highlight(["H"])
+        dag.highlight(["D"])
+        dag.highlight(["Gen"])
+        self.wait(animation_wait_time)
+        dag.reset_highlighting()
 
-        self.play(
-            all_blocks[1].change_label("1.5"),
-            all_blocks[2].change_label("2"),
-            all_blocks[3].change_label("2.5"),
-            all_blocks[4].change_label("3"),
-            all_blocks[5].change_label("3.5"),
-        )
+        block_m = dag.add_block(parents = [other_other_blocks[1], other_blocks[2]],name = "M")
 
-        self.wait(5)
-        self.caption("By inspecting the Work, Kaspa also preserves Security.", run_time=1.0)
-        self.wait(5)
+        self.caption("Caption ", run_time=1.0)
+        self.wait(animation_wait_time)
+        dag.fade_except_past(block_m)
+        dag.highlight(block_m)
+        dag.highlight("K")
+        dag.highlight(["H"])
+        dag.highlight(["D"])
+        dag.highlight(["Gen"])
+        self.wait(animation_wait_time)
+        dag.reset_highlighting()
 
-        final_block = dag.create_blocks_from_list_with_camera_movement_override_sp([
-            ("b6", ["b4a", "b5"], "9.5"),
-        ])
-
-        self.caption("Kaspa also uses weight for identifying the Parent Chain within the DAG", run_time=1.0)
-        dag.highlight(final_block[0])
-        self.wait(5)
-        self.caption("A critical component for Linear Ordering", run_time=1.0)
-        self.wait(3)
-        dag.highlight(other_blocks[3])
-        dag.highlight(other_blocks[2])
-        self.play(self.camera.frame.animate.move_to(other_blocks[3].get_center()), run_time=1.0)
-        dag.highlight(other_blocks[1])
-        self.play(self.camera.frame.animate.move_to(other_blocks[2].get_center()), run_time=1.0)
-        dag.highlight(other_blocks[0])
-        dag.highlight(all_blocks[0])
-
-        self.wait(8)
+        self.caption("Caption ", run_time=1.0)
+        self.wait(animation_wait_time)
 
 
 class TestHighlightingFutureWithAnticone(HUD2DScene):

@@ -163,7 +163,7 @@ class KaspaDAG:
 
     def set_k(self, k: int) -> 'KaspaDAG':
         """Set k with genesis lock protection."""
-        self.config_manager.set_k(k, len(self.all_blocks) > 0)
+        self.config_manager.set_k(k, len(self.all_blocks) > 0) # If any blocks exist, k cannot be changed
         return self
 
     def apply_config(self, user_config: KaspaConfig) -> 'KaspaDAG':
@@ -259,23 +259,118 @@ class KaspaDAG:
         """Reset all blocks to neutral state using visual block methods."""
         self.relationship_highlighter.reset_highlighting()
 
-    def highlight(self, block: KaspaLogicalBlock | str) -> None:
-        """Highlight a single block using fuzzy retrieval and config highlighting color.
+    def highlight(self, *blocks: KaspaLogicalBlock | str | List[KaspaLogicalBlock | str]) -> None:
+        """Highlight single block or list of blocks using fuzzy retrieval.
 
         Args:
-            block: Block name (supports fuzzy matching) or KaspaLogicalBlock instance
+            *blocks: Block name(s), KaspaLogicalBlock instance(s), or list of either
+                    Can be called as: highlight(block1, block2, block3)
+                                    or highlight([block1, block2, block3])
+                                    or highlight([block1, "block2"], block3)
+        """
+        # Flatten mixed arguments: highlight([block1, "block2"], block3) -> [block1, "block2", block3]
+        blocks_list = []
+        for item in blocks:
+            if isinstance(item, list):
+                blocks_list.extend(item)
+            else:
+                blocks_list.append(item)
+
+        # Process each block
+        highlight_animations = []
+        for block in blocks_list:
+            # Handle both string names and block references
+            if isinstance(block, str):
+                target_block = self.get_block(block)
+                if target_block is None:
+                    continue
+            else:
+                target_block = block
+
+            # Create highlight animation for this block
+            highlight_animations.append(target_block.create_highlight_animation())
+
+        # Play all highlight animations together
+        if highlight_animations:
+            self.scene.play(*highlight_animations)
+
+    def fade(self, *blocks: KaspaLogicalBlock | str | List[KaspaLogicalBlock | str]) -> None:
+        """Fade single block or list of blocks using fuzzy retrieval."""
+        # Flatten mixed arguments
+        blocks_list = []
+        for item in blocks:
+            if isinstance(item, list):
+                blocks_list.extend(item)
+            else:
+                blocks_list.append(item)
+
+        # Process each block with existing logic
+        fade_animations = []
+        seen_lines = {}  # Track lines to avoid duplicates
+
+        for block in blocks_list:
+            # Handle both string names and block references
+            if isinstance(block, str):
+                target_block = self.get_block(block)
+                if target_block is None:
+                    continue
+            else:
+                target_block = block
+
+            # Create fade animation for this block
+            fade_animations.extend(target_block.visual_block.create_fade_animation())
+
+            # Fade parent lines (with deduplication)
+            for line in target_block.visual_block.parent_lines:
+                line_id = id(line)
+                if line_id not in seen_lines:
+                    fade_animations.append(
+                        line.animate.set_stroke(opacity=self.config.fade_opacity)
+                    )
+                    seen_lines[line_id] = True
+
+            # Fade child lines (with deduplication)
+            for child in target_block.children:
+                for line in child.visual_block.parent_lines:
+                    if line.parent_block == target_block.visual_block.square:
+                        line_id = id(line)
+                        if line_id not in seen_lines:
+                            fade_animations.append(
+                                line.animate.set_stroke(opacity=self.config.fade_opacity)
+                            )
+                            seen_lines[line_id] = True
+
+        # Play all fade animations together
+        if fade_animations:
+            self.scene.play(*fade_animations)
+
+    def fade_except_past(self, focused_block: KaspaLogicalBlock | str) -> None:
+        """Fade all blocks except the focused block and its past cone.
+
+        Args:
+            focused_block: Block name or KaspaLogicalBlock instance to keep visible
         """
         # Handle both string names and block references
-        if isinstance(block, str):
-            target_block = self.get_block(block)
+        if isinstance(focused_block, str):
+            target_block = self.get_block(focused_block)
             if target_block is None:
                 return
         else:
-            target_block = block
+            target_block = focused_block
 
-        # Highlight the target block with config highlighting color
-        highlight_animation = target_block.create_highlight_animation()
-        self.scene.play(highlight_animation)
+        # Get the past cone (blocks to keep visible)
+        past_blocks = set(self.get_past_cone(target_block))
+        past_blocks.add(target_block)  # Include the focused block itself
+
+        # Find blocks to fade (everything not in past cone)
+        blocks_to_fade = [
+            block for block in self.all_blocks
+            if block not in past_blocks
+        ]
+
+        # Use the existing fade function with deduplication
+        if blocks_to_fade:
+            self.fade(blocks_to_fade)
 
     ########################################
     # Highlighting GHOSTDAG
@@ -817,6 +912,77 @@ class KaspaDAG:
 
         return created_blocks
 
+    def create_blocks_from_list_instant_with_vertical_centering(
+            self,
+            blocks_data: List[Union[tuple[str, Optional[List[str]]],
+                                    tuple[str, Optional[List[str]], Optional[str]]]]
+    ) -> List[KaspaLogicalBlock]:
+        """Create multiple blocks from names, parents, and optional labels instantly.
+
+        Args:
+            blocks_data: List of tuples (block_name, parent_names) or
+                        (block_name, parent_names, label) where label is optional
+                        Example: [("Gen", None), ("b1", ["Gen"], "label1"), ("b2", ["Gen"])]
+        """
+        block_map = {}
+        created_blocks = []
+
+        # First pass: Create all logical blocks
+        for block_data in blocks_data:
+            # Handle both 2-element and 3-element tuples
+            if len(block_data) == 2:
+                block_name, parent_names = block_data
+                custom_label = None
+            elif len(block_data) == 3:
+                block_name, parent_names, custom_label = block_data
+            else:
+                raise ValueError(f"Expected 2 or 3 elements, got {len(block_data)}")
+
+                # Resolve parent names to actual blocks using fuzzy retrieval
+            parents = []
+            if parent_names:
+                for parent_name in parent_names:
+                    parent_block = self.get_block(parent_name)
+                    if parent_block:
+                        parents.append(parent_block)
+                    elif parent_name in block_map:
+                        parents.append(block_map[parent_name])
+
+                        # Create block directly without workflow/animation
+            position = self.block_manager._calculate_dag_position(parents)
+
+            block = KaspaLogicalBlock(
+                name=block_name,
+                timestamp=0,
+                parents=parents,
+                position=position,
+                config=self.config,
+                custom_label=custom_label  # Pass custom label
+            )
+
+            self.blocks[block_name] = block
+            self.all_blocks.append(block)
+            block_map[block_name] = block
+            created_blocks.append(block)
+
+            # Second pass: Create all visual components at once
+        all_creations = []
+        for block in created_blocks:
+            all_creations.append(block.visual_block.create_with_lines())
+
+            # Single animation creation - everything appears at once
+        self.scene.play(*all_creations, run_time=1.0)
+
+        # NEW: Center blocks around genesis y-position after creation
+        x_positions = set()
+        for block in created_blocks:
+            x_pos = block.visual_block.square.get_center()[0]
+            x_positions.add(x_pos)
+
+        self.block_manager._animate_dag_repositioning(x_positions)
+
+        return created_blocks
+
     def create_blocks_from_list_with_camera_movement(
             self,
             blocks_data: List[Union[tuple[str, Optional[List[str]]],
@@ -1216,6 +1382,7 @@ class BlockManager:
 
         return placeholder
 
+# TODO change this, see TODOs within
     def add_block(self, parents=None, name=None) -> KaspaLogicalBlock:
         """Create and animate a block immediately."""
         placeholder = self.queue_block(parents=parents, name=name, timestamp=0)
